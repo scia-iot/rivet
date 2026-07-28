@@ -8,8 +8,9 @@ if ! grep -q "starship init fish" ~/.config/fish/config.fish 2>/dev/null; then
 fi
 starship preset bracketed-segments -o ~/.config/starship.toml
 
-# Install Gemini CLI
-npm install -g @google/gemini-cli
+# Install Codex CLI
+sudo apt update && sudo apt install bubblewrap
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
 
 # Install Python development dependencies
 pip install -r requirements-dev.txt

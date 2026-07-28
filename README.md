@@ -4,6 +4,23 @@
 [![CodeQL Advanced](https://github.com/scia-iot/ovpncp/actions/workflows/codeql.yml/badge.svg)](https://github.com/scia-iot/ovpncp/actions/workflows/codeql.yml)
 [![Package](https://github.com/scia-iot/ovpncp/actions/workflows/package.yml/badge.svg)](https://github.com/scia-iot/ovpncp/actions/workflows/package.yml)
 
+## Development
+
+Contributor and coding-agent guidance is maintained in
+[`AGENTS.md`](AGENTS.md). It is self-contained and includes the project
+architecture, security constraints, code conventions, and required quality
+checks.
+
+Install the development dependencies and run the standard checks:
+
+```shell
+python -m pip install -r requirements-dev.txt
+ruff format --check .
+ruff check .
+mypy .
+pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing
+```
+
 ## Installation
 
 In order to run along with OpenVPN server, the ROOT privilege is required.
@@ -204,6 +221,54 @@ Drop the network:
 ```shell
 curl -X DELETE http://127.0.0.1:8000/networks/1
 ```
+
+### Device and User Access
+
+A device is a stable business identity. Its optional `client_id` points to the
+current OpenVPN client, which can be replaced or removed without replacing the
+device. A user is mapped to an OAuth identity by the unique combination of
+`issuer` and `subject`.
+
+Register a device and a user:
+
+```shell
+curl -X POST http://127.0.0.1:8000/devices \
+    -H "Content-Type: application/json" \
+    -d '{"name": "edge-device-1", "client_id": 1}'
+
+curl -X POST http://127.0.0.1:8000/users \
+    -H "Content-Type: application/json" \
+    -d '{
+        "display_name": "Edge Operator",
+        "issuer": "https://login.microsoftonline.com/<tenant-id>/v2.0",
+        "subject": "<oauth-subject>"
+    }'
+```
+
+Administratively assign a laptop's VPN client to the user:
+
+```shell
+curl -X PUT http://127.0.0.1:8000/users/1/clients/2
+curl http://127.0.0.1:8000/users/1/clients
+curl -X DELETE http://127.0.0.1:8000/users/1/clients/2
+```
+
+A user may own multiple VPN clients, but each client can belong to only one
+user. These management endpoints use the existing Entra `APP_ROLE` security
+boundary; finer-grained roles can be introduced with the frontend.
+
+Grant, list, and revoke individual device access:
+
+```shell
+curl -X PUT http://127.0.0.1:8000/users/1/devices/1
+curl http://127.0.0.1:8000/users/1/devices
+curl -X DELETE http://127.0.0.1:8000/users/1/devices/1
+```
+
+The client assignment and grant record application-level authorization. Existing OpenVPN client,
+restricted-network, certificate, and firewall operations remain unchanged.
+The API also provides `GET`, `PATCH`, and `DELETE` operations under `/devices`
+and `/users`. Deleting a device does not delete or revoke its OpenVPN client.
 
 ### [Optional] Enable Security with Azure Entra ID
 

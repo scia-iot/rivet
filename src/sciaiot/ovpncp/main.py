@@ -14,7 +14,7 @@ from sciaiot.ovpncp.dependencies import (
     create_tables,
     init_scripts,
 )
-from sciaiot.ovpncp.routes import client, network, server
+from sciaiot.ovpncp.routes import client, identity, network, server
 
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = os.environ.get("PORT", "8000")
@@ -50,6 +50,8 @@ for mw in ["azure_security", "azure_storage"]:
 app.include_router(server.router, prefix="/server", tags=["server"])
 app.include_router(client.router, prefix="/clients", tags=["client"])
 app.include_router(network.router, prefix="/networks", tags=["server"])
+app.include_router(identity.device_router, prefix="/devices", tags=["device"])
+app.include_router(identity.user_router, prefix="/users", tags=["user"])
 
 
 @app.exception_handler(Exception)
