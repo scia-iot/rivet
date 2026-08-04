@@ -44,7 +44,13 @@ def test_azure_security_middleware_success(mock_validate_token):
 def test_azure_security_middleware_failure(mock_validate_token):
     response = client.get("/")
     assert response.status_code == 401
-    assert response.json() == {"detail": "Mocked Exception"}
+    assert response.json() == {
+        "type": "/errors/unauthorized",
+        "title": "Unauthorized",
+        "status": 401,
+        "detail": "Mocked Exception",
+        "instance": "http://testserver/",
+    }
 
 
 @patch("sciaiot.ovpncp.middlewares.azure_security.TENANT_ID", None)

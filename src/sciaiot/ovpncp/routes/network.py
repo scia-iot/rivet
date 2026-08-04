@@ -1,5 +1,5 @@
-from datetime import datetime
 import logging
+from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -22,7 +22,7 @@ class RestrictedNetworkRequest(BaseModel):
     private_network_addresses: str | None = None
 
 
-@router.post("")
+@router.post("", response_model=RestrictedNetwork)
 async def create_restricted_network(
     request: RestrictedNetworkRequest, session: DBSession
 ):
@@ -45,7 +45,7 @@ async def create_restricted_network(
         destination_name=destination.name,
         destination_virtual_address=destination.virtual_address.ip,
         private_network_addresses=request.private_network_addresses or "",
-        start_time=datetime.now(),
+        start_time=datetime.now(timezone.utc),
     )
 
     # add those rules before the final one on iptables
@@ -68,7 +68,7 @@ async def create_restricted_network(
     return network
 
 
-@router.get("")
+@router.get("", response_model=list[RestrictedNetwork])
 async def retrieve_restricted_networks(source_name: str, session: DBSession):
     logger.info(f"Retrieving restricted networks for source {source_name}...")
     statement = select(RestrictedNetwork).where(
@@ -79,7 +79,7 @@ async def retrieve_restricted_networks(source_name: str, session: DBSession):
     return networks
 
 
-@router.get("/{network_id}")
+@router.get("/{network_id}", response_model=RestrictedNetwork)
 async def retrieve_restricted_network(network_id: int, session: DBSession):
     logger.info(f"Retrieving restricted network with ID {network_id}...")
     statement = select(RestrictedNetwork).where(RestrictedNetwork.id == network_id)
@@ -100,7 +100,7 @@ async def retrieve_restricted_network(network_id: int, session: DBSession):
 async def drop_restricted_network(network_id: int, session: DBSession):
     logger.info(f"Dropping restricted network with ID {network_id}...")
     network = await retrieve_restricted_network(network_id, session)
-    network.end_time = datetime.now()
+    network.end_time = datetime.now(timezone.utc)
 
     chain = "FORWARD"
     if network.private_network_addresses:

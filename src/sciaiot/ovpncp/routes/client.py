@@ -46,7 +46,20 @@ class CloseConnectionRequest(BaseModel):
     disconnected_time: datetime
 
 
-@router.post("")
+class CertificatePackage(BaseModel):
+    """Filesystem location of a packaged client certificate archive."""
+
+    file_path: str
+
+
+class ClientImportSummary(BaseModel):
+    """Counts of client records changed during certificate import."""
+
+    added: int
+    updated: int
+
+
+@router.post("", response_model=Client)
 async def create_client(request: ClientBase, session: DBSession):
     logger.info(f"Creating client {request.name}...")
     client = Client.model_validate(request)
@@ -66,7 +79,7 @@ async def create_client(request: ClientBase, session: DBSession):
     return client
 
 
-@router.get("")
+@router.get("", response_model=list[Client])
 async def retrieve_clients(session: DBSession):
     logger.info("Retrieving all clients...")
     clients = session.exec(select(Client)).all()
@@ -82,7 +95,7 @@ async def retrieve_client(client_name: str, session: DBSession):
     return client
 
 
-@router.put("/{client_name}/package-cert")
+@router.put("/{client_name}/package-cert", response_model=CertificatePackage)
 async def package_client_cert(client_name: str, session: DBSession):
     logger.info(f"Packaging client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
@@ -91,7 +104,10 @@ async def package_client_cert(client_name: str, session: DBSession):
     return {"file_path": archive}
 
 
-@router.get("/{client_name}/download-cert")
+@router.get(
+    "/{client_name}/download-cert",
+    response_class=FileResponse,
+)
 async def download_client_cert(client_name: str, session: DBSession):
     logger.info(f"Downloading client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
@@ -192,7 +208,7 @@ async def unassign_virtual_address(client_name: str, session: DBSession):
     logger.info("Virtual address unassigned successfully!")
 
 
-@router.post("/{client_name}/connections")
+@router.post("/{client_name}/connections", response_model=Connection)
 async def start_connection(
     client_name: str, request: StartConnectionRequest, session: DBSession
 ):
@@ -212,7 +228,7 @@ async def start_connection(
     return connection
 
 
-@router.put("/{client_name}/connections")
+@router.put("/{client_name}/connections", response_model=Connection)
 async def close_connection(
     client_name: str, request: CloseConnectionRequest, session: DBSession
 ):
@@ -223,7 +239,7 @@ async def close_connection(
         .where(
             Connection.remote_address == request.remote_address,
             Connection.client_id == client.id,
-            Connection.disconnected_time == None,  # noqa: E711
+            Connection.disconnected_time == None,
         )
         .order_by(Connection.connected_time.desc())  # type: ignore
     )
@@ -245,7 +261,7 @@ async def close_connection(
     return connection
 
 
-@router.post("/import")
+@router.post("/import", response_model=ClientImportSummary)
 async def import_clients(session: DBSession):
     """Import existing clients from Easy-RSA certificate directory."""
     logger.info("Importing existing clients from Easy-RSA...")

@@ -1,10 +1,11 @@
 import os
 import stat
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import Response
 
 from sciaiot.ovpncp.data.server import Client
 from sciaiot.ovpncp.dependencies import get_session
@@ -19,25 +20,36 @@ def client_fixture(db_session):
 
     app.dependency_overrides[get_session] = get_session_override
 
-    with patch(
-        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
-        return_value={"sub": "mocked_sub"},
-    ):
-        with patch(
+    with (
+        patch(
+            "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+            return_value={"sub": "mocked_sub"},
+        ),
+        patch(
             "sciaiot.ovpncp.middlewares.azure_security.TENANT_ID", "mocked_tenant_id"
-        ):
-            with patch(
-                "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID",
-                "mocked_app_client_id",
-            ):
-                with patch(
-                    "sciaiot.ovpncp.middlewares.azure_security.APP_ROLE",
-                    "mocked_app_role",
-                ):
-                    client = TestClient(app)
-                    yield client
+        ),
+        patch(
+            "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID",
+            "mocked_app_client_id",
+        ),
+        patch(
+            "sciaiot.ovpncp.middlewares.azure_security.APP_ROLE",
+            "mocked_app_role",
+        ),
+    ):
+        client = TestClient(app)
+        yield client
 
     app.dependency_overrides.clear()
+
+
+def _assert_problem_detail(response: Response, detail: str) -> None:
+    """Assert the shared RFC 7807 shape while focusing on route detail."""
+    problem = response.json()
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert problem["status"] == response.status_code
+    assert problem["detail"] == detail
+    assert all(key in problem for key in ("type", "title", "instance"))
 
 
 @patch(
@@ -46,7 +58,7 @@ def client_fixture(db_session):
 def test_init_server(mock_open, client: TestClient):
     response = client.get("/server")
     assert response.status_code == 404
-    assert response.json() == {"detail": "Server not found!"}
+    _assert_problem_detail(response, "Server not found!")
 
     response = client.post("/server")
     assert response.status_code == 200
@@ -114,7 +126,7 @@ def test_add_route(mock_add, client: TestClient):
 def test_add_wrong_route(client: TestClient):
     response = client.post("/server/routes", json={"network": "invalid_address"})
     assert response.status_code == 400
-    assert response.json() == {"detail": "Only internal network address is allowed!"}
+    _assert_problem_detail(response, "Only internal network address is allowed!")
 
 
 @patch("sciaiot.ovpncp.utils.iproute.delete")
@@ -140,9 +152,7 @@ def test_delete_route(mock_list, mock_delete, client: TestClient):
 def test_delete_wrong_route(mock_list, client: TestClient):
     response = client.delete("/server/routes", params={"network": "192.168.1.0/24"})
     assert response.status_code == 404
-    assert response.json() == {
-        "detail": 'Network "192.168.1.0/24" not found in routes!'
-    }
+    _assert_problem_detail(response, 'Network "192.168.1.0/24" not found in routes!')
 
     mock_list.assert_called_once_with("tun0")
 
@@ -150,8 +160,8 @@ def test_delete_wrong_route(mock_list, client: TestClient):
 cert_details = {
     "issued_by": "mock",
     "issued_to": "client",
-    "issued_on": datetime.now(),
-    "expires_on": datetime.now(),
+    "issued_on": datetime.now(timezone.utc),
+    "expires_on": datetime.now(timezone.utc),
 }
 
 
@@ -160,7 +170,7 @@ cert_details = {
 def test_create_client(mock_build_client, mock_read_client_cert, client: TestClient):
     response = client.get("/clients/test_client")
     assert response.status_code == 404
-    assert response.json() == {"detail": 'Client "test_client" not found!'}
+    _assert_problem_detail(response, 'Client "test_client" not found!')
 
     response = client.post("/clients", json={"name": "test_client_1"})
     assert response.status_code == 200
@@ -210,9 +220,7 @@ def test_assign_virtual_address(
 ):
     response = client.put("/clients/test_client_1/assign-ip", json={"ip": "10.0.0.1"})
     assert response.status_code == 404
-    assert response.json() == {
-        "detail": 'Virtual address with IP "10.0.0.1" not found!'
-    }
+    _assert_problem_detail(response, 'Virtual address with IP "10.0.0.1" not found!')
 
     response = client.put("/clients/test_client_1/assign-ip", json={"ip": "10.8.0.2"})
     assert response.status_code == 200
@@ -254,7 +262,7 @@ def test_start_connection(client: TestClient):
         "/clients/test_client_1/connections",
         json={
             "remote_address": "172.205.176.207:60374",
-            "connected_time": datetime.now().isoformat(),
+            "connected_time": datetime.now(timezone.utc).isoformat(),
         },
     )
     assert response.status_code == 200
@@ -267,7 +275,7 @@ def test_start_connection(client: TestClient):
         "/clients/test_client_2/connections",
         json={
             "remote_address": "172.205.176.208:60374",
-            "connected_time": datetime.now().isoformat(),
+            "connected_time": datetime.now(timezone.utc).isoformat(),
         },
     )
     assert response.status_code == 200
@@ -283,7 +291,7 @@ def test_create_restricted_network(
 ):
     response = client.get("/networks/1")
     assert response.status_code == 404
-    assert response.json() == {"detail": "Network with ID 1 not found!"}
+    _assert_problem_detail(response, "Network with ID 1 not found!")
 
     response = client.post(
         "/networks",
@@ -371,19 +379,20 @@ def test_close_connection(client: TestClient):
         "/clients/test_client_1/connections",
         json={
             "remote_address": "10.8.0.2",
-            "disconnected_time": datetime.now().isoformat(),
+            "disconnected_time": datetime.now(timezone.utc).isoformat(),
         },
     )
     assert response.status_code == 404
-    assert response.json() == {
-        "detail": 'Connection with client "test_client_1" from "***.***.***.***" not found!'
-    }
+    _assert_problem_detail(
+        response,
+        'Connection with client "test_client_1" from "***.***.***.***" not found!',
+    )
 
     response = client.put(
         "/clients/test_client_1/connections",
         json={
             "remote_address": "172.205.176.207:60374",
-            "disconnected_time": datetime.now().isoformat(),
+            "disconnected_time": datetime.now(timezone.utc).isoformat(),
         },
     )
     assert response.status_code == 200
@@ -395,7 +404,7 @@ def test_close_connection(client: TestClient):
         "/clients/test_client_2/connections",
         json={
             "remote_address": "172.205.176.208:60374",
-            "disconnected_time": datetime.now().isoformat(),
+            "disconnected_time": datetime.now(timezone.utc).isoformat(),
         },
     )
     assert response.status_code == 200
@@ -551,14 +560,14 @@ def test_import_clients(
         {
             "issued_by": "CA",
             "issued_to": "existing_client_1",
-            "issued_on": datetime.now(),
-            "expires_on": datetime.now(),
+            "issued_on": datetime.now(timezone.utc),
+            "expires_on": datetime.now(timezone.utc),
         },
         {
             "issued_by": "CA",
             "issued_to": "existing_client_2",
-            "issued_on": datetime.now(),
-            "expires_on": datetime.now(),
+            "issued_on": datetime.now(timezone.utc),
+            "expires_on": datetime.now(timezone.utc),
         },
     ]
     mock_read_ip.side_effect = ["10.8.0.11", None]
@@ -580,8 +589,8 @@ def test_import_clients(
         {
             "issued_by": "CA",
             "issued_to": "existing_client_2",
-            "issued_on": datetime.now(),
-            "expires_on": datetime.now(),
+            "issued_on": datetime.now(timezone.utc),
+            "expires_on": datetime.now(timezone.utc),
         }
     ]
     mock_read_ip.side_effect = ["10.8.0.12"]

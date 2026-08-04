@@ -23,6 +23,14 @@ class RouteRequest(BaseModel):
     network: str
 
 
+class ServiceHealth(BaseModel):
+    """Current state reported by the OpenVPN service manager."""
+
+    status: str
+    time: str | None = None
+    period: str | None = None
+
+
 @router.post("", response_model=ServerWithVirtualAddresses)
 async def init_server(session: DBSession):
     logger.info("Initializing the server...")
@@ -36,7 +44,7 @@ async def init_server(session: DBSession):
     return server
 
 
-@router.get("")
+@router.get("", response_model=ServerWithVirtualAddresses)
 async def get_server(session: DBSession):
     logger.info("Getting the server...")
     server = session.exec(select(Server)).one_or_none()
@@ -51,7 +59,7 @@ async def get_server(session: DBSession):
     return server
 
 
-@router.get("/health")
+@router.get("/health", response_model=ServiceHealth)
 async def get_service_health():
     logger.info("Checking the service health...")
     service_health = openvpn.get_status()
@@ -59,16 +67,16 @@ async def get_service_health():
     return service_health
 
 
-@router.get("/assignable-virtual-addresses")
+@router.get("/assignable-virtual-addresses", response_model=list[VirtualAddress])
 async def get_assignable_virtual_addresses(session: DBSession):
     logger.info("Getting the assignable virtual addresses...")
-    statement = select(VirtualAddress).where(VirtualAddress.client == None)  # noqa: E711, is doesn't work here...
+    statement = select(VirtualAddress).where(VirtualAddress.client == None)
     addresses = session.exec(statement).all()
     logger.info(f"Found {len(addresses)} assignable virtual addresses.")
     return addresses
 
 
-@router.get("/routes")
+@router.get("/routes", response_model=list[str])
 async def get_routes(session: DBSession):
     logger.info("Getting the routes...")
     server = await get_server(session)

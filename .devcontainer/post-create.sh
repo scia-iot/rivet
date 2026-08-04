@@ -9,7 +9,6 @@ fi
 starship preset bracketed-segments -o ~/.config/starship.toml
 
 # Install Codex CLI
-sudo apt update && sudo apt install bubblewrap
 curl -fsSL https://chatgpt.com/codex/install.sh | sh
 
 # Install Python development dependencies

@@ -7,13 +7,15 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from sciaiot.ovpncp.dependencies import (
     create_app_directory,
     create_tables,
     init_scripts,
 )
+from sciaiot.ovpncp.problems import PROBLEM_RESPONSES, problem_response
 from sciaiot.ovpncp.routes import client, identity, network, server
 
 HOST = os.environ.get("HOST", "127.0.0.1")
@@ -37,7 +39,7 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown events finished.")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, responses=PROBLEM_RESPONSES)
 
 # Register optional middlewares
 for mw in ["azure_security", "azure_storage"]:
@@ -54,19 +56,31 @@ app.include_router(identity.device_router, prefix="/devices", tags=["device"])
 app.include_router(identity.user_router, prefix="/users", tags=["user"])
 
 
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Return handled HTTP failures as RFC 7807 problem details."""
+    return problem_response(request, exc.status_code, exc.detail)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Return request validation failures without exposing internals."""
+    return problem_response(
+        request,
+        422,
+        "The request did not satisfy the API contract.",
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler to catch all unhandled errors."""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={
-            "type": "/errors/internal-server-error",
-            "title": "Internal Server Error",
-            "status": 500,
-            "detail": "An unexpected error occurred on the server.",
-            "instance": str(request.url),
-        },
+    # FastAPI invokes this outside the originating exception block.
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)  # noqa: LOG014
+    return problem_response(
+        request,
+        500,
+        "An unexpected error occurred on the server.",
     )
 
 

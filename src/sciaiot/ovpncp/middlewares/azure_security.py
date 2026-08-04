@@ -5,9 +5,10 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from fastapi import HTTPException, Request, status
-from fastapi.responses import JSONResponse
 from jose import jwt
 from jose.exceptions import ExpiredSignatureError, JWTClaimsError
+
+from sciaiot.ovpncp.problems import problem_response
 
 logger = logging.getLogger(__name__)
 
@@ -124,12 +125,14 @@ async def azure_security_middleware(request: Request, call_next):
             logger.info("Security checking passed, continue to next step.")
         except HTTPException as e:
             logger.error(f"Security checking failed: {e.detail}")
-            return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
-        except Exception as e:
+            return problem_response(request, e.status_code, e.detail)
+        # This security boundary must fail closed for unexpected validator errors.
+        except Exception as e:  # noqa: BLE001
             logger.error(f"Unexpected error during security check: {e}")
-            return JSONResponse(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content={"detail": "An internal security error occurred."},
+            return problem_response(
+                request,
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "An internal security error occurred.",
             )
 
     response = await call_next(request)

@@ -9,7 +9,7 @@
 	"features": {
 		"ghcr.io/devcontainers-extra/features/fish-apt-get:1": {},
 		"ghcr.io/devcontainers-extra/features/starship:1": {},
-		"ghcr.io/devcontainers/features/node:1": {}
+		"ghcr.io/devcontainers/features/node:2.1.0": {}
 	},
 
 	// Workaround for GIT inside DEV container.

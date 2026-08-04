@@ -21,6 +21,20 @@ mypy .
 pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing
 ```
 
+## Frontend scaffold
+
+The React, TypeScript, Vite, Tailwind CSS, shadcn/ui, and MSAL scaffold lives in
+[`frontend/`](frontend/README.md). Feature workflows and production static-file
+integration are intentionally deferred. The phased implementation source of
+truth is [`docs/frontend-implementation-plan.md`](docs/frontend-implementation-plan.md).
+
+```shell
+cd frontend
+npm ci
+cp .env.example .env.local
+npm run dev
+```
+
 ## Installation
 
 In order to run along with OpenVPN server, the ROOT privilege is required.
