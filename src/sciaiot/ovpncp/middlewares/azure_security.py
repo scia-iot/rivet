@@ -1,6 +1,8 @@
+import ipaddress
 import json
 import logging
 import os
+from collections.abc import Mapping
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
@@ -17,7 +19,8 @@ APP_CLIENT_ID = os.environ.get("AZURE_ENTRAID_APP_CLIENT_ID")
 APP_ROLE = os.environ.get("AZURE_ENTRAID_APP_ROLE")
 
 
-def get_token(request: Request):
+def get_token(request: Request) -> str:
+    """Extract a bearer token without exposing its value in diagnostics."""
     auth = request.headers.get("Authorization", None)
     if not auth:
         logger.error("Authorization header is expected!")
@@ -26,32 +29,32 @@ def get_token(request: Request):
         )
 
     parts = auth.split()
+    if len(parts) != 2:
+        if len(parts) == 1 and parts[0].lower() == "bearer":
+            logger.error("Token not found!")
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token not found!")
+        logger.error("Authorization header must be Bearer token!")
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Authorization header must be Bearer token!",
+        )
+
     if parts[0].lower() != "bearer":
         logger.error("Authorization header must start with Bearer!")
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
             'Authorization header must start with "Bearer"!',
         )
-    elif len(parts) == 1:
-        logger.error("Token not found!")
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token not found!")
-    elif len(parts) > 2:
-        logger.error("Authorization header must be Bearer token!")
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, "Authorization header must be Bearer token!"
-        )
 
     token = parts[1]
     return token
 
 
-def check_role(token: str):
-    unverified_claims = jwt.get_unverified_claims(token)
-    if unverified_claims.get("roles"):
-        roles = unverified_claims["roles"]
-        for role in roles:
-            if role == APP_ROLE:
-                return
+def check_role(claims: Mapping[str, object]) -> None:
+    """Require the configured application role from verified token claims."""
+    roles = claims.get("roles")
+    if isinstance(roles, list) and APP_ROLE in roles:
+        return
 
     logger.error(f"Application role {APP_ROLE} is required!")
     raise HTTPException(
@@ -59,7 +62,8 @@ def check_role(token: str):
     )
 
 
-def validate_token(request: Request):
+def validate_token(request: Request) -> dict[str, object]:
+    """Validate a bearer token and return only its verified claims."""
     if not all([TENANT_ID, APP_CLIENT_ID, APP_ROLE]):
         logger.error(
             "Azure Identity environment variables are not properly configured!"
@@ -70,7 +74,6 @@ def validate_token(request: Request):
         )
 
     token = get_token(request)
-    check_role(token)
 
     # verify headers & claims of token
     keys = urlopen(f"https://login.microsoftonline.com/{TENANT_ID}/discovery/v2.0/keys")
@@ -90,13 +93,23 @@ def validate_token(request: Request):
 
     if rsa_key:
         try:
-            payload = jwt.decode(
+            payload: dict[str, object] = jwt.decode(
                 token,
                 rsa_key,
                 algorithms=["RS256"],
                 audience=APP_CLIENT_ID,
                 issuer=f"https://login.microsoftonline.com/{TENANT_ID}/v2.0",
             )
+            issuer = payload.get("iss")
+            subject = payload.get("sub")
+            if (
+                not isinstance(issuer, str)
+                or not issuer
+                or not isinstance(subject, str)
+                or not subject
+            ):
+                raise JWTClaimsError("Stable identity claims are required.")
+            check_role(payload)
             return payload
         except ExpiredSignatureError:
             logger.error("Token is expired!")
@@ -111,13 +124,31 @@ def validate_token(request: Request):
         )
 
 
-async def azure_security_middleware(request: Request, call_next):
-    # Bypass the security checkings for localhost accessing, required for scripts of client connection
+def _bypasses_authentication(request: Request) -> bool:
+    """Allow only documentation and exact localhost OpenVPN hook requests."""
     url = urlparse(str(request.url))
-    if url.hostname not in ["localhost", "127.0.0.1"] and url.path not in [
-        "/docs",
-        "/openapi.json",
-    ]:
+    if url.path in ["/docs", "/openapi.json"]:
+        return True
+
+    path_parts = url.path.strip("/").split("/")
+    is_connection_hook = (
+        len(path_parts) == 3
+        and path_parts[0] == "clients"
+        and path_parts[2] == "connections"
+        and request.method in ["POST", "PUT"]
+    )
+    if request.client is None:
+        return False
+    try:
+        is_loopback = ipaddress.ip_address(request.client.host).is_loopback
+    except ValueError:
+        return False
+    return is_loopback and is_connection_hook
+
+
+async def azure_security_middleware(request: Request, call_next):
+    """Validate remote requests while preserving narrow local hook access."""
+    if not _bypasses_authentication(request):
         try:
             logger.info("Checking access token on Azure Entra ID...")
             token_payload = validate_token(request)
@@ -127,8 +158,8 @@ async def azure_security_middleware(request: Request, call_next):
             logger.error(f"Security checking failed: {e.detail}")
             return problem_response(request, e.status_code, e.detail)
         # This security boundary must fail closed for unexpected validator errors.
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"Unexpected error during security check: {e}")
+        except Exception:  # noqa: BLE001
+            logger.error("Unexpected error during security check.")
             return problem_response(
                 request,
                 status.HTTP_500_INTERNAL_SERVER_ERROR,

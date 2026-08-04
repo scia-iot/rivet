@@ -294,6 +294,16 @@ Register this app on Azure Entra ID first, then sets three ENVs to enable the se
 
 3. `AZURE_ENTRAID_APP_ROLE` - the app role assigned by this app.
 
+All three values are required together; missing or partial configuration fails
+closed. Authenticated callers can use `GET /me` to resolve the validated token's
+issuer and subject to a local User. The endpoint never accepts a caller-supplied
+user ID and returns the canonical `sysadmin` role plus the current management
+permission vocabulary. Create the matching local User record before signing in
+to the frontend.
+
+Only exact localhost `POST` and `PUT` requests to
+`/clients/{client_name}/connections` bypass bearer authentication for the
+OpenVPN connection scripts. Other localhost API traffic remains protected.
 
 Notice: for the consumer client app, two things must be configured on the client app registration:
 

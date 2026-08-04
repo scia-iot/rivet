@@ -3,12 +3,15 @@ import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 
 import App from '@/App'
+import { PrincipalSessionProvider } from '@/auth/principal-session'
 
 describe('application shell', () => {
   it('renders the overview and primary navigation', () => {
     render(
       <MemoryRouter>
-        <App />
+        <PrincipalSessionProvider authenticationDisabled principal={null}>
+          <App />
+        </PrincipalSessionProvider>
       </MemoryRouter>,
     )
 
@@ -25,7 +28,9 @@ describe('application shell', () => {
   it('renders a feature placeholder route', () => {
     render(
       <MemoryRouter initialEntries={['/access']}>
-        <App />
+        <PrincipalSessionProvider authenticationDisabled principal={null}>
+          <App />
+        </PrincipalSessionProvider>
       </MemoryRouter>,
     )
 

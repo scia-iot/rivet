@@ -29,9 +29,21 @@ npm run dev
 
 Configure the Entra SPA registration in `.env.local`. Missing or partial values
 produce a blocking configuration error. For explicit local UI development only,
-set `VITE_AUTH_DISABLED=true`. Vite proxies `/api/*` to
-`http://127.0.0.1:8000/*` during local
-development.
+set `VITE_AUTH_DISABLED=true`; the header always shows when this unsafe local
+mode is active, and it does not disable backend authentication. Vite proxies
+`/api/*` to `http://127.0.0.1:8000/*` during local development.
+
+Configured sessions use an MSAL redirect, preserve the requested frontend URL,
+select the returned account, acquire API tokens silently, and resolve the local
+user through `GET /me`. The API matches only the validated token issuer and
+subject; a matching local User record must already exist. A `401` or an MSAL
+interaction-required response may start one controlled redirect. Signed-out
+users remain on the unauthenticated layout until they explicitly choose Sign in;
+the redirect guard clears only after `/me` succeeds. Logout failures are handled
+with a generic safe message. A `403` shows the forbidden layout. Navigation is
+filtered by `/me` permissions for usability,
+but FastAPI remains the authorization boundary. Sign-out clears the active MSAL
+account and frontend query cache before redirecting.
 
 ## Checks
 

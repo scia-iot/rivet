@@ -185,6 +185,30 @@ class UserService:
             raise EntityNotFoundError(f"User with ID {user_id} not found.")
         return user
 
+    def get_by_external_identity(self, issuer: str, subject: str) -> User:
+        """Return the local user mapped to a validated external identity.
+
+        Args:
+            issuer: Validated token issuer.
+            subject: Validated stable subject identifier.
+
+        Returns:
+            The uniquely mapped local user.
+
+        Raises:
+            EntityNotFoundError: If the identity is not registered locally.
+        """
+        statement = select(User).where(
+            User.issuer == issuer,
+            User.subject == subject,
+        )
+        user = self.session.exec(statement).first()
+        if user is None:
+            raise EntityNotFoundError(
+                "The signed-in identity is not registered for this application."
+            )
+        return user
+
     def list(self) -> list[User]:
         """Return all local users."""
         return list(self.session.exec(select(User)).all())

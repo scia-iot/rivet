@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router'
 
+import { RequirePermission } from '@/auth/principal-session'
 import { AppShell } from '@/components/app-shell'
 import { PlaceholderPage } from '@/pages/placeholder-page'
 
@@ -10,46 +11,56 @@ export default function App() {
         <Route
           index
           element={
-            <PlaceholderPage
-              title="Overview"
-              description="Monitor and administer this OpenVPN control plane."
-            />
+            <RequirePermission permission="server:read">
+              <PlaceholderPage
+                title="Overview"
+                description="Monitor and administer this OpenVPN control plane."
+              />
+            </RequirePermission>
           }
         />
         <Route
           path="devices"
           element={
-            <PlaceholderPage
-              title="Devices"
-              description="Manage stable edge-device identities."
-            />
+            <RequirePermission permission="devices:read">
+              <PlaceholderPage
+                title="Devices"
+                description="Manage stable edge-device identities."
+              />
+            </RequirePermission>
           }
         />
         <Route
           path="users"
           element={
-            <PlaceholderPage
-              title="Users"
-              description="Manage OAuth-backed users and their VPN clients."
-            />
+            <RequirePermission permission="users:read">
+              <PlaceholderPage
+                title="Users"
+                description="Manage OAuth-backed users and their VPN clients."
+              />
+            </RequirePermission>
           }
         />
         <Route
           path="clients"
           element={
-            <PlaceholderPage
-              title="VPN clients"
-              description="Provision and maintain OpenVPN client identities."
-            />
+            <RequirePermission permission="clients:read">
+              <PlaceholderPage
+                title="VPN clients"
+                description="Provision and maintain OpenVPN client identities."
+              />
+            </RequirePermission>
           }
         />
         <Route
           path="access"
           element={
-            <PlaceholderPage
-              title="Access"
-              description="Review individual user-to-device access grants."
-            />
+            <RequirePermission permission="access:read">
+              <PlaceholderPage
+                title="Access"
+                description="Review individual user-to-device access grants."
+              />
+            </RequirePermission>
           }
         />
         <Route

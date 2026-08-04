@@ -1,4 +1,7 @@
 export const queryKeys = {
+  currentPrincipal: {
+    detail: ['current-principal'] as const,
+  },
   clients: {
     all: ['clients'] as const,
     detail: (name: string) => ['clients', name] as const,

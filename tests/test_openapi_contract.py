@@ -29,6 +29,27 @@ def test_openapi_documents_typed_devices_and_problem_responses() -> None:
     assert problem_schema["$ref"].endswith("/ProblemDetails")
 
 
+def test_openapi_documents_current_principal_contract() -> None:
+    """The generated frontend contract includes the trusted principal shape."""
+    app.openapi_schema = None
+
+    schema = app.openapi()
+
+    response = schema["paths"]["/me"]["get"]["responses"]["200"]
+    principal = response["content"]["application/json"]["schema"]
+    model = schema["components"]["schemas"]["CurrentPrincipal"]
+
+    assert principal["$ref"].endswith("/CurrentPrincipal")
+    assert set(model["required"]) == {
+        "id",
+        "display_name",
+        "issuer",
+        "subject",
+        "roles",
+        "permissions",
+    }
+
+
 def test_openapi_generation_does_not_call_privileged_operations() -> None:
     """Building the schema must never touch VPN, firewall, or route state."""
     app.openapi_schema = None

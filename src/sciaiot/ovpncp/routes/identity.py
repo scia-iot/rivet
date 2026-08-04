@@ -2,11 +2,12 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlmodel import Session
 
 from sciaiot.ovpncp.data.identity import (
     AccessGrant,
+    CurrentPrincipal,
     Device,
     DeviceBase,
     DeviceUpdate,
@@ -29,6 +30,70 @@ from sciaiot.ovpncp.services.identity import (
 DBSession = Annotated[Session, Depends(get_session)]
 device_router = APIRouter()
 user_router = APIRouter()
+principal_router = APIRouter()
+
+SYSADMIN_PERMISSIONS = (
+    "devices:read",
+    "devices:write",
+    "users:read",
+    "users:write",
+    "clients:read",
+    "clients:write",
+    "access:read",
+    "access:grant",
+    "server:read",
+    "server:write",
+)
+
+
+def _validated_external_identity(request: Request) -> tuple[str, str]:
+    """Read a stable identity only from middleware-validated token claims."""
+    payload = getattr(request.state, "token_payload", None)
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "A validated authentication token is required.",
+        )
+
+    issuer = payload.get("iss")
+    subject = payload.get("sub")
+    if (
+        not isinstance(issuer, str)
+        or not issuer
+        or not isinstance(subject, str)
+        or not subject
+    ):
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "The validated token identity is incomplete.",
+        )
+    return issuer, subject
+
+
+@principal_router.get("/me", response_model=CurrentPrincipal)
+def retrieve_current_principal(
+    request: Request, session: DBSession
+) -> CurrentPrincipal:
+    """Resolve the validated external identity to its local principal."""
+    issuer, subject = _validated_external_identity(request)
+    try:
+        user = UserService(session).get_by_external_identity(issuer, subject)
+    except EntityNotFoundError as error:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(error)) from error
+
+    if user.id is None:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "The local identity record is invalid.",
+        )
+    return CurrentPrincipal(
+        id=user.id,
+        display_name=user.display_name,
+        issuer=user.issuer,
+        subject=user.subject,
+        roles=["sysadmin"],
+        permissions=list(SYSADMIN_PERMISSIONS),
+    )
 
 
 def _handle_domain_error(error: Exception) -> HTTPException:

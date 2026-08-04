@@ -1,11 +1,16 @@
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { LogIn, LogOut } from 'lucide-react'
+import { useState } from 'react'
 
 import {
   isAuthenticationConfigured,
   isAuthenticationDisabled,
-  loginRequest,
 } from '@/auth/config'
+import {
+  redirectForLogin,
+  signOutAndClearSession,
+} from '@/auth/redirect-coordinator'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
@@ -13,11 +18,27 @@ function ConfiguredAuthControls() {
   const authenticated = useIsAuthenticated()
   const { instance } = useMsal()
 
+  const [signOutError, setSignOutError] = useState(false)
+
+  async function handleSignOut(): Promise<void> {
+    setSignOutError(false)
+    try {
+      await signOutAndClearSession(
+        instance,
+        queryClient,
+        instance.getActiveAccount(),
+      )
+    } catch {
+      setSignOutError(true)
+    }
+  }
+
+  const queryClient = useQueryClient()
   if (!authenticated) {
     return (
       <Button
         size="sm"
-        onClick={() => void instance.loginRedirect(loginRequest)}
+        onClick={() => void redirectForLogin(instance)}
       >
         <LogIn aria-hidden="true" />
         Sign in
@@ -26,14 +47,17 @@ function ConfiguredAuthControls() {
   }
 
   return (
-    <Button
-      size="sm"
-      variant="outline"
-      onClick={() => void instance.logoutRedirect()}
-    >
-      <LogOut aria-hidden="true" />
-      Sign out
-    </Button>
+    <div className="flex items-center gap-3">
+      {signOutError && (
+        <span role="alert" className="text-sm text-destructive">
+          Sign-out could not be completed.
+        </span>
+      )}
+      <Button size="sm" variant="outline" onClick={() => void handleSignOut()}>
+        <LogOut aria-hidden="true" />
+        Sign out
+      </Button>
+    </div>
   )
 }
 

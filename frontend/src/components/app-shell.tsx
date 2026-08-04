@@ -2,17 +2,23 @@ import { KeyRound, Laptop, Network, ShieldCheck, Users } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 
 import { AuthControls } from '@/auth/auth-controls'
+import {
+  hasPermission,
+  usePrincipalSession,
+} from '@/auth/use-principal-session'
 import { cn } from '@/lib/utils'
 
 const navigation = [
-  { to: '/', label: 'Overview', icon: Network, end: true },
-  { to: '/devices', label: 'Devices', icon: ShieldCheck },
-  { to: '/users', label: 'Users', icon: Users },
-  { to: '/clients', label: 'VPN clients', icon: Laptop },
-  { to: '/access', label: 'Access', icon: KeyRound },
+  { to: '/', label: 'Overview', icon: Network, permission: 'server:read', end: true },
+  { to: '/devices', label: 'Devices', icon: ShieldCheck, permission: 'devices:read' },
+  { to: '/users', label: 'Users', icon: Users, permission: 'users:read' },
+  { to: '/clients', label: 'VPN clients', icon: Laptop, permission: 'clients:read' },
+  { to: '/access', label: 'Access', icon: KeyRound, permission: 'access:read' },
 ]
 
 export function AppShell() {
+  const session = usePrincipalSession()
+
   return (
     <div className="min-h-svh bg-muted/30">
       <header className="border-b bg-background">
@@ -27,7 +33,9 @@ export function AppShell() {
 
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[14rem_1fr] lg:px-8">
         <nav aria-label="Primary navigation" className="flex gap-2 overflow-x-auto lg:flex-col">
-          {navigation.map(({ to, label, icon: Icon, end }) => (
+          {navigation
+            .filter(({ permission }) => hasPermission(session, permission))
+            .map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}

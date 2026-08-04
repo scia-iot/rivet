@@ -34,7 +34,11 @@ def identity_client_fixture() -> Generator[TestClient]:
             patch("sciaiot.ovpncp.utils.openvpn.build_client"),
             patch(
                 "sciaiot.ovpncp.middlewares.azure_security.validate_token",
-                return_value={"sub": "test-subject"},
+                return_value={
+                    "iss": "https://login.example/tenant/v2.0",
+                    "sub": "test-subject",
+                    "roles": ["mocked_app_role"],
+                },
             ),
             patch(
                 "sciaiot.ovpncp.utils.openvpn.read_client_cert",
@@ -52,6 +56,73 @@ def identity_client_fixture() -> Generator[TestClient]:
     app.dependency_overrides.clear()
     SQLModel.metadata.drop_all(engine)
     engine.dispose()
+
+
+def test_current_principal_is_resolved_from_validated_token(
+    identity_client: TestClient,
+) -> None:
+    """The current principal maps only the validated issuer and subject."""
+    user = identity_client.post(
+        "/users",
+        json={
+            "display_name": "Current Operator",
+            "issuer": "https://login.example/tenant/v2.0",
+            "subject": "test-subject",
+        },
+    )
+    assert user.status_code == 201
+
+    response = identity_client.get("/me?user_id=999")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "id": user.json()["id"],
+        "display_name": "Current Operator",
+        "issuer": "https://login.example/tenant/v2.0",
+        "subject": "test-subject",
+        "roles": ["sysadmin"],
+        "permissions": [
+            "devices:read",
+            "devices:write",
+            "users:read",
+            "users:write",
+            "clients:read",
+            "clients:write",
+            "access:read",
+            "access:grant",
+            "server:read",
+            "server:write",
+        ],
+    }
+
+
+def test_current_principal_requires_a_registered_local_user(
+    identity_client: TestClient,
+) -> None:
+    """An authenticated external identity has no implicit local access."""
+    response = identity_client.get("/me")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == (
+        "The signed-in identity is not registered for this application."
+    )
+
+
+def test_current_principal_rejects_partial_validated_identity(
+    identity_client: TestClient,
+) -> None:
+    """Missing stable token claims fail closed instead of selecting a user."""
+    with patch(
+        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+        return_value={
+            "iss": "https://login.example/tenant/v2.0",
+            "roles": ["mocked_app_role"],
+        },
+    ):
+        response = identity_client.get("/me")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "The validated token identity is incomplete."
 
 
 def test_device_lifecycle(identity_client: TestClient) -> None:

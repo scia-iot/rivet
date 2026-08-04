@@ -46,7 +46,7 @@ workflows, fine-grained authorization, or production static-file delivery.
 | --- | --- | --- | --- |
 | 0 | Frontend scaffold | completed | None |
 | 1 | Typed API and server-state foundation | completed | Stable OpenAPI responses |
-| 2 | Authentication and current principal | pending | Backend `GET /me` |
+| 2 | Authentication and current principal | completed | Backend `GET /me` |
 | 3 | Shared UI, forms, and error handling | pending | Phases 1-2 |
 | 4 | Device administration | pending | Phase 3 |
 | 5 | User and VPN-client administration | pending | Phase 4 |
@@ -284,7 +284,45 @@ accept a browser-supplied user ID as the current identity.
 
 ### Notes
 
-Record the final principal and permission schema here.
+- `GET /me` resolves a local User only by the validated token's exact `iss` and
+  `sub` claims. It accepts no user ID and returns `403` when the external
+  identity is not registered locally.
+- The final `CurrentPrincipal` schema is:
+  `id: number`, `display_name: string`, `issuer: string`, `subject: string`,
+  `roles: string[]`, and `permissions: string[]`. The current validated Entra
+  application role maps to the canonical local role `sysadmin`.
+- The authoritative Phase 2 permission vocabulary is `devices:read`,
+  `devices:write`, `users:read`, `users:write`, `clients:read`,
+  `clients:write`, `access:read`, `access:grant`, `server:read`, and
+  `server:write`. FastAPI's existing required Entra application role remains
+  authoritative; frontend permission checks only filter navigation and render
+  route-level forbidden states. Fine-grained backend policies remain Phase 8.
+- Token roles are checked only after signature and claim validation. Missing or
+  partial Entra configuration fails closed, unexpected security failures do not
+  log exception contents, and tokens/OAuth subjects are absent from frontend
+  logs and safe errors.
+- The localhost security exception is limited to actual loopback peers making
+  exact `POST` or `PUT` requests to `/clients/{client_name}/connections`.
+  A loopback Host header from a remote peer does not grant the bypass.
+- MSAL selects the active returned account and acquires tokens silently. Signed
+  out users remain on a stable unauthenticated layout until they explicitly
+  choose Sign in, which preserves the current URL. The pending redirect guard is
+  cleared only after `/me` resolves successfully, so a persistent `401` cannot
+  create a redirect loop. Interaction-required acquisition also permits only one
+  pending redirect.
+- Sign-out clears the query cache, active MSAL account, and redirect guard before
+  logout redirect. Rejected logout redirects are normalized to a generic error,
+  caught by the UI, and never log or render raw MSAL/account details.
+- Malformed and whitespace-only bearer headers return RFC 7807 `401` responses.
+  The sysadmin permission vocabulary is stored as an immutable tuple and copied
+  into the response model at the API boundary.
+- Missing/partial frontend Entra configuration blocks the application. Explicit
+  `VITE_AUTH_DISABLED=true` remains visibly labeled and does not disable backend
+  authentication.
+- Real-tenant browser smoke testing was not possible without deployment-specific
+  Entra credentials and redirect registration; deterministic MSAL mocks cover
+  sign-in redirects, refresh-equivalent `/me` resolution, interaction fallback,
+  route preservation, permission presentation, and sign-out state clearing.
 
 ## Phase 3: Shared UI, forms, and error handling
 
@@ -803,3 +841,41 @@ Deferred:
   TypeScript 6/openapi-typescript peer metadata mismatch and one existing
   Starlette/httpx deprecation warning remain documented above.
 - Phase 2 authentication lifecycle and current-principal work.
+
+2026-08-04 - Phase 2 completed
+Implementation:
+- Added authenticated `GET /me`, exact validated issuer/subject local-user
+  mapping, the typed canonical principal/permission contract, post-validation
+  application-role checks, secret-safe security errors, and a loopback-peer-only
+  OpenVPN hook exception.
+- Added MSAL account/redirect lifecycle handling, silent token acquisition with
+  one controlled interaction fallback, the typed current-principal query,
+  authenticated/unauthenticated/forbidden/configuration layouts, permission-aware
+  navigation/routes, intended-route preservation, and frontend state clearing on
+  sign-out.
+- Regenerated OpenAPI files and synchronized backend/frontend authentication
+  documentation.
+- Review corrections keep signed-out users stable until explicit login, retain
+  the redirect guard until trusted principal resolution, safely handle normalized
+  logout failures, return `401` for whitespace-only authorization headers, and
+  keep the permission constant immutable.
+Verification:
+- `npm ci`: passed; 181 packages installed and 0 vulnerabilities reported.
+- `npm audit`: passed; 0 vulnerabilities.
+- `npm run api:check`: passed; regenerated OpenAPI JSON and TypeScript schema had
+  no drift.
+- `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build`:
+  passed; 11 test files and 28 tests passed, and the Vite production build
+  completed.
+- `ruff format --check .`: passed for 40 files.
+- `ruff check <Phase 2 changed Python files>`: passed. `ruff check .
+  --statistics` retained exactly 31 documented pre-existing findings.
+- `mypy .`: passed for 36 source files.
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 91 passed,
+  87% total coverage; one existing Starlette/httpx deprecation warning remains.
+Deferred:
+- A real Entra tenant/browser smoke test requires deployment-specific credentials
+  and redirect registration; production deployed-topology E2E remains Phase 10.
+- Fine-grained backend policies remain Phase 8. The 31 pre-existing Ruff
+  findings, TypeScript 6/openapi-typescript peer metadata mismatch, and existing
+  Starlette/httpx deprecation warning remain unchanged.

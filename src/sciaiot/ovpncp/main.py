@@ -54,6 +54,7 @@ app.include_router(client.router, prefix="/clients", tags=["client"])
 app.include_router(network.router, prefix="/networks", tags=["server"])
 app.include_router(identity.device_router, prefix="/devices", tags=["device"])
 app.include_router(identity.user_router, prefix="/users", tags=["user"])
+app.include_router(identity.principal_router, tags=["identity"])
 
 
 @app.exception_handler(StarletteHTTPException)

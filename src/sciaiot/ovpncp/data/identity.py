@@ -54,6 +54,17 @@ class User(UserBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
 
 
+class CurrentPrincipal(SQLModel):
+    """Trusted application identity resolved from a validated OAuth token."""
+
+    id: int
+    display_name: str
+    issuer: str
+    subject: str
+    roles: list[str]
+    permissions: list[str]
+
+
 class AccessGrant(SQLModel, table=True):
     """Permission for one user to access one device."""
 
