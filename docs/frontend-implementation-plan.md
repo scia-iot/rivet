@@ -48,7 +48,7 @@ workflows, fine-grained authorization, or production static-file delivery.
 | 1 | Typed API and server-state foundation | completed | Stable OpenAPI responses |
 | 2 | Authentication and current principal | completed | Backend `GET /me` |
 | 3 | Shared UI, forms, and error handling | completed | Phases 1-2 |
-| 4 | Device administration | pending | Phase 3 |
+| 4 | Device administration | completed | Phase 3 |
 | 5 | User and VPN-client administration | pending | Phase 4 |
 | 6 | Individual access management | pending | Phase 5 |
 | 7 | Server and network administration | pending | Phase 3 |
@@ -469,7 +469,32 @@ Cover success and these failures:
 
 ### Notes
 
-Record any backend list/filter additions here.
+- Added typed device/client queries and create, update, and delete mutations.
+  Successful mutations invalidate both device and client query prefixes. Delete
+  marks both prefixes stale without refetching the active deleted-device detail;
+  the destination list refetches after the confirmation dialog closes.
+- Added accessible list, create, detail, edit, link, replace, unlink, and delete
+  workflows. The client picker searches existing clients, excludes clients
+  assigned to other devices, and retains the current client while editing.
+- Provisioning presentation is derived from the existing contract: no linked
+  client is `Not provisioned`, an active linked client is `Provisioned`, and a
+  revoked linked client is `Client revoked`. Assignment changes are shown only
+  after successful server responses.
+- Delete confirmation and detail copy explicitly state that deleting a Device
+  neither deletes nor revokes its Client. Failed mutations preserve form or
+  detail state and render only fixed, actionable errors.
+- No backend list/filter or OpenAPI additions were required. The existing typed
+  `GET /devices` and `GET /clients` responses provide the IDs, names,
+  assignments, and revocation state needed for local eligibility filtering.
+- Focused TDD covered linked and unlinked creation, duplicate and
+  whitespace-only names, unknown and concurrently assigned clients,
+  replacement, unlinking, missing devices, deletion confirmation, cache
+  invalidation, and failed mutation state preservation.
+- Verification passed: 13 focused Phase 4 tests; 17 combined dialog/device
+  tests; two consecutive full runs with 20 files and 65 tests; lint with zero
+  warnings; typecheck; generated API check; production build; npm audit with
+  zero vulnerabilities; scoped sensitive-output and line-length review; and
+  `git diff --check`.
 
 ## Phase 5: User and VPN-client administration
 
@@ -954,3 +979,38 @@ Deferred:
   provide the recorded verification.
 - Domain feature pages will adopt these shared patterns in their owning phases.
   No backend checks were run because Phase 3 changed no Python or API contract.
+
+2026-08-06 - Phase 4 completed
+Implementation:
+- Added typed Device API hooks and all four planned routes with sysadmin
+  permission presentation, accessible loading/empty/failure states, and complete
+  list, create, detail, edit, and delete workflows.
+- Added React Hook Form and Zod device forms supporting nullable client links,
+  searchable eligible-client selection, link/replace/unlink operations, and
+  correctable domain errors without optimistic assignment changes.
+- Derived provisioning state from nullable assignment and client revocation,
+  invalidated device/client caches after every successful mutation, and delayed
+  delete refetch/navigation until the confirmation focus lifecycle completes.
+- Strengthened existing EntitySelect tests so open dialogs close explicitly and
+  deferred Radix focus restoration completes before jsdom teardown.
+Verification:
+- `npm test -- --run src/features/devices/device-api.test.tsx
+  src/features/devices/device-pages.test.tsx`: passed; 2 files and 13 tests.
+- `npm test -- --run src/components/shared/dialog-and-select.test.tsx
+  src/features/devices/device-pages.test.tsx`: passed; 2 files and 17 tests.
+- `npm test`: passed twice consecutively; each run completed 20 files and 65
+  tests without unhandled errors.
+- `npm run lint`: passed with zero warnings.
+- `npm run typecheck`: passed.
+- `npm run api:check`: passed; generated OpenAPI JSON and TypeScript had no
+  drift.
+- `npm run build`: passed; Vite transformed 2,277 modules and produced the
+  production bundle.
+- `npm audit`: passed with zero vulnerabilities.
+- `git diff --check`, scoped line-length inspection, and scoped sensitive-output
+  scan: passed.
+Deferred:
+- Vite retains its advisory that the main minified chunk exceeds 500 kB;
+  broader route-level code splitting remains production hardening work.
+- No backend, Python, database, privileged system, VPN, firewall, cloud, or API
+  contract changes were made, so backend quality gates were not applicable.

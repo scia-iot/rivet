@@ -163,13 +163,17 @@ describe('EntitySelect', () => {
       />,
     )
 
-    await user.click(screen.getByRole('combobox', { name: 'User' }))
+    const trigger = screen.getByRole('combobox', { name: 'User' })
+    await user.click(trigger)
     await user.type(
       screen.getByRole('combobox', { name: 'Search entities' }),
       'Nobody',
     )
 
     expect(screen.getByText('No results found.')).toBeVisible()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 
   it('associates field errors and describes selection', async () => {
@@ -206,5 +210,8 @@ describe('EntitySelect', () => {
     ).toHaveAccessibleDescription(
       'Search and choose an option for Owner. Current selection: Alice Adams.',
     )
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 })

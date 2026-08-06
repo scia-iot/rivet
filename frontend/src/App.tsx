@@ -3,6 +3,12 @@ import { Route, Routes, useLocation } from 'react-router'
 import { RouteErrorBoundary } from '@/app/error-boundary'
 import { RequirePermission } from '@/auth/principal-session'
 import { AppShell } from '@/components/app-shell'
+import {
+  CreateDevicePage,
+  DeviceDetailPage,
+  DeviceListPage,
+  EditDevicePage,
+} from '@/features/devices/device-pages'
 import { PlaceholderPage } from '@/pages/placeholder-page'
 
 const OVERVIEW_DESCRIPTION =
@@ -29,15 +35,36 @@ export default function App() {
             }
           />
           <Route
-            path="devices"
             element={
               <RequirePermission permission="devices:read">
-                <PlaceholderPage
-                  title="Devices"
-                  description="Manage stable edge-device identities."
-                />
+                <DeviceListPage />
               </RequirePermission>
             }
+            path="devices"
+          />
+          <Route
+            element={
+              <RequirePermission permission="devices:write">
+                <CreateDevicePage />
+              </RequirePermission>
+            }
+            path="devices/new"
+          />
+          <Route
+            element={
+              <RequirePermission permission="devices:read">
+                <DeviceDetailPage />
+              </RequirePermission>
+            }
+            path="devices/:deviceId"
+          />
+          <Route
+            element={
+              <RequirePermission permission="devices:write">
+                <EditDevicePage />
+              </RequirePermission>
+            }
+            path="devices/:deviceId/edit"
           />
           <Route
             path="users"
