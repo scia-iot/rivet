@@ -4,6 +4,8 @@ import type { ReactNode } from 'react'
 import { createQueryClient } from '@/app/query-client'
 import { AuthenticationProvider } from '@/auth/authentication-provider'
 import { AuthenticationGate } from '@/auth/authentication-gate'
+import { Toaster } from '@/components/ui/sonner'
+import { TooltipProvider } from '@/components/ui/tooltip'
 
 const queryClient = createQueryClient()
 
@@ -11,9 +13,10 @@ export function ApplicationProviders({ children }: { children: ReactNode }) {
   return (
     <AuthenticationProvider>
       <QueryClientProvider client={queryClient}>
-        <AuthenticationGate>
-          {children}
-        </AuthenticationGate>
+        <TooltipProvider>
+          <AuthenticationGate>{children}</AuthenticationGate>
+          <Toaster />
+        </TooltipProvider>
       </QueryClientProvider>
     </AuthenticationProvider>
   )

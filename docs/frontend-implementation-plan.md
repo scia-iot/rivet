@@ -47,7 +47,7 @@ workflows, fine-grained authorization, or production static-file delivery.
 | 0 | Frontend scaffold | completed | None |
 | 1 | Typed API and server-state foundation | completed | Stable OpenAPI responses |
 | 2 | Authentication and current principal | completed | Backend `GET /me` |
-| 3 | Shared UI, forms, and error handling | pending | Phases 1-2 |
+| 3 | Shared UI, forms, and error handling | completed | Phases 1-2 |
 | 4 | Device administration | pending | Phase 3 |
 | 5 | User and VPN-client administration | pending | Phase 4 |
 | 6 | Individual access management | pending | Phase 5 |
@@ -391,7 +391,39 @@ CopyButton
 
 ### Notes
 
-Record generated shadcn components and deliberate customizations here.
+- Added local shadcn-compatible `alert`, `badge`, `button`, `command`, `dialog`,
+  `dropdown-menu`, `field`, `input`, `label`, `select`, `separator`, `skeleton`,
+  `sonner`, `table`, `tabs`, `textarea`, and `tooltip` primitives. The existing
+  Radix-backed new-york approach is preserved with one unified `radix-ui`
+  dependency; `cmdk` and `sonner` are the only component-specific additions.
+- Added React Hook Form, Zod, and the Hook Form resolvers. `Field` composes
+  native required/minimum constraints with associated inline validation, and
+  `useLockedSubmit` synchronously blocks duplicate async submissions before a
+  React rerender.
+- Added domain-neutral `PageHeader`, `ProblemAlert`, `EmptyState`,
+  `LoadingTable`, `ConfirmActionDialog`, `EntitySelect`, `StatusBadge`, and
+  `CopyButton`. `LoadingTable` exposes a named busy table, headers, rows, and
+  cells while separately announcing loading; it does not hide table semantics.
+- `ConfirmActionDialog` requires explicit confirmation and an explicit pending
+  label, locks repeated actions with a ref, keeps failed dialogs open, moves
+  focus inside, and lets Radix restore focus to the trigger. `EntitySelect`
+  combines the listed dialog and command primitives rather than adding a
+  popover dependency. Tests install deterministic ResizeObserver and scrolling
+  stubs before cmdk loads.
+- Review corrections give `EntitySelect` explicit `id`, `aria-describedby`, and
+  `aria-invalid` trigger props plus a dialog description containing its current
+  selection. One global `TooltipProvider` now serves feature content without
+  changing authentication, query, or toast ordering. Rejected confirmations are
+  tested through retry and explicit close, including focus containment and safe
+  errors. All Phase 3 additions remain within 80 columns.
+- Mutation completion uses a global Sonner host and a helper that accepts only
+  caller-supplied safe success/error text. Correctable field/domain errors stay
+  inline. Sonner's component export is separate from non-component helpers.
+- The location-keyed route error boundary renders only fixed recovery text and
+  resets explicitly; it neither renders exception content nor calls `setState`
+  from `componentDidUpdate`. Existing principal forbidden and failure layouts
+  now use the same safe problem-alert pattern without exposing backend details.
+- No backend or OpenAPI contract changes were required.
 
 ## Phase 4: Device administration
 
@@ -879,3 +911,46 @@ Deferred:
 - Fine-grained backend policies remain Phase 8. The 31 pre-existing Ruff
   findings, TypeScript 6/openapi-typescript peer metadata mismatch, and existing
   Starlette/httpx deprecation warning remain unchanged.
+
+2026-08-04 - Phase 3 completed
+Implementation:
+- Added the planned form stack and local shadcn-compatible UI primitives using
+  the existing Radix-backed new-york approach, one unified `radix-ui` package,
+  and only the required `cmdk` and `sonner` component dependencies.
+- Added all eight domain-neutral shared components, accessible native and inline
+  form validation, synchronous duplicate-submit locking, explicit destructive
+  confirmation, searchable entity selection, safe copy feedback, standardized
+  loading/empty/stale/forbidden/failure states, and safe mutation toasts.
+- Added a location-keyed route error boundary with fixed-text recovery. All
+  Phase 2 authentication/session behavior is preserved, and existing principal
+  forbidden/failure presentation is standardized without exposing backend
+  details.
+- Review corrections added global tooltip context, stable EntitySelect form
+  association and dialog descriptions, destructive-rejection retry coverage,
+  and repository-compliant line wrapping without changing dependencies.
+Verification:
+- Focused incremental TDD captured the intended missing-component and behavior
+  failures. The final review-focused command passed 9 test files and 29 tests;
+  dialogs/entity selection finished with 6 tests and provider integration added
+  1 test.
+- `npm ci`: passed; 258 packages installed, 259 audited, and 0 vulnerabilities.
+- `npm audit`: passed; 0 vulnerabilities.
+- `npm run api:check`: passed; OpenAPI JSON and generated TypeScript had no
+  drift.
+- `npm run lint`: passed with zero warnings.
+- `npm run typecheck`: passed.
+- `npm run test`: passed; 18 test files and 52 tests.
+- `npm run build`: passed; Vite transformed 2,176 modules and produced the
+  production bundle.
+- `git diff --check`: passed. A scoped security scan found no unsafe HTML APIs,
+  console logging, persistent browser storage, sensitive tokens, OAuth subjects,
+  SAS URLs, or private-key handling in changed application paths. Tests confirm
+  server problem text renders literally and unexpected errors do not render
+  exception content.
+Deferred:
+- Frontend coverage instrumentation is not configured:
+  `npm ls @vitest/coverage-v8 --depth=0` returned `(empty)`. No coverage
+  dependency was added solely for this phase; focused and full behavioral tests
+  provide the recorded verification.
+- Domain feature pages will adopt these shared patterns in their owning phases.
+  No backend checks were run because Phase 3 changed no Python or API contract.

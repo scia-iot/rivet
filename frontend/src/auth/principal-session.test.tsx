@@ -44,6 +44,7 @@ describe('principal authorization presentation', () => {
     )
 
     expect(screen.getByRole('heading', { name: 'Access forbidden' })).toBeVisible()
+    expect(screen.getByRole('alert')).toHaveAccessibleName('Access forbidden')
     expect(screen.queryByText('User management')).not.toBeInTheDocument()
   })
 

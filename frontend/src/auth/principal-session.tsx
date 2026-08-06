@@ -7,6 +7,13 @@ import {
   hasPermission,
   usePrincipalSession,
 } from '@/auth/use-principal-session'
+import { ProblemAlert } from '@/components/shared/problem-alert'
+
+const ACCOUNT_ERROR_DETAIL = [
+  'The signed-in account could not be resolved.',
+  'Try signing in again or contact an administrator.',
+].join(' ')
+
 export function PrincipalSessionProvider({
   authenticationDisabled = false,
   children,
@@ -28,13 +35,16 @@ export function PrincipalSessionProvider({
 export function ForbiddenLayout() {
   return (
     <main className="grid min-h-[60vh] place-items-center p-6">
-      <section className="max-w-lg rounded-xl border bg-card p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">Access forbidden</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Your account does not have permission to view this area. Contact an
-          administrator if you need access.
-        </p>
-      </section>
+      <div className="max-w-lg">
+        <ProblemAlert
+          problem={{
+            type: '/errors/forbidden',
+            title: 'Access forbidden',
+            status: 403,
+            detail: 'Your account does not have permission to view this area.',
+          }}
+        />
+      </div>
     </main>
   )
 }
@@ -46,13 +56,16 @@ export function PrincipalErrorLayout({ error }: { error: unknown }) {
 
   return (
     <main className="grid min-h-[60vh] place-items-center p-6">
-      <section role="alert" className="max-w-lg rounded-xl border bg-card p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">Account unavailable</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The signed-in account could not be resolved. Try signing in again or
-          contact an administrator.
-        </p>
-      </section>
+      <div className="max-w-lg">
+        <ProblemAlert
+          problem={{
+            type: '/errors/account-unavailable',
+            title: 'Account unavailable',
+            status: 500,
+            detail: ACCOUNT_ERROR_DETAIL,
+          }}
+        />
+      </div>
     </main>
   )
 }
