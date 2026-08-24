@@ -1,6 +1,7 @@
 -r requirements.txt
 
 coverage
+httpx2>=2.0.0
 mypy
 pytest
 pytest-cov

@@ -5,11 +5,13 @@ os.environ["AZURE_ENTRAID_TENANT_ID"] = "mock"
 os.environ["AZURE_ENTRAID_APP_CLIENT_ID"] = "mock"
 os.environ["AZURE_ENTRAID_APP_ROLE"] = "mock"
 
-import pytest
-from fastapi.testclient import TestClient
-from sciaiot.ovpncp.main import app
 import logging
 from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from sciaiot.ovpncp.main import app
 
 
 # We will add a temporary route to 'app' for testing purposes

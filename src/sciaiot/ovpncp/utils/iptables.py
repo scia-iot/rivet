@@ -8,8 +8,8 @@ def validate_chain(chain: str):
     """Validate that the chain name is one of the standard iptables chains."""
     valid_chains = ["INPUT", "OUTPUT", "FORWARD", "PREROUTING", "POSTROUTING"]
     if chain not in valid_chains:
-        logger.error(f"Invalid chain '{chain}' provided!")
-        raise ValueError(f"Invalid chain '{chain}' provided!")
+        logger.error("Invalid iptables chain provided.")
+        raise ValueError("Invalid chain provided.")
 
 
 def validate_rule(rule: str):
@@ -19,8 +19,8 @@ def validate_rule(rule: str):
     """
     # Simple check to prevent multiple commands or pipe
     if any(char in rule for char in [";", "&", "|", ">", "<", "$", "`"]):
-        logger.error(f"Malicious characters detected in rule: {rule}")
-        raise ValueError(f"Malicious characters detected in rule: {rule}")
+        logger.error("Malicious characters detected in iptables rule.")
+        raise ValueError("Malicious characters detected in rule.")
 
 
 def list_rules(chain):
@@ -32,7 +32,7 @@ def list_rules(chain):
     """
 
     validate_chain(chain)
-    logging.info(f"Listing iptables rules for chain: {chain}")
+    logger.info("Listing iptables rules.")
     # Execute the iptables command with the --line-numbers and --list options
     result = subprocess.run(
         ["iptables", "-L", chain, "--line-numbers"],
@@ -45,7 +45,7 @@ def list_rules(chain):
     lines = result.stdout.splitlines()
     # Skip the first two lines (chain name and header)
     rules = lines[2:]
-    logging.info("Successfully listed iptables rules.")
+    logger.info("Successfully listed iptables rules.")
 
     return rules
 
@@ -70,10 +70,9 @@ def apply_rules(chain, line_number, rules):
         rule_parts = rule.split()
         cmd = ["iptables", "-I", chain, str(current_line)] + rule_parts
 
-        logging.info(f"Executing iptables command: {' '.join(cmd)}")
         subprocess.run(cmd, shell=False, check=True)
 
-    logging.info(f"Successfully inserted all iptables rules in chain {chain}.")
+    logger.info("Successfully inserted %d iptables rules.", len(rules))
 
 
 def drop_rules(chain, rules):
@@ -89,7 +88,6 @@ def drop_rules(chain, rules):
         rule_parts = rule.split()
         cmd = ["iptables", "-D", chain] + rule_parts
 
-        logging.info(f"Executing iptables command: {' '.join(cmd)}")
         subprocess.run(cmd, shell=False, check=True)
 
-    logging.info(f"Successfully dropped all iptables rules in chain {chain}.")
+    logger.info("Successfully dropped %d iptables rules.", len(rules))

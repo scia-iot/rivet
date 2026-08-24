@@ -65,7 +65,7 @@ class ClientBase(SQLModel):
 class Client(ClientBase, table=True):
     id: int = Field(default=None, primary_key=True)
     name: str = Field(sa_column=Column("name", String, unique=True))
-    virtual_address_id: Optional[int] = Field(
+    virtual_address_id: int | None = Field(
         default=None, foreign_key="virtualaddress.id", unique=True
     )
     virtual_address: Optional["VirtualAddress"] = Relationship(back_populates="client")

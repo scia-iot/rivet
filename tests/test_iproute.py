@@ -1,5 +1,8 @@
+import logging
 from unittest.mock import MagicMock, patch
+
 import pytest
+
 from sciaiot.ovpncp.utils import iproute
 
 mocked_routes = """10.8.0.0/24 proto kernel scope link src 10.8.0.1
@@ -19,12 +22,13 @@ def test_list_routes(mock_run):
 
 
 @patch("subprocess.run")
-def test_add_injection(mock_run):
+def test_add_injection(mock_run, caplog):
     malicious_network = "192.168.1.0/24; touch /tmp/iproute_injected"
     with pytest.raises(ValueError, match="Invalid IP or network"):
         iproute.add(malicious_network, "10.8.0.1", "tun0")
 
     mock_run.assert_not_called()
+    assert malicious_network not in caplog.text
 
 
 @patch("subprocess.run")
@@ -39,6 +43,18 @@ def test_add_route(mock_run):
 
 
 @patch("subprocess.run")
+def test_add_route_does_not_log_addresses(mock_run, caplog):
+    private_network = "192.168.1.0/24"
+    server_ip = "10.8.0.1"
+
+    with caplog.at_level(logging.INFO):
+        iproute.add(private_network, server_ip, "tun0")
+
+    assert private_network not in caplog.text
+    assert server_ip not in caplog.text
+
+
+@patch("subprocess.run")
 def test_delete_route(mock_run):
     iproute.delete("192.168.1.0/24 via 10.8.0.1", "tun0")
 
@@ -47,6 +63,18 @@ def test_delete_route(mock_run):
         shell=False,
         check=True,
     )
+
+
+@patch("subprocess.run")
+def test_delete_route_does_not_log_route(mock_run, caplog):
+    route = "192.168.1.0/24 via 10.8.0.1"
+
+    with caplog.at_level(logging.INFO):
+        iproute.delete(route, "tun0")
+
+    assert route not in caplog.text
+    assert "192.168.1.0/24" not in caplog.text
+    assert "10.8.0.1" not in caplog.text
 
 
 def test_validate_ip_or_net():
