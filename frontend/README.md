@@ -1,7 +1,7 @@
 # ovpncp frontend
 
-React frontend for the OpenVPN control panel. Device, user, and VPN-client
-administration workflows are implemented; access, server, network, portal, and
+React frontend for the OpenVPN control panel. Device, user, VPN-client, and
+individual-access workflows are implemented; server, network, portal, and
 production-integration work remains phased in the
 [frontend implementation plan](../docs/frontend-implementation-plan.md).
 
@@ -51,7 +51,9 @@ account and frontend query cache before redirecting.
 Administrators can manage devices, including linking and unlinking VPN clients,
 through `/devices`. User lifecycle and multi-client ownership are available
 through `/users`; unlinking or deleting a user does not delete or revoke the
-VPN client. `/clients` supports creation and Easy-RSA import, virtual-address
+VPN client. The user-detail Device access tab lists application-level
+AccessGrant records and lets administrators grant or revoke those records.
+`/clients` supports creation and Easy-RSA import, virtual-address
 assignment, certificate renewal and packaging, typed-confirmation revocation,
 and ZIP download.
 
@@ -62,9 +64,13 @@ frontend creates a short-lived object URL only to start the download, then
 removes the anchor and revokes the URL immediately. Archives and URLs are not
 stored in TanStack Query, `localStorage`, or `sessionStorage`.
 
-Device access on user detail is intentionally informational until Phase 6. It
-does not claim that an application grant is enforced by OpenVPN or the
-firewall.
+Device access deliberately separates `Authorized` from `Enforced`.
+`Authorized` means an AccessGrant exists in the application database. Network
+enforcement remains deferred: creating or removing a grant does not apply an
+OpenVPN or firewall policy and does not confirm connectivity. The frontend
+waits for backend confirmation before refreshing grant state. `access:read`
+controls read presentation and `access:grant` controls mutation presentation;
+FastAPI remains authoritative for every request.
 
 ## Checks
 

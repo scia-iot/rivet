@@ -30,6 +30,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs'
+import { DeviceAccessTab } from '@/features/access/device-access-tab'
 import {
   type User,
   useAllUserClients,
@@ -450,18 +451,9 @@ function UserDetails({ user }: { user: User }) {
           )}
         </TabsContent>
         <TabsContent value="access">
-          <Card>
-            <CardHeader>
-              <h2 className="text-lg font-semibold">Device access</h2>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Device access management is not available in this phase.
-                Existing application grants are not presented as enforced
-                network access.
-              </p>
-            </CardContent>
-          </Card>
+          {user.id === null || user.id === undefined ? null : (
+            <DeviceAccessTab userId={user.id} />
+          )}
         </TabsContent>
       </Tabs>
       {canWrite && user.id !== null && user.id !== undefined ? (

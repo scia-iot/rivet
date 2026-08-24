@@ -239,6 +239,40 @@ def test_user_and_access_grant_lifecycle(identity_client: TestClient) -> None:
     assert response.status_code == 204
 
 
+def test_access_grant_missing_entities(identity_client: TestClient) -> None:
+    """Missing users, devices, and grants return safe not-found responses."""
+    user_response = identity_client.post(
+        "/users",
+        json={
+            "display_name": "Access User",
+            "issuer": "https://login.example/tenant/v2.0",
+            "subject": "access-user",
+        },
+    )
+    device_response = identity_client.post(
+        "/devices",
+        json={"name": "access-device"},
+    )
+    user_id = user_response.json()["id"]
+    device_id = device_response.json()["id"]
+
+    response = identity_client.delete(f"/users/{user_id}/devices/{device_id}")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Access grant not found."
+
+    response = identity_client.put(f"/users/999/devices/{device_id}")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "User with ID 999 not found."
+
+    response = identity_client.put(f"/users/{user_id}/devices/999")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Device with ID 999 not found."
+
+    response = identity_client.get("/users/999/devices")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "User with ID 999 not found."
+
+
 def test_user_identity_must_be_unique(identity_client: TestClient) -> None:
     """The same external OAuth identity cannot create multiple users."""
     request = {

@@ -32,7 +32,12 @@ const clients = [
   { id: 3, name: 'available-client', cidr: null, revoked: false },
   { id: 4, name: 'owned-elsewhere', cidr: null, revoked: false },
 ]
+const devices = [
+  { id: 11, name: 'Already authorized', client_id: null },
+  { id: 12, name: 'Available edge device', client_id: null },
+]
 let userClients: Record<number, typeof clients>
+let userDevices: Record<number, typeof devices>
 
 const readOnlyPrincipal: CurrentPrincipal = {
   id: 19,
@@ -41,6 +46,15 @@ const readOnlyPrincipal: CurrentPrincipal = {
   subject: 'read-only-subject',
   roles: [],
   permissions: ['users:read'],
+}
+
+const accessReadPrincipal: CurrentPrincipal = {
+  id: 20,
+  display_name: 'Access reader',
+  issuer: 'https://login.example/tenant/v2.0',
+  subject: 'access-reader-subject',
+  roles: [],
+  permissions: ['users:read', 'access:read'],
 }
 
 const apiClient = {
@@ -69,6 +83,7 @@ function installApi() {
   apiClient.GET.mockImplementation(async (path: string, options?: unknown) => {
     if (path === '/users') return { data: users }
     if (path === '/clients') return { data: clients }
+    if (path === '/devices') return { data: devices }
     if (path === '/users/{user_id}') {
       const result = users.find((item) => item.id === userId(options))
       if (result === undefined) throw problem(404)
@@ -76,6 +91,9 @@ function installApi() {
     }
     if (path === '/users/{user_id}/clients') {
       return { data: userClients[userId(options)] ?? [] }
+    }
+    if (path === '/users/{user_id}/devices') {
+      return { data: userDevices[userId(options)] ?? [] }
     }
     throw new Error('Unexpected GET path.')
   })
@@ -97,19 +115,46 @@ function installApi() {
       },
     }
   })
-  apiClient.PUT.mockImplementation(async (_path: string, options: unknown) => {
-    const request = options as {
-      params: { path: { user_id: number; client_id: number } }
+  apiClient.PUT.mockImplementation(async (path: string, options: unknown) => {
+    if (path === '/users/{user_id}/clients/{client_id}') {
+      const request = options as {
+        params: { path: { user_id: number; client_id: number } }
+      }
+      const selected = clients.find(
+        (item) => item.id === request.params.path.client_id,
+      )
+      if (selected !== undefined) {
+        userClients[request.params.path.user_id].push(selected)
+      }
+      return { data: { id: 12, ...request.params.path } }
     }
-    const selected = clients.find(
-      (item) => item.id === request.params.path.client_id,
+    const request = options as {
+      params: { path: { user_id: number; device_id: number } }
+    }
+    const selected = devices.find(
+      (item) => item.id === request.params.path.device_id,
     )
     if (selected !== undefined) {
-      userClients[request.params.path.user_id].push(selected)
+      userDevices[request.params.path.user_id].push(selected)
     }
-    return { data: { id: 12, ...request.params.path } }
+    return { data: { id: 13, ...request.params.path } }
   })
-  apiClient.DELETE.mockResolvedValue({ data: undefined })
+  apiClient.DELETE.mockImplementation(async (
+    path: string,
+    options: unknown,
+  ) => {
+    if (path === '/users/{user_id}/devices/{device_id}') {
+      const request = options as {
+        params: { path: { user_id: number; device_id: number } }
+      }
+      const { device_id: deviceId, user_id: selectedUserId } =
+        request.params.path
+      userDevices[selectedUserId] = userDevices[selectedUserId].filter(
+        (device) => device.id !== deviceId,
+      )
+    }
+    return { data: undefined }
+  })
 }
 
 function renderRoute(path: string, principal?: CurrentPrincipal) {
@@ -138,6 +183,7 @@ describe('user administration pages', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     userClients = { 7: [clients[0]], 8: [clients[2]] }
+    userDevices = { 7: [devices[0]], 8: [] }
     installApi()
     vi.mocked(useApiClient).mockReturnValue(
       apiClient as unknown as ReturnType<typeof useApiClient>,
@@ -169,20 +215,133 @@ describe('user administration pages', () => {
       .toBeInTheDocument()
   })
 
-  it('shows admin identity values and all three detail tabs', async () => {
+  it('shows authorized devices without claiming ' +
+    'network enforcement', async () => {
     const actor = userEvent.setup()
     renderRoute('/users/7')
     expect(await screen.findByText(users[0].issuer)).toBeVisible()
     expect(screen.getByText(users[0].subject)).toBeVisible()
     expect(screen.getByRole('tab', { name: 'Overview' })).toBeVisible()
-    await actor.click(screen.getByRole('tab', { name: 'VPN clients' }))
-    expect(
-      await screen.findByRole('table', { name: 'User VPN clients' }),
-    ).toHaveTextContent('laptop-one')
     await actor.click(screen.getByRole('tab', { name: 'Device access' }))
-    expect(screen.getByText(/not available in this phase/i)).toBeVisible()
-    expect(screen.queryByRole('button', { name: /grant/i })).not
+    const table = await screen.findByRole('table', {
+      name: 'Authorized devices',
+    })
+    expect(table).toHaveTextContent('Already authorized')
+    expect(table).toHaveTextContent('Authorized')
+    expect(table).toHaveTextContent('Not enforced')
+    expect(
+      screen.getByText(/application authorization only/i),
+    ).toBeVisible()
+    expect(
+      screen.getByText(/does not apply OpenVPN or firewall policy/i),
+    ).toBeVisible()
+    expect(screen.getByText(/does not confirm network connectivity/i))
+      .toBeVisible()
+
+    await actor.click(screen.getByRole('combobox', { name: 'Device' }))
+    const selector = screen.getByRole('dialog')
+    expect(within(selector).getByRole('combobox', { name: 'Search devices' }))
+      .toBeVisible()
+    expect(within(selector).getByText('Available edge device')).toBeVisible()
+    expect(within(selector).queryByText('Already authorized')).not
       .toBeInTheDocument()
+    await actor.click(within(selector).getByText('Available edge device'))
+  })
+
+  it('grants and revokes only after backend confirmation', async () => {
+    const actor = userEvent.setup()
+    renderRoute('/users/7')
+    await actor.click(
+      await screen.findByRole('tab', { name: 'Device access' }),
+    )
+    await actor.click(screen.getByRole('combobox', { name: 'Device' }))
+    await actor.click(screen.getByText('Available edge device'))
+    await actor.click(screen.getByRole('button', { name: 'Grant access' }))
+
+    const table = await screen.findByRole('table', {
+      name: 'Authorized devices',
+    })
+    expect(
+      await within(table).findByText('Available edge device'),
+    ).toBeVisible()
+    expect(apiClient.PUT).toHaveBeenCalledWith(
+      '/users/{user_id}/devices/{device_id}',
+      { params: { path: { user_id: 7, device_id: 12 } } },
+    )
+
+    await actor.click(
+      within(table).getByRole('button', {
+        name: 'Revoke access for Already authorized',
+      }),
+    )
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).toHaveTextContent('application authorization record')
+    await actor.click(
+      within(dialog).getByRole('button', { name: 'Revoke access' }),
+    )
+    await waitFor(() => {
+      expect(within(table).queryByText('Already authorized')).not
+        .toBeInTheDocument()
+    })
+    expect(apiClient.DELETE).toHaveBeenCalledWith(
+      '/users/{user_id}/devices/{device_id}',
+      { params: { path: { user_id: 7, device_id: 11 } } },
+    )
+  })
+
+  it('preserves visible authorization after failed mutations', async () => {
+    const actor = userEvent.setup()
+    apiClient.PUT.mockRejectedValueOnce(problem(404))
+    apiClient.DELETE.mockRejectedValueOnce(problem(404))
+    renderRoute('/users/7')
+    await actor.click(
+      await screen.findByRole('tab', { name: 'Device access' }),
+    )
+    const table = await screen.findByRole('table', {
+      name: 'Authorized devices',
+    })
+    await actor.click(screen.getByRole('combobox', { name: 'Device' }))
+    await actor.click(screen.getByText('Available edge device'))
+    await actor.click(screen.getByRole('button', { name: 'Grant access' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The user or device no longer exists.',
+    )
+    expect(table).toHaveTextContent('Already authorized')
+    expect(table).not.toHaveTextContent('Available edge device')
+
+    await actor.click(
+      within(table).getByRole('button', {
+        name: 'Revoke access for Already authorized',
+      }),
+    )
+    await actor.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Revoke access',
+      }),
+    )
+    expect(
+      await screen.findByText('The access grant no longer exists.'),
+    ).toBeVisible()
+    expect(table).toHaveTextContent('Already authorized')
+  })
+
+  it('separates access reading from grant controls', async () => {
+    const actor = userEvent.setup()
+    renderRoute('/users/7', accessReadPrincipal)
+    await actor.click(
+      await screen.findByRole('tab', { name: 'Device access' }),
+    )
+    expect(
+      await screen.findByRole('table', { name: 'Authorized devices' }),
+    ).toHaveTextContent('Already authorized')
+    expect(screen.queryByRole('combobox', { name: 'Device' })).not
+      .toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /revoke access for/i })).not
+      .toBeInTheDocument()
+    expect(apiClient.GET).not.toHaveBeenCalledWith(
+      '/devices',
+      expect.anything(),
+    )
   })
 
   it('excludes clients owned elsewhere and ' + 'handles ownership conflicts', async () => {

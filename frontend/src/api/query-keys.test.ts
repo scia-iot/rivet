@@ -7,4 +7,9 @@ describe('query key factories', () => {
     expect(queryKeys.devices.all).toEqual(['devices'])
     expect(queryKeys.devices.detail(17)).toEqual(['devices', 17])
   })
+
+  it('creates a stable user-device authorization key', () => {
+    expect(queryKeys.users.devices(7)).toEqual(['users', 7, 'devices'])
+    expect(queryKeys.users.devices(7)).toEqual(queryKeys.users.devices(7))
+  })
 })

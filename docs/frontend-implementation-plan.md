@@ -51,7 +51,7 @@ the device-user portal, and production static-file delivery remain pending.
 | 3 | Shared UI, forms, and error handling | completed | Phases 1-2 |
 | 4 | Device administration | completed | Phase 3 |
 | 5 | User and VPN-client administration | completed | Phase 4 |
-| 6 | Individual access management | pending | Phase 5 |
+| 6 | Individual access management | completed | Phase 5 |
 | 7 | Server and network administration | pending | Phase 3 |
 | 8 | Fine-grained authorization contract | pending | Phase 6 backend behavior |
 | 9 | Device-user portal | pending | Phase 8 |
@@ -644,7 +644,21 @@ failed and make reconciliation idempotent.
 
 ### Notes
 
-Record whether enforcement remains deferred or was implemented.
+- Added a user-centric Device access tab with authorized-device listing,
+  searchable grant selection that excludes existing grants, confirmed revoke,
+  accessible loading/empty/error states, and permission-aware presentation.
+- Added `useUserDevices`, `useGrantDeviceAccess`, and
+  `useRevokeDeviceAccess` with stable user-device keys, exact affected-query
+  invalidation after backend confirmation, and no optimistic access updates.
+- `Authorized` explicitly means an AccessGrant exists. `Enforced` is shown as
+  `Not enforced`; the UI explains that grants do not apply OpenVPN or firewall
+  policy and do not confirm connectivity.
+- Enforcement remains deferred. No RestrictedNetwork, route, firewall,
+  OpenVPN, reconciliation-state, or privileged-operation behavior was added.
+- The existing backend/API contract already supports idempotent grant, device
+  listing, revoke, and safe not-found behavior, so no application Python or
+  OpenAPI contract change was required. Added characterization coverage for
+  missing users, devices, and grants.
 
 ## Phase 7: Server and network administration
 
@@ -1095,5 +1109,45 @@ Deferred:
   avoids presenting application grants as enforced network access.
 - Fine-grained backend authorization remains Phase 8, and deployed Entra/Azure
   browser smoke testing plus production topology E2E remains Phase 10.
+- The existing Vite main-chunk size advisory, 21 untouched repository Ruff
+  findings, and Starlette/httpx deprecation warning remain unchanged.
+
+2026-08-24 - Phase 6 completed
+Implementation:
+- Added the primary user-centric Device access workflow with an authorized
+  device table, searchable eligible-device selector, confirmed revoke actions,
+  safe failures, and `access:read` versus `access:grant` presentation.
+- Added typed access query/mutation hooks with stable keys, exact invalidation,
+  backend-confirmed refreshes, and no optimistic security-state changes.
+- Presented AccessGrant records as application authorization only. `Authorized`
+  and `Not enforced` remain distinct, with explicit OpenVPN, firewall, and
+  connectivity limitations in the UI and frontend documentation.
+- Added frontend and backend characterization coverage for idempotent grant,
+  successful and missing revoke, missing users/devices, failed-state
+  preservation, filtering, accessibility, permissions, and narrow cache
+  invalidation. No backend or OpenAPI contract change was required.
+Verification:
+- `npm test -- --run src/features/users/user-pages.test.tsx
+  src/features/access/access-api.test.tsx src/features/devices/device-api.test.tsx
+  src/api/query-keys.test.ts`: passed; 4 files and 20 tests.
+- `npm ci`: passed; 258 packages installed and 259 audited. `npm audit` passed
+  with 0 vulnerabilities.
+- `npm run api:check`, `npm run lint`, and `npm run typecheck`: passed; generated
+  OpenAPI JSON and TypeScript declarations had no drift.
+- `npm run test`: passed; 23 files and 91 tests. `npm run build`: passed; Vite
+  transformed 2,286 modules and produced the production bundle.
+- `ruff format --check .`: passed for 41 files. `ruff check
+  tests/test_identity_api.py`: passed. Repository-wide `ruff check .` retains
+  exactly 21 pre-existing findings outside Phase 6 scope.
+- `mypy .`: passed for 37 source files.
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 110 passed with
+  91% total coverage and one existing Starlette/httpx deprecation warning.
+- `git diff --check` and the scoped sensitive-output/security review passed. No
+  cloud, VPN, firewall, route, network, or certificate operation was invoked.
+Deferred:
+- AccessGrant enforcement remains deferred; no OpenVPN/firewall policy,
+  RestrictedNetwork, reconciliation state, or connectivity guarantee exists.
+- Fine-grained backend authorization remains Phase 8, and deployed browser/E2E
+  verification remains Phase 10.
 - The existing Vite main-chunk size advisory, 21 untouched repository Ruff
   findings, and Starlette/httpx deprecation warning remain unchanged.

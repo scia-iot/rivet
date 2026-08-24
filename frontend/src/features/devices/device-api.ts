@@ -16,10 +16,11 @@ function requiredResponse<T>(data: T | undefined, entity: string): T {
   return data
 }
 
-export function useDevices() {
+export function useDevices(enabled = true) {
   const client = useApiClient()
 
   return useQuery({
+    enabled,
     queryKey: queryKeys.devices.all,
     queryFn: async () => {
       const { data } = await client.GET('/devices')
