@@ -13,6 +13,7 @@ from sciaiot.ovpncp.data.server import (
 )
 from sciaiot.ovpncp.dependencies import get_session
 from sciaiot.ovpncp.utils import iproute, openvpn
+from sciaiot.ovpncp.utils.network import is_rfc1918_ipv4_network
 
 logger = logging.getLogger(__name__)
 DBSession = Annotated[Session, Depends(get_session)]
@@ -62,7 +63,16 @@ async def get_server(session: DBSession):
 @router.get("/health", response_model=ServiceHealth)
 async def get_service_health():
     logger.info("Checking the service health...")
-    service_health = openvpn.get_status()
+    try:
+        service_health = openvpn.get_status()
+    except Exception as error:
+        logger.error("OpenVPN service health check failed.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "OpenVPN health could not be loaded. Check the host service and retry."
+            ),
+        ) from error
     logger.info("Service health checked successfully!")
     return service_health
 
@@ -80,7 +90,17 @@ async def get_assignable_virtual_addresses(session: DBSession):
 async def get_routes(session: DBSession):
     logger.info("Getting the routes...")
     server = await get_server(session)
-    routes = iproute.list(server.dev)
+    try:
+        routes = iproute.list(server.dev)
+    except Exception as error:
+        logger.error("Server routes could not be loaded.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Server routes could not be loaded. Check the host route "
+                "service and retry."
+            ),
+        ) from error
     logger.info(f"Found {len(routes)} routes.")
     return routes
 
@@ -88,39 +108,74 @@ async def get_routes(session: DBSession):
 @router.post("/routes", status_code=status.HTTP_204_NO_CONTENT)
 async def add_route(request: RouteRequest, session: DBSession):
     logger.info("Adding a route...")
-    if not is_valid_address(request.network):
-        logger.error(f"Invalid network address {request.network} used!")
+    if not is_rfc1918_ipv4_network(request.network, require_cidr=True):
+        logger.error("Invalid network address used for a server route.")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only internal network address is allowed!",
         )
 
     server = await get_server(session)
-    iproute.add(request.network, server.ip, server.dev)
+    try:
+        iproute.add(request.network, server.ip, server.dev)
+    except Exception as error:
+        logger.error("Server route addition failed.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "The server route could not be added. Check the host route "
+                "service and retry."
+            ),
+        ) from error
     logger.info("Route added successfully!")
 
 
 @router.delete("/routes", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_route(network: str, session: DBSession):
     logger.info("Deleting a route...")
+    if not is_rfc1918_ipv4_network(network, require_cidr=True):
+        logger.error("Invalid network address used for route deletion.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only internal network address is allowed!",
+        )
+
     server = await get_server(session)
-    routes = iproute.list(server.dev)
+    try:
+        routes = iproute.list(server.dev)
+    except Exception as error:
+        logger.error("Server routes could not be loaded for deletion.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "The server route could not be removed. Check the host route "
+                "service and retry."
+            ),
+        ) from error
 
-    target = None
-    for route in routes:
-        if route.startswith(network):
-            target = route
-            break
-
-    if target:
-        iproute.delete(target, server.dev)
-        logger.info("Route deleted successfully!")
-    else:
-        logger.error(f'Network "{network}" not found in routes!')
+    target = next(
+        (route for route in routes if route.split(maxsplit=1)[0] == network),
+        None,
+    )
+    if target is None:
+        logger.error("Requested server route was not found.")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f'Network "{network}" not found in routes!',
+            detail="The requested server route was not found.",
         )
+
+    try:
+        iproute.delete(target, server.dev)
+    except Exception as error:
+        logger.error("Server route removal failed.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "The server route could not be removed. Check the host route "
+                "service and retry."
+            ),
+        ) from error
+    logger.info("Route deleted successfully!")
 
 
 def load_from_config():
@@ -141,11 +196,3 @@ def load_from_config():
     ]
 
     return server
-
-
-def is_valid_address(network):
-    try:
-        net = ipaddress.ip_network(network)
-        return net.is_private
-    except ValueError:
-        return False

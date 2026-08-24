@@ -2743,8 +2743,8 @@ export interface operations {
     };
     retrieve_restricted_networks_networks_get: {
         parameters: {
-            query: {
-                source_name: string;
+            query?: {
+                source_name?: string | null;
             };
             header?: never;
             path?: never;

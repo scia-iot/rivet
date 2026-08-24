@@ -128,6 +128,45 @@ def test_add_wrong_route(client: TestClient):
     _assert_problem_detail(response, "Only internal network address is allowed!")
 
 
+@pytest.mark.parametrize(
+    "network",
+    [
+        "127.0.0.0/8",
+        "169.254.0.0/16",
+        "192.0.2.0/24",
+        "192.168.1.1/24",
+        "192.168.1.1",
+    ],
+)
+def test_add_route_rejects_non_rfc1918_or_noncanonical_network(
+    network: str,
+    client: TestClient,
+):
+    with patch("sciaiot.ovpncp.utils.iproute.add") as mock_add:
+        response = client.post("/server/routes", json={"network": network})
+
+    assert response.status_code == 400
+    _assert_problem_detail(response, "Only internal network address is allowed!")
+    mock_add.assert_not_called()
+
+
+@patch(
+    "sciaiot.ovpncp.utils.iproute.add",
+    side_effect=RuntimeError("route 192.168.77.0/24 failed"),
+)
+def test_add_route_command_failure_is_safe(mock_add, client: TestClient, caplog):
+    response = client.post("/server/routes", json={"network": "192.168.77.0/24"})
+
+    assert response.status_code == 500
+    _assert_problem_detail(
+        response,
+        "The server route could not be added. Check the host route service and retry.",
+    )
+    assert "192.168.77.0/24" not in response.text
+    assert "192.168.77.0/24" not in caplog.text
+    mock_add.assert_called_once()
+
+
 @patch("sciaiot.ovpncp.utils.iproute.delete")
 @patch(
     "sciaiot.ovpncp.utils.iproute.list",
@@ -151,7 +190,7 @@ def test_delete_route(mock_list, mock_delete, client: TestClient):
 def test_delete_wrong_route(mock_list, client: TestClient):
     response = client.delete("/server/routes", params={"network": "192.168.1.0/24"})
     assert response.status_code == 404
-    _assert_problem_detail(response, 'Network "192.168.1.0/24" not found in routes!')
+    _assert_problem_detail(response, "The requested server route was not found.")
 
     mock_list.assert_called_once_with("tun0")
 
@@ -354,7 +393,8 @@ def test_create_restricted_network(
 )
 def test_create_restricted_network_fail(mock_get_client_by_name, client: TestClient):
     response = client.post(
-        "/networks", json={"source_name": "N/A", "destination_name": "N/A"}
+        "/networks",
+        json={"source_name": "N/A", "destination_name": "another-client"},
     )
     assert response.status_code == 412
 
@@ -405,6 +445,123 @@ def test_create_restricted_network_with_private_network_addresses(
     mock_push_client_routes.assert_called_with("test_client_1", routes)
 
 
+@pytest.mark.parametrize(
+    "private_network",
+    [
+        "127.0.0.1",
+        "169.254.1.0/24",
+        "192.0.2.0/24",
+        "192.168.1.3/24",
+    ],
+)
+def test_create_restricted_network_rejects_non_rfc1918_or_noncanonical_address(
+    private_network: str,
+    client: TestClient,
+):
+    with (
+        patch("sciaiot.ovpncp.utils.iptables.list_rules") as mock_list_rules,
+        patch("sciaiot.ovpncp.utils.iptables.apply_rules") as mock_apply_rules,
+        patch("sciaiot.ovpncp.utils.openvpn.push_client_routes") as mock_push,
+    ):
+        response = client.post(
+            "/networks",
+            json={
+                "source_name": "test_client_1",
+                "destination_name": "test_gateway_1",
+                "private_network_addresses": private_network,
+            },
+        )
+
+    assert response.status_code == 422
+    _assert_problem_detail(
+        response,
+        "The request did not satisfy the API contract.",
+    )
+    mock_list_rules.assert_not_called()
+    mock_apply_rules.assert_not_called()
+    mock_push.assert_not_called()
+
+
+def test_create_restricted_network_rejects_identical_clients(
+    client: TestClient,
+):
+    with (
+        patch("sciaiot.ovpncp.routes.network.get_client_by_name") as mock_get_client,
+        patch("sciaiot.ovpncp.utils.iptables.list_rules") as mock_list_rules,
+        patch("sciaiot.ovpncp.utils.iptables.apply_rules") as mock_apply_rules,
+        patch("sciaiot.ovpncp.utils.openvpn.push_client_routes") as mock_push,
+    ):
+        response = client.post(
+            "/networks",
+            json={
+                "source_name": "test_client_1",
+                "destination_name": "test_client_1",
+            },
+        )
+
+    assert response.status_code == 400
+    _assert_problem_detail(
+        response,
+        "Source and destination VPN clients must be different.",
+    )
+    mock_get_client.assert_not_called()
+    mock_list_rules.assert_not_called()
+    mock_apply_rules.assert_not_called()
+    mock_push.assert_not_called()
+
+
+def test_create_restricted_network_rejects_invalid_private_network(
+    client: TestClient,
+):
+    response = client.post(
+        "/networks",
+        json={
+            "source_name": "test_client_1",
+            "destination_name": "test_gateway_1",
+            "private_network_addresses": "192.168.1.0/24; unsafe",
+        },
+    )
+
+    assert response.status_code == 422
+    _assert_problem_detail(
+        response,
+        "The request did not satisfy the API contract.",
+    )
+
+
+@patch(
+    "sciaiot.ovpncp.utils.iptables.apply_rules",
+    side_effect=RuntimeError("firewall 10.8.0.2 failed"),
+)
+@patch(
+    "sciaiot.ovpncp.utils.iptables.list_rules",
+    return_value=["DROP all -- anywhere anywhere"],
+)
+def test_create_restricted_network_command_failure_is_safe(
+    mock_list_rules,
+    mock_apply_rules,
+    client: TestClient,
+    caplog,
+):
+    response = client.post(
+        "/networks",
+        json={
+            "source_name": "test_client_1",
+            "destination_name": "test_client_2",
+        },
+    )
+
+    assert response.status_code == 500
+    _assert_problem_detail(
+        response,
+        "The restricted network could not be created. Check the host firewall and retry.",
+    )
+    assert "10.8.0.2" not in response.text
+    assert "10.8.0.2" not in caplog.text
+    mock_list_rules.assert_called_once()
+    mock_apply_rules.assert_called_once()
+
+
 def test_close_connection(client: TestClient):
     response = client.put(
         "/clients/test_client_1/connections",
@@ -446,7 +603,7 @@ def test_close_connection(client: TestClient):
 def test_drop_restricted_network(
     mock_drop_rules, mock_pull_client_routes, client: TestClient
 ):
-    response = client.get("/networks?source_name=test_client_1")
+    response = client.get("/networks")
     assert response.status_code == 200
     content = response.json()
     assert len(content) > 0
@@ -466,6 +623,13 @@ def test_drop_restricted_network(
         "-i tun0 -s 10.8.0.3 -d 10.8.0.2 -j ACCEPT",
     ]
     mock_drop_rules.assert_called_with("FORWARD", rules)
+
+    mock_drop_rules.reset_mock()
+    mock_pull_client_routes.reset_mock()
+    response = client.delete("/networks/1")
+    assert response.status_code == 204
+    mock_drop_rules.assert_not_called()
+    mock_pull_client_routes.assert_not_called()
 
     response = client.delete("/networks/2")
     assert response.status_code == 204

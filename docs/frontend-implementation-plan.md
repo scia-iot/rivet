@@ -37,9 +37,9 @@ The frontend scaffold is complete. It includes:
 - fail-closed Entra configuration
 - zero known npm audit vulnerabilities at the time of scaffolding
 
-The frontend now includes device, user, and VPN-client administration.
-Individual access, server/network administration, fine-grained authorization,
-the device-user portal, and production static-file delivery remain pending.
+The frontend now includes device, user, VPN-client, individual-access,
+and server/network administration. Fine-grained authorization, the device-user
+portal, and production static-file delivery remain pending.
 
 ## Phase status
 
@@ -52,7 +52,7 @@ the device-user portal, and production static-file delivery remain pending.
 | 4 | Device administration | completed | Phase 3 |
 | 5 | User and VPN-client administration | completed | Phase 4 |
 | 6 | Individual access management | completed | Phase 5 |
-| 7 | Server and network administration | pending | Phase 3 |
+| 7 | Server and network administration | completed | Phase 3 |
 | 8 | Fine-grained authorization contract | pending | Phase 6 backend behavior |
 | 9 | Device-user portal | pending | Phase 8 |
 | 10 | Production integration and E2E hardening | pending | Phases 4-9 |
@@ -703,7 +703,34 @@ operations with safe confirmations and actionable failures.
 
 ### Notes
 
-Record polling intervals and privileged-operation UX decisions here.
+- OpenVPN health polls every 15 seconds only while the document is visible.
+  Polling stops when the page is hidden or unmounted and resumes with an
+  immediate refresh when visibility returns. Inactive states use negative
+  presentation, and a failed refresh keeps the last report visible with a
+  fixed, actionable stale-data warning and retry.
+- Added permission-aware `/server`, `/server/routes`, `/networks`, and
+  `/networks/:networkId` workflows. Server and restricted-network pages are
+  lazy-loaded as separate production chunks.
+- Server presentation includes service health, a deliberately limited
+  configuration summary, and assignable virtual addresses. Certificate/key
+  paths and other security-sensitive configuration values are not rendered.
+- Route additions/removals, server initialization, restricted-network
+  creation, and active-network closure all require explicit confirmation.
+  Mutations never update privileged state optimistically; current data remains
+  visible after failures and is invalidated only after backend confirmation.
+- Browser and backend validation accept only canonical RFC 1918 IPv4
+  values. A shared typed backend helper rejects loopback, link-local,
+  documentation, public, IPv6, and host-bit-bearing CIDRs before route,
+  firewall, or OpenVPN operations.
+- Restricted-network creation rejects identical source and destination clients
+  at the backend boundary before client lookup or privileged operations.
+- `GET /networks` now lists all records by default while retaining its optional
+  source filter. Closing an already-ended record is idempotent, route deletion
+  matches the exact route destination, and privileged command failures return
+  fixed actionable RFC 7807 details without exposing IPs or exception content
+  in logs or responses.
+- Firewall/OpenVPN/route operations were mocked in automated tests. No real
+  host route, firewall, VPN service, or client configuration was changed.
 
 ## Phase 8: Fine-grained authorization contract
 
@@ -1151,3 +1178,43 @@ Deferred:
   verification remains Phase 10.
 - The existing Vite main-chunk size advisory, 21 untouched repository Ruff
   findings, and Starlette/httpx deprecation warning remain unchanged.
+
+2026-08-24 - Phase 7 completed
+Implementation:
+- Added permission-aware server health/configuration/address administration,
+  confirmed route changes, restricted-network list/create/detail/close flows,
+  stable typed hooks, visibility-aware polling, and private IPv4 validation.
+- Added safe backend boundaries for route and firewall command failures,
+  optional all-network retrieval, exact route matching, shared canonical RFC
+  1918 validation, distinct-client enforcement, transaction rollback, and
+  idempotent already-ended closure.
+- Corrected inactive health classification and made cached health refresh
+  failures visible through a fixed stale-data warning and retry without
+  exposing backend error content.
+- Regenerated the OpenAPI contract and kept diagnostics free of sensitive IP
+  and host-command details outside authorized data fields.
+Verification:
+- `npm ci`: passed; 258 packages installed and 259 audited. `npm audit` passed
+  with 0 vulnerabilities.
+- `npm run api:check`, `npm run lint`, and `npm run typecheck`: passed;
+  generated OpenAPI files were reproducible and frontend code was lint/type
+  clean.
+- Focused Phase 7 frontend suites passed 21 tests. `npm run test` passed 27
+  files and 113 tests. `npm run build` passed with 2,292 transformed modules
+  and separate server/network page chunks.
+- `pytest -q tests/test_network_validation.py tests/test_api.py -x`:
+  passed; 60 focused backend tests.
+- `ruff format --check .`, `ruff check .`, and `mypy .`: passed for the full
+  repository.
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 138 passed with
+  90% total coverage; changed `utils/network.py` reached 100%,
+  `routes/network.py` reached 96%, and `routes/server.py` reached 87%.
+- `git diff --check` and scoped sensitive-output/line-length review passed.
+  Privileged system operations were mocked; no external system was altered.
+Deferred:
+- Real-host route/firewall/OpenVPN smoke testing requires an isolated privileged
+  deployment and remains manual. Multi-command firewall/client-route changes
+  cannot be atomic across host tools and the database; operators should
+  reconcile host state after an interrupted partial system change.
+- Frontend coverage instrumentation remains unavailable. Fine-grained backend
+  authorization is Phase 8, and deployed browser/E2E verification is Phase 10.

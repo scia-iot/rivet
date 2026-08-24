@@ -18,6 +18,7 @@ export const queryKeys = {
   server: {
     all: ['server'] as const,
     health: ['server', 'health'] as const,
+    routes: ['server', 'routes'] as const,
   },
   users: {
     all: ['users'] as const,

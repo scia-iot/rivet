@@ -1,4 +1,12 @@
-import { KeyRound, Laptop, Network, ShieldCheck, Users } from 'lucide-react'
+import {
+  KeyRound,
+  Laptop,
+  Network,
+  ServerCog,
+  ShieldCheck,
+  Users,
+  Workflow,
+} from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 
 import { AuthControls } from '@/auth/auth-controls'
@@ -9,11 +17,49 @@ import {
 import { cn } from '@/lib/utils'
 
 const navigation = [
-  { to: '/', label: 'Overview', icon: Network, permission: 'server:read', end: true },
-  { to: '/devices', label: 'Devices', icon: ShieldCheck, permission: 'devices:read' },
-  { to: '/users', label: 'Users', icon: Users, permission: 'users:read' },
-  { to: '/clients', label: 'VPN clients', icon: Laptop, permission: 'clients:read' },
-  { to: '/access', label: 'Access', icon: KeyRound, permission: 'access:read' },
+  {
+    to: '/',
+    label: 'Overview',
+    icon: Network,
+    permission: 'server:read',
+    end: true,
+  },
+  {
+    to: '/devices',
+    label: 'Devices',
+    icon: ShieldCheck,
+    permission: 'devices:read',
+  },
+  {
+    to: '/users',
+    label: 'Users',
+    icon: Users,
+    permission: 'users:read',
+  },
+  {
+    to: '/clients',
+    label: 'VPN clients',
+    icon: Laptop,
+    permission: 'clients:read',
+  },
+  {
+    to: '/server',
+    label: 'Server',
+    icon: ServerCog,
+    permission: 'server:read',
+  },
+  {
+    to: '/networks',
+    label: 'Networks',
+    icon: Workflow,
+    permission: 'server:read',
+  },
+  {
+    to: '/access',
+    label: 'Access',
+    icon: KeyRound,
+    permission: 'access:read',
+  },
 ]
 
 export function AppShell() {
@@ -42,7 +88,11 @@ export function AppShell() {
               end={end}
               className={({ isActive }) =>
                 cn(
-                  'flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground',
+                  [
+                    'flex shrink-0 items-center gap-2 rounded-md px-3',
+                    'py-2 text-sm font-medium text-muted-foreground',
+                    'hover:bg-accent hover:text-foreground',
+                  ].join(' '),
                   isActive && 'bg-accent text-foreground',
                 )
               }

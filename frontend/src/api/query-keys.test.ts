@@ -12,4 +12,10 @@ describe('query key factories', () => {
     expect(queryKeys.users.devices(7)).toEqual(['users', 7, 'devices'])
     expect(queryKeys.users.devices(7)).toEqual(queryKeys.users.devices(7))
   })
+
+  it('creates stable server and restricted-network keys', () => {
+    expect(queryKeys.server.routes).toEqual(['server', 'routes'])
+    expect(queryKeys.networks.all).toEqual(['networks'])
+    expect(queryKeys.networks.detail(4)).toEqual(['networks', 4])
+  })
 })

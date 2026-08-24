@@ -12,6 +12,8 @@ const OVERVIEW_DESCRIPTION =
 const loadDevicePages = () => import('@/features/devices/device-pages')
 const loadUserPages = () => import('@/features/users/user-pages')
 const loadClientPages = () => import('@/features/clients/client-pages')
+const loadServerPages = () => import('@/features/server/server-pages')
+const loadNetworkPages = () => import('@/features/networks/network-pages')
 const DeviceListPage = lazy(async () => ({
   default: (await loadDevicePages()).DeviceListPage,
 }))
@@ -41,6 +43,18 @@ const ClientListPage = lazy(async () => ({
 }))
 const ClientDetailPage = lazy(async () => ({
   default: (await loadClientPages()).ClientDetailPage,
+}))
+const ServerPage = lazy(async () => ({
+  default: (await loadServerPages()).ServerPage,
+}))
+const ServerRoutesPage = lazy(async () => ({
+  default: (await loadServerPages()).ServerRoutesPage,
+}))
+const NetworkListPage = lazy(async () => ({
+  default: (await loadNetworkPages()).NetworkListPage,
+}))
+const NetworkDetailPage = lazy(async () => ({
+  default: (await loadNetworkPages()).NetworkDetailPage,
 }))
 
 function RouteLoading() {
@@ -147,6 +161,38 @@ export default function App() {
               element={
                 <RequirePermission permission="clients:read">
                   <ClientDetailPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="server"
+              element={
+                <RequirePermission permission="server:read">
+                  <ServerPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="server/routes"
+              element={
+                <RequirePermission permission="server:read">
+                  <ServerRoutesPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="networks"
+              element={
+                <RequirePermission permission="server:read">
+                  <NetworkListPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="networks/:networkId"
+              element={
+                <RequirePermission permission="server:read">
+                  <NetworkDetailPage />
                 </RequirePermission>
               }
             />
