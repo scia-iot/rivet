@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
@@ -10,6 +11,7 @@ from sciaiot.ovpncp.utils.openvpn import (
     generate_crl,
     get_server_config,
     get_status,
+    list_client_certs,
     list_connections,
     package_client_cert,
     pull_client_routes,
@@ -150,8 +152,8 @@ MIIDXTCCAkWgAwIBAgIJALb2Z6Z6Z6Z6MA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
 @patch("cryptography.x509.load_pem_x509_certificate")
 def test_read_client_cert_success(mock_load_cert, mock_open):
     mock_cert = MagicMock()
-    mock_cert.not_valid_before_utc = datetime.now()
-    mock_cert.not_valid_after_utc = datetime.now() + timedelta(days=365)
+    mock_cert.not_valid_before_utc = datetime.now(timezone.utc)
+    mock_cert.not_valid_after_utc = datetime.now(timezone.utc) + timedelta(days=365)
     mock_cert.subject.get_attributes_for_oid.return_value = [
         MagicMock(value="client_name")
     ]
@@ -166,10 +168,40 @@ def test_read_client_cert_success(mock_load_cert, mock_open):
     mock_open.assert_called_once()
 
 
+@patch("builtins.open", new_callable=mock_open, read_data=cert_content)
+@patch("cryptography.x509.load_pem_x509_certificate")
+def test_read_client_cert_failure_hides_sensitive_details(
+    mock_load_cert, mock_open, caplog
+):
+    sensitive = "/server/private/client.crt?sig=secret-token"
+    mock_load_cert.side_effect = ValueError(sensitive)
+
+    with caplog.at_level("ERROR"):
+        assert read_client_cert("safe-client") == {}
+
+    assert sensitive not in caplog.text
+
+
+@patch("os.listdir")
+def test_list_client_certs_failure_hides_sensitive_details(mock_listdir, caplog):
+    sensitive = "/server/private/issued?sig=secret-token"
+    mock_listdir.side_effect = OSError(sensitive)
+    with caplog.at_level("ERROR"):
+        assert list_client_certs() == []
+    assert sensitive not in caplog.text
+
+
 @patch("os.remove")
 @patch("zipfile.ZipFile", return_value=MagicMock())
-def test_package_client_cert(mock_zipfile, mock_remove):
-    package_client_cert(name="test_client", output_dir="/path/to/output_dir")
+def test_package_client_cert_hides_archive_path(mock_zipfile, mock_remove, caplog):
+    archive_path = "/path/to/output_dir/test_client.zip"
+    with caplog.at_level("INFO"):
+        result = package_client_cert(
+            name="test_client", output_dir="/path/to/output_dir"
+        )
+
+    assert result == archive_path
+    assert archive_path not in caplog.text
     mock_zipfile.assert_called_once()
 
 
@@ -214,9 +246,12 @@ def test_generate_crl(mock_run):
 
 
 @patch("builtins.open", new_callable=mock_open)
-def test_assign_client_ip(mock_open):
+def test_assign_client_ip(mock_open, caplog: pytest.LogCaptureFixture):
+    caplog.set_level(logging.INFO)
     assign_client_ip("client_1", "10.8.0.2", "255.255.255.0")
     mock_open.assert_called_with("/etc/openvpn/ccd/client_1", "w")
+    assert "10.8.0.2" not in caplog.text
+    assert "255.255.255.0" not in caplog.text
 
 
 @patch("os.path.exists", return_value=True)

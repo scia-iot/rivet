@@ -38,7 +38,7 @@ def get_server_config():
             line = line.strip()
 
             # Skip empty lines and comments
-            if not line or line.startswith("#") or line.startswith(";"):
+            if not line or line.startswith(("#", ";")):
                 continue
 
             # Split the line into key and value
@@ -128,8 +128,8 @@ def read_client_cert(name: str) -> dict:
                 "issued_on": issued_on,
                 "expires_on": expires_on,
             }
-    except Exception as e:
-        logger.error(f"Failed to read certificate for client {name}: {e}")
+    except (IndexError, OSError, ValueError):
+        logger.error(f"Failed to read certificate for client {name}.")
         return {}
 
 
@@ -151,7 +151,7 @@ def package_client_cert(name: str, output_dir: str):
         file.write(pk, arcname=os.path.basename(pk))
         file.write(cert, arcname=os.path.basename(cert))
 
-    logger.info(f"Successfully packaged client {name} certificate into {archive}.")
+    logger.info(f"Successfully packaged client {name} certificate.")
     return archive
 
 
@@ -218,15 +218,13 @@ def assign_client_ip(name: str, ip: str, subnet_mask: str):
     """Add a client with the given name and IP address to the OpenVPN server."""
 
     validate_name(name)
-    logger.info(f"Adding client {name} with IP address {ip} to OpenVPN server...")
+    logger.info(f"Adding a virtual address for client {name}...")
 
     config_path = os.path.join(openvpn_dir, "ccd", name)
     with open(config_path, "w") as file:
         file.write(f"ifconfig-push {ip} {subnet_mask}\n")
 
-    logger.info(
-        f"Client {name} with IP address {ip} has been successfully added to OpenVPN server."
-    )
+    logger.info(f"Virtual address for client {name} added successfully.")
 
 
 def unassign_client_ip(name: str):
@@ -261,8 +259,8 @@ def read_client_ip(name: str) -> str | None:
                     parts = line.split()
                     if len(parts) >= 2:
                         return parts[1]
-    except Exception as e:
-        logger.error(f'Failed to read ccd file for client "{name}": {e}')
+    except OSError:
+        logger.error(f'Failed to read ccd file for client "{name}".')
 
     return None
 
@@ -306,8 +304,7 @@ def push_client_routes(name: str, rules: list[str]):
     logger.info(f"Pushing route to OpenVPN client {name}...")
     config_path = os.path.join(openvpn_dir, "ccd", name)
     with open(config_path, "a") as file:
-        for rule in rules:
-            file.write(f'push "route {rule}"\n')
+        file.writelines(f'push "route {rule}"\n' for rule in rules)
     logger.info(f"Pushed {len(rules)} routes to OpenVPN client {name}.")
 
 
@@ -343,8 +340,8 @@ def list_client_certs() -> list[str]:
         ]
         logger.info(f"Found {len(names)} client certificate(s).")
         return names
-    except Exception as e:
-        logger.error(f"Failed to list client certificates: {e}")
+    except OSError:
+        logger.error("Failed to list client certificates.")
         return []
 
 

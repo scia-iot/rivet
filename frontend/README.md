@@ -1,7 +1,8 @@
 # ovpncp frontend
 
-Frontend scaffold for the OpenVPN control panel. Detailed domain workflows are
-intentionally deferred. Implement them phase by phase using the
+React frontend for the OpenVPN control panel. Device, user, and VPN-client
+administration workflows are implemented; access, server, network, portal, and
+production-integration work remains phased in the
 [frontend implementation plan](../docs/frontend-implementation-plan.md).
 
 ## Stack
@@ -45,6 +46,26 @@ filtered by `/me` permissions for usability,
 but FastAPI remains the authorization boundary. Sign-out clears the active MSAL
 account and frontend query cache before redirecting.
 
+## Administrative workflows
+
+Administrators can manage devices, including linking and unlinking VPN clients,
+through `/devices`. User lifecycle and multi-client ownership are available
+through `/users`; unlinking or deleting a user does not delete or revoke the
+VPN client. `/clients` supports creation and Easy-RSA import, virtual-address
+assignment, certificate renewal and packaging, typed-confirmation revocation,
+and ZIP download.
+
+Certificate downloads are fetched directly as `application/zip` with
+`Cache-Control: no-store`. Azure Blob Storage deployments proxy the archive
+bytes through the API and never return or retain a SAS URL in the browser. The
+frontend creates a short-lived object URL only to start the download, then
+removes the anchor and revokes the URL immediately. Archives and URLs are not
+stored in TanStack Query, `localStorage`, or `sessionStorage`.
+
+Device access on user detail is intentionally informational until Phase 6. It
+does not claim that an application grant is enforced by OpenVPN or the
+firewall.
+
 ## Checks
 
 Regenerate the checked-in FastAPI contract and TypeScript declarations after
@@ -61,6 +82,7 @@ mismatch so plain `npm ci` remains reproducible. The generator, typecheck, and
 build are CI-verified together.
 
 ```shell
+npm audit
 npm run api:check
 npm run lint
 npm run typecheck

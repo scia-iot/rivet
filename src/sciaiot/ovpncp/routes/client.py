@@ -4,8 +4,7 @@ import os
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -46,12 +45,6 @@ class CloseConnectionRequest(BaseModel):
     disconnected_time: datetime
 
 
-class CertificatePackage(BaseModel):
-    """Filesystem location of a packaged client certificate archive."""
-
-    file_path: str
-
-
 class ClientImportSummary(BaseModel):
     """Counts of client records changed during certificate import."""
 
@@ -59,21 +52,35 @@ class ClientImportSummary(BaseModel):
     updated: int
 
 
+def _certificate_failure(operation: str) -> HTTPException:
+    """Create a fixed failure response without logging exception details."""
+    logger.error(f"Client certificate {operation} failed.")
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="The certificate operation failed.",
+    )
+
+
 @router.post("", response_model=Client)
 async def create_client(request: ClientBase, session: DBSession):
     logger.info(f"Creating client {request.name}...")
-    client = Client.model_validate(request)
-    openvpn.build_client(client.name)
+    try:
+        client = Client.model_validate(request)
+        if not openvpn.build_client(client.name):
+            raise RuntimeError("Client certificate creation failed.")
 
-    cert_details = openvpn.read_client_cert(client.name)
-    cert = Cert(**cert_details)
-    cert.client = client
-    logger.info("Loaded client certificate details.")
+        cert_details = openvpn.read_client_cert(client.name)
+        cert = Cert(**cert_details)
+        cert.client = client
+        logger.info("Loaded client certificate details.")
 
-    session.add(client)
-    session.add(cert)
-    session.commit()
-    session.refresh(client)
+        session.add(client)
+        session.add(cert)
+        session.commit()
+        session.refresh(client)
+    except Exception as error:
+        session.rollback()
+        raise _certificate_failure("creation") from error
 
     logger.info("Client created successfully!")
     return client
@@ -95,27 +102,62 @@ async def retrieve_client(client_name: str, session: DBSession):
     return client
 
 
-@router.put("/{client_name}/package-cert", response_model=CertificatePackage)
+@router.put(
+    "/{client_name}/package-cert",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 async def package_client_cert(client_name: str, session: DBSession):
     logger.info(f"Packaging client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
-    archive = openvpn.package_client_cert(client.name, dependencies.certs_directory)
+    try:
+        openvpn.package_client_cert(client.name, dependencies.certs_directory)
+    except Exception as error:
+        raise _certificate_failure("packaging") from error
     logger.info("Client certificate packaged successfully!")
-    return {"file_path": archive}
 
 
 @router.get(
     "/{client_name}/download-cert",
-    response_class=FileResponse,
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/zip": {"schema": {"type": "string", "format": "binary"}}
+            },
+            "description": "Packaged client certificate archive.",
+        }
+    },
 )
-async def download_client_cert(client_name: str, session: DBSession):
+def download_client_cert(
+    client_name: str,
+    request: Request,
+    session: DBSession,
+):
     logger.info(f"Downloading client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
-    file_name = f"{client.name}.zip"
-    file_path = os.path.join(dependencies.certs_directory, file_name)
+    try:
+        openvpn.validate_name(client.name)
+        file_name = f"{client.name}.zip"
+        if getattr(request.state, "certificate_download_from_azure", False):
+            return Response(
+                headers={"Cache-Control": "no-store"},
+                media_type="application/zip",
+            )
+        file_path = os.path.join(dependencies.certs_directory, file_name)
+        with open(file_path, "rb") as archive:
+            content = archive.read()
+    # This is the safety boundary around filesystem and archive operations;
+    # their implementation-specific errors must never reach the response.
+    except Exception as error:
+        raise _certificate_failure("download") from error
     logger.info("Client certificate ready to be downloaded.")
-    return FileResponse(
-        file_path, media_type="application/octet-stream", filename=file_name
+    return Response(
+        content=content,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{file_name}"',
+        },
+        media_type="application/zip",
     )
 
 
@@ -125,31 +167,43 @@ async def renew_client_cert(client_name: str, session: DBSession):
     client = get_client_by_name(client_name, session)
     cert = client.cert
 
-    if cert is not None:
+    if cert is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="The client certificate record was not found.",
+        )
+    try:
         cert_details = openvpn.renew_client_cert(client.name)
+        if not cert_details:
+            raise RuntimeError("Renewed certificate details were unavailable.")
         for key, value in cert_details.items():
             setattr(cert, key, value)
-
         session.add(cert)
         session.commit()
         session.refresh(cert)
-
-        logger.info("Client certificate renewed successfully!")
-        return cert
+    except Exception as error:
+        session.rollback()
+        raise _certificate_failure("renewal") from error
+    logger.info("Client certificate renewed successfully!")
+    return cert
 
 
 @router.put("/{client_name}/revoke", response_model=ClientBase)
 async def revoke_client(client_name: str, session: DBSession):
     logger.info(f"Revoking client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
-    client.revoked = True
-
-    openvpn.revoke_client(client.name)
-    openvpn.generate_crl()
-
-    session.add(client)
-    session.commit()
-    session.refresh(client)
+    try:
+        if not openvpn.revoke_client(client.name):
+            raise RuntimeError("Client certificate revocation failed.")
+        if not openvpn.generate_crl():
+            raise RuntimeError("Certificate revocation list generation failed.")
+        client.revoked = True
+        session.add(client)
+        session.commit()
+        session.refresh(client)
+    except Exception as error:
+        session.rollback()
+        raise _certificate_failure("revocation") from error
 
     logger.info("Client certificate revoked successfully!")
     return client
@@ -159,25 +213,36 @@ async def revoke_client(client_name: str, session: DBSession):
 async def assign_virtual_address(
     client_name: str, address: VirtualAddressBase, session: DBSession
 ):
-    logger.info(f"Assigning virtual address {address.ip} to client {client_name}...")
+    logger.info(f"Assigning a virtual address to client {client_name}...")
     statement = select(VirtualAddress).where(VirtualAddress.ip == address.ip)
     virtual_address = session.exec(statement).one_or_none()
 
     if not virtual_address:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f'Virtual address with IP "{address.ip}" not found!',
+            detail="The virtual address was not found.",
+        )
+
+    client = get_client_by_name(client_name, session)
+    owner = session.exec(
+        select(Client).where(
+            Client.virtual_address_id == virtual_address.id,
+        )
+    ).first()
+    if owner is not None and owner.id != client.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The virtual address is assigned to another client.",
         )
 
     server = await get_server(session)
-    client = get_client_by_name(client_name, session)
     client.virtual_address = virtual_address
     openvpn.assign_client_ip(client.name, virtual_address.ip, server.subnet_mask)
 
     if client.cidr:
         network = ipaddress.ip_network(client.cidr, strict=False)
         openvpn.add_iroute(client.name, f"{network.network_address} {network.netmask}")
-        logger.info(f"Added iroute on {network.network_address} {network.netmask}.")
+        logger.info("Added client iroute successfully.")
 
     session.add(client)
     session.commit()
@@ -261,10 +326,8 @@ async def close_connection(
     return connection
 
 
-@router.post("/import", response_model=ClientImportSummary)
-async def import_clients(session: DBSession):
-    """Import existing clients from Easy-RSA certificate directory."""
-    logger.info("Importing existing clients from Easy-RSA...")
+def _import_clients(session: Session) -> dict[str, int]:
+    """Import discovered Easy-RSA certificates in one transaction."""
     discovered_names = openvpn.list_client_certs()
 
     added_count = 0
@@ -310,8 +373,22 @@ async def import_clients(session: DBSession):
             added_count += 1
 
     session.commit()
-    logger.info(f"Import complete: {added_count} added, {updated_count} updated.")
     return {"added": added_count, "updated": updated_count}
+
+
+@router.post("/import", response_model=ClientImportSummary)
+async def import_clients(session: DBSession):
+    """Import existing clients from Easy-RSA certificate directory."""
+    logger.info("Importing existing clients from Easy-RSA...")
+    try:
+        result = _import_clients(session)
+    except Exception as error:
+        session.rollback()
+        raise _certificate_failure("import") from error
+    logger.info(
+        f"Import complete: {result['added']} added, {result['updated']} updated."
+    )
+    return result
 
 
 def get_client_by_name(client_name: str, session: Session) -> Client:

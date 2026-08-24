@@ -5,6 +5,7 @@ export const queryKeys = {
   clients: {
     all: ['clients'] as const,
     detail: (name: string) => ['clients', name] as const,
+    addresses: ['clients', 'addresses', 'assignable'] as const,
   },
   devices: {
     all: ['devices'] as const,
@@ -21,5 +22,10 @@ export const queryKeys = {
   users: {
     all: ['users'] as const,
     detail: (id: number) => ['users', id] as const,
+    clients: (id: number) => ['users', id, 'clients'] as const,
+    clientOwnership: ['users', 'client-ownership'] as const,
+    clientOwnershipFor: (userIds: number[]) =>
+      ['users', 'client-ownership', ...userIds] as const,
+    devices: (id: number) => ['users', id, 'devices'] as const,
   },
 }

@@ -1,5 +1,4 @@
-import os
-import stat
+import logging
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -216,11 +215,15 @@ def test_get_clients(client: TestClient):
 @patch("sciaiot.ovpncp.utils.openvpn.add_iroute")
 @patch("sciaiot.ovpncp.utils.openvpn.assign_client_ip")
 def test_assign_virtual_address(
-    mock_assign_client_ip, mock_add_iroute, client: TestClient
+    mock_assign_client_ip,
+    mock_add_iroute,
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
 ):
+    caplog.set_level(logging.INFO)
     response = client.put("/clients/test_client_1/assign-ip", json={"ip": "10.0.0.1"})
     assert response.status_code == 404
-    _assert_problem_detail(response, 'Virtual address with IP "10.0.0.1" not found!')
+    _assert_problem_detail(response, "The virtual address was not found.")
 
     response = client.put("/clients/test_client_1/assign-ip", json={"ip": "10.8.0.2"})
     assert response.status_code == 200
@@ -235,6 +238,26 @@ def test_assign_virtual_address(
     content = response.json()
     assert content["name"] == "test_client_2"
     assert content["virtual_address"]["ip"] == "10.8.0.3"
+    application_logs = "\n".join(
+        record.getMessage()
+        for record in caplog.records
+        if record.name.startswith("sciaiot.ovpncp")
+    )
+    assert "10.8.0.2" not in application_logs
+    assert "10.8.0.3" not in application_logs
+
+    caplog.clear()
+    with caplog.at_level(logging.ERROR):
+        response = client.put(
+            "/clients/test_client_2/assign-ip", json={"ip": "10.8.0.2"}
+        )
+    assert response.status_code == 409
+    _assert_problem_detail(
+        response,
+        "The virtual address is assigned to another client.",
+    )
+    assert "10.8.0.2" not in response.text
+    assert "10.8.0.2" not in caplog.text
 
     response = client.get("/server/assignable-virtual-addresses")
     addresses = response.json()
@@ -244,12 +267,20 @@ def test_assign_virtual_address(
         "test_client_2", "10.8.0.3", "255.255.255.0"
     )
 
+    caplog.clear()
     response = client.put("/clients/test_gateway_1/assign-ip", json={"ip": "10.8.0.11"})
     assert response.status_code == 200
 
     content = response.json()
     assert content["name"] == "test_gateway_1"
     assert content["virtual_address"]["ip"] == "10.8.0.11"
+    application_logs = "\n".join(
+        record.getMessage()
+        for record in caplog.records
+        if record.name.startswith("sciaiot.ovpncp")
+    )
+    assert "10.8.0.11" not in application_logs
+    assert "192.168.1.0" not in application_logs
 
     mock_assign_client_ip.assert_called_with(
         "test_gateway_1", "10.8.0.11", "255.255.255.0"
@@ -488,10 +519,8 @@ def test_get_client(client: TestClient):
 )
 def test_package_client_cert(mock_package_client_cert, client: TestClient):
     response = client.put("/clients/test_client_1/package-cert")
-    assert response.status_code == 200
-
-    content = response.json()
-    assert content["file_path"] == "/opt/ovpncp/certs/test_client_1.zip"
+    assert response.status_code == 204
+    assert response.content == b""
 
     mock_package_client_cert.assert_called_once_with(
         "test_client_1", "/opt/ovpncp/certs"
@@ -499,25 +528,71 @@ def test_package_client_cert(mock_package_client_cert, client: TestClient):
 
 
 @patch("builtins.open", new_callable=mock_open, read_data=b"file content in bytes")
-@patch("os.stat")
-def test_download_client_cert(mock_stat, mock_open, client: TestClient):
-    mode = stat.S_IFREG | 0o644
-    mock_stat_result = os.stat_result((mode, 0, 0, 0, 0, 0, 1024, 0, 0, 0))
-    mock_stat.return_value = mock_stat_result
-
+def test_download_client_cert(mock_open, client: TestClient):
     response = client.get("/clients/test_client_1/download-cert")
     assert response.status_code == 200
-    assert response.headers["Content-Type"] == "application/octet-stream"
-    assert response.headers["Content-Length"] == "1024"
+    assert response.headers["Content-Type"] == "application/zip"
+    assert response.content == b"file content in bytes"
+    assert response.headers["Cache-Control"] == "no-store"
     assert (
         response.headers["Content-Disposition"]
         == 'attachment; filename="test_client_1.zip"'
     )
+    mock_open.assert_called_once_with("/opt/ovpncp/certs/test_client_1.zip", "rb")
 
-    mock_stat.assert_called_with("/opt/ovpncp/certs/test_client_1.zip")
-    mock_open.assert_called_with(
-        "/opt/ovpncp/certs/test_client_1.zip", "rb", -1, None, None, None, True, None
-    )
+
+@patch("builtins.open", side_effect=OSError("local archive unavailable"))
+def test_download_client_cert_uses_azure_without_local_archive(
+    mock_open,
+    client: TestClient,
+) -> None:
+    """Azure downloads do not depend on a leftover local archive."""
+    downloader = MagicMock()
+    downloader.readall.return_value = b"azure archive"
+    blob = MagicMock()
+    blob.download_blob.return_value = downloader
+    container = MagicMock()
+    container.get_blob_client.return_value = blob
+
+    with (
+        patch(
+            "sciaiot.ovpncp.middlewares.azure_storage.STORAGE_CONNECTION_STRING",
+            "configured",
+        ),
+        patch(
+            "sciaiot.ovpncp.middlewares.azure_storage.container_client",
+            container,
+            create=True,
+        ),
+    ):
+        response = client.get("/clients/test_client_1/download-cert")
+
+    assert response.status_code == 200
+    assert response.content == b"azure archive"
+    assert response.headers["Cache-Control"] == "no-store"
+    mock_open.assert_not_called()
+    container.get_blob_client.assert_called_once_with("test_client_1.zip")
+
+
+@patch("builtins.open")
+def test_download_client_cert_failure_is_safe(
+    mock_open,
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Local archive failures expose neither filesystem nor token details."""
+    sensitive = "/server/private/archive.zip?sig=secret-token"
+    mock_open.side_effect = OSError(sensitive)
+
+    caplog.clear()
+    with caplog.at_level(logging.ERROR):
+        response = client.get("/clients/test_client_1/download-cert")
+
+    assert response.status_code == 500
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["detail"] == "The certificate operation failed."
+    assert sensitive not in response.text
+    assert sensitive not in caplog.text
 
 
 @patch("sciaiot.ovpncp.utils.openvpn.renew_client_cert", return_value=cert_details)
@@ -532,6 +607,43 @@ def test_renew_client(mock_renew_client_cert, client: TestClient):
     assert content["expires_on"] is not None
 
     mock_renew_client_cert.assert_called_once_with("test_client_1")
+
+
+@patch("sciaiot.ovpncp.utils.openvpn.renew_client_cert", return_value={})
+def test_renew_client_rejects_empty_certificate(
+    mock_renew_client_cert, client: TestClient
+):
+    before = client.get("/clients/test_client_2").json()["cert"]
+
+    response = client.put("/clients/test_client_2/renew-cert")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "The certificate operation failed."
+    assert client.get("/clients/test_client_2").json()["cert"] == before
+    mock_renew_client_cert.assert_called_once_with("test_client_2")
+
+
+@pytest.mark.parametrize(
+    ("revoke_result", "crl_result"),
+    [(False, True), (True, False)],
+)
+@patch("sciaiot.ovpncp.utils.openvpn.revoke_client")
+@patch("sciaiot.ovpncp.utils.openvpn.generate_crl")
+def test_revoke_client_rejects_unsuccessful_result(
+    mock_generate_crl,
+    mock_revoke_client,
+    revoke_result: bool,
+    crl_result: bool,
+    client: TestClient,
+):
+    mock_revoke_client.return_value = revoke_result
+    mock_generate_crl.return_value = crl_result
+
+    response = client.put("/clients/test_client_2/revoke")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "The certificate operation failed."
+    assert client.get("/clients/test_client_2").json()["revoked"] is False
 
 
 @patch("sciaiot.ovpncp.utils.openvpn.revoke_client", return_value=True)
@@ -610,3 +722,86 @@ def test_import_clients(
     response = client.post("/clients/import")
     assert response.status_code == 200
     assert response.json() == {"added": 0, "updated": 0}
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "body", "patch_target"),
+    [
+        (
+            "post",
+            "/clients",
+            {"name": "failure-client"},
+            "sciaiot.ovpncp.utils.openvpn.build_client",
+        ),
+        (
+            "put",
+            "/clients/test_client_1/package-cert",
+            None,
+            "sciaiot.ovpncp.utils.openvpn.package_client_cert",
+        ),
+        (
+            "put",
+            "/clients/test_client_1/renew-cert",
+            None,
+            "sciaiot.ovpncp.utils.openvpn.renew_client_cert",
+        ),
+        (
+            "put",
+            "/clients/test_client_1/revoke",
+            None,
+            "sciaiot.ovpncp.utils.openvpn.revoke_client",
+        ),
+        (
+            "post",
+            "/clients/import",
+            None,
+            "sciaiot.ovpncp.utils.openvpn.list_client_certs",
+        ),
+    ],
+)
+def test_certificate_operation_failures_hide_sensitive_details(
+    method: str,
+    path: str,
+    body: dict[str, str] | None,
+    patch_target: str,
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Privileged certificate failures expose only fixed safe diagnostics."""
+    sensitive = "/server/private/archive.zip?sig=secret-token"
+    caplog.clear()
+    with (
+        patch(patch_target, side_effect=RuntimeError(sensitive)),
+        caplog.at_level(logging.ERROR),
+    ):
+        response = getattr(client, method)(path, json=body)
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "The certificate operation failed."
+    assert sensitive not in response.text
+    assert sensitive not in caplog.text
+
+
+@patch(
+    "sciaiot.ovpncp.utils.openvpn.list_client_certs",
+    return_value=["in-loop-client"],
+)
+@patch("sciaiot.ovpncp.utils.openvpn.read_client_cert")
+def test_import_in_loop_failure_hides_sensitive_details(
+    mock_read_cert,
+    mock_list_certs,
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Import-loop failures use the same fixed safe boundary."""
+    sensitive = "/server/private/issued/client.crt?sig=secret-token"
+    mock_read_cert.side_effect = RuntimeError(sensitive)
+    caplog.clear()
+    with caplog.at_level(logging.ERROR):
+        response = client.post("/clients/import")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "The certificate operation failed."
+    assert sensitive not in response.text
+    assert sensitive not in caplog.text
+    mock_list_certs.assert_called_once()

@@ -1,15 +1,14 @@
-import datetime
-import json
 import logging
 import os
-from urllib.parse import quote_plus
+from typing import Any
 
-from azure.storage.blob import BlobSasPermissions, BlobServiceClient, generate_blob_sas
-from fastapi import Request
-from fastapi.concurrency import iterate_in_threadpool
-from fastapi.responses import JSONResponse
+from azure.storage.blob import BlobServiceClient
+from fastapi import Request, Response, status
+from fastapi.concurrency import run_in_threadpool
 
-from sciaiot.ovpncp.utils.logging import mask_sensitive
+from sciaiot.ovpncp import dependencies
+from sciaiot.ovpncp.problems import problem_response
+from sciaiot.ovpncp.utils import openvpn
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +21,6 @@ if STORAGE_CONNECTION_STRING:
     )
     container_client = blob_service_client.get_container_client(CONTAINER_NAME)
 
-    parts = dict(x.split("=", 1) for x in STORAGE_CONNECTION_STRING.split(";") if x)
-    account_name = parts.get("AccountName", "")
-    account_key = parts.get("AccountKey", "")
-
 
 async def azure_storage_middleware(request: Request, call_next):
     if STORAGE_CONNECTION_STRING:
@@ -34,6 +29,7 @@ async def azure_storage_middleware(request: Request, call_next):
             response = await handle_upload(request, call_next)
             return response
         elif url_path.endswith("download-cert"):
+            request.state.certificate_download_from_azure = True
             response = await handle_download(request, call_next)
             return response
 
@@ -41,55 +37,65 @@ async def azure_storage_middleware(request: Request, call_next):
     return response
 
 
+def _upload_archive(blob_client: Any, file_path: str) -> None:
+    """Upload one packaged archive without returning its location."""
+    with open(file_path, "rb") as data:
+        blob_client.upload_blob(data, overwrite=True)
+
+
+def _download_archive(blob_client: Any) -> bytes:
+    """Read one packaged archive from Blob Storage."""
+    return blob_client.download_blob().readall()
+
+
 async def handle_upload(request: Request, call_next):
     response = await call_next(request)
-    response_body = [chunk async for chunk in response.body_iterator]
-    response.body_iterator = iterate_in_threadpool(iter(response_body))
+    if response.status_code != status.HTTP_204_NO_CONTENT:
+        return response
 
     client_name = request.path_params["client_name"]
-    archive = json.loads(response_body[0].decode())
-    file_path = archive.get("file_path")
-    blob_client = container_client.get_blob_client(f"{client_name}.zip")
-
     try:
-        with open(file_path, "rb") as data:
-            blob_client.upload_blob(data, overwrite=True)
-            logger.info(f"Cert uploaded to Azure Blob Storage: {blob_client.url}")
-        response = JSONResponse(content={"file_path": blob_client.url}, status_code=200)
-    except Exception as e:
-        logger.error(f"Error uploading cert to Azure Blob Storage: {e}")
-        response = JSONResponse(
-            content={"detail": "Error uploading cert to Azure Blob Storage"},
-            status_code=500,
+        openvpn.validate_name(client_name)
+        file_path = os.path.join(dependencies.certs_directory, f"{client_name}.zip")
+        blob_client = container_client.get_blob_client(f"{client_name}.zip")
+        await run_in_threadpool(_upload_archive, blob_client, file_path)
+    except Exception:  # noqa: BLE001 -- third-party storage boundary
+        logger.error("Client certificate archive upload failed.")
+        return problem_response(
+            request,
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "The certificate operation failed.",
         )
 
-    return response
+    logger.info("Client certificate archive uploaded to Azure Blob Storage.")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 async def handle_download(request: Request, call_next):
     response = await call_next(request)
+    if response.status_code != status.HTTP_200_OK:
+        return response
+
     client_name = request.path_params["client_name"]
-    blob_name = f"{client_name}.zip"
-
     try:
-        sas_token = generate_blob_sas(
-            account_name=account_name,
-            container_name=CONTAINER_NAME,
-            blob_name=blob_name,
-            account_key=account_key,
-            permission=BlobSasPermissions(read=True),
-            expiry=datetime.datetime.now(datetime.timezone.utc)
-            + datetime.timedelta(minutes=15),
+        openvpn.validate_name(client_name)
+        file_name = f"{client_name}.zip"
+        blob_client = container_client.get_blob_client(file_name)
+        content = await run_in_threadpool(_download_archive, blob_client)
+    except Exception:  # noqa: BLE001 -- third-party storage boundary
+        logger.error("Client certificate archive download failed.")
+        return problem_response(
+            request,
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "The certificate operation failed.",
         )
 
-        blob_url = f"https://{account_name}.blob.core.windows.net/{CONTAINER_NAME}/{quote_plus(blob_name)}"
-        sas_url = f"{blob_url}?{sas_token}"
-        logger.info(f"Generated SAS URL for blob: {mask_sensitive(sas_url)}")
-        response = JSONResponse(content={"url": sas_url}, status_code=200)
-    except Exception as e:
-        logger.error(f"Error generating SAS URL for blob: {e}")
-        response = JSONResponse(
-            content={"detail": "Error generating SAS URL for blob"}, status_code=500
-        )
-
-    return response
+    logger.info("Client certificate archive downloaded from Azure Blob Storage.")
+    return Response(
+        content=content,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{file_name}"',
+        },
+        media_type="application/zip",
+    )

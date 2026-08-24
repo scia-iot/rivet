@@ -531,14 +531,6 @@ export interface components {
             /** Issued To */
             issued_to: string;
         };
-        /**
-         * CertificatePackage
-         * @description Filesystem location of a packaged client certificate archive.
-         */
-        CertificatePackage: {
-            /** File Path */
-            file_path: string;
-        };
         /** Client */
         Client: {
             /** Cidr */
@@ -1642,12 +1634,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description Packaged client certificate archive. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/zip": string;
+                };
             };
             /** @description Bad Request */
             400: {
@@ -1743,13 +1737,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["CertificatePackage"];
-                };
+                content?: never;
             };
             /** @description Bad Request */
             400: {

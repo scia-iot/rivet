@@ -9,12 +9,20 @@ import {
   DeviceListPage,
   EditDevicePage,
 } from '@/features/devices/device-pages'
+import {
+  ClientDetailPage,
+  ClientListPage,
+} from '@/features/clients/client-pages'
+import {
+  CreateUserPage,
+  EditUserPage,
+  UserDetailPage,
+  UserListPage,
+} from '@/features/users/user-pages'
 import { PlaceholderPage } from '@/pages/placeholder-page'
 
 const OVERVIEW_DESCRIPTION =
   'Monitor and administer this OpenVPN control plane.'
-const CLIENTS_DESCRIPTION =
-  'Provision and maintain OpenVPN client identities.'
 
 export default function App() {
   const location = useLocation()
@@ -70,10 +78,31 @@ export default function App() {
             path="users"
             element={
               <RequirePermission permission="users:read">
-                <PlaceholderPage
-                  title="Users"
-                  description="Manage OAuth-backed users and their VPN clients."
-                />
+                <UserListPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="users/new"
+            element={
+              <RequirePermission permission="users:write">
+                <CreateUserPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="users/:userId"
+            element={
+              <RequirePermission permission="users:read">
+                <UserDetailPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="users/:userId/edit"
+            element={
+              <RequirePermission permission="users:write">
+                <EditUserPage />
               </RequirePermission>
             }
           />
@@ -81,10 +110,15 @@ export default function App() {
             path="clients"
             element={
               <RequirePermission permission="clients:read">
-                <PlaceholderPage
-                  title="VPN clients"
-                  description={CLIENTS_DESCRIPTION}
-                />
+                <ClientListPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="clients/:clientName"
+            element={
+              <RequirePermission permission="clients:read">
+                <ClientDetailPage />
               </RequirePermission>
             }
           />

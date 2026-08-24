@@ -61,20 +61,6 @@
         "title": "CertBase",
         "type": "object"
       },
-      "CertificatePackage": {
-        "description": "Filesystem location of a packaged client certificate archive.",
-        "properties": {
-          "file_path": {
-            "title": "File Path",
-            "type": "string"
-          }
-        },
-        "required": [
-          "file_path"
-        ],
-        "title": "CertificatePackage",
-        "type": "object"
-      },
       "Client": {
         "properties": {
           "cidr": {
@@ -2098,7 +2084,15 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response"
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Packaged client certificate archive."
           },
           "400": {
             "content": {
@@ -2242,14 +2236,7 @@
           }
         ],
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CertificatePackage"
-                }
-              }
-            },
+          "204": {
             "description": "Successful Response"
           },
           "400": {

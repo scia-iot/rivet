@@ -37,8 +37,9 @@ The frontend scaffold is complete. It includes:
 - fail-closed Entra configuration
 - zero known npm audit vulnerabilities at the time of scaffolding
 
-The scaffold contains route placeholders only. It does not implement domain
-workflows, fine-grained authorization, or production static-file delivery.
+The frontend now includes device, user, and VPN-client administration.
+Individual access, server/network administration, fine-grained authorization,
+the device-user portal, and production static-file delivery remain pending.
 
 ## Phase status
 
@@ -49,7 +50,7 @@ workflows, fine-grained authorization, or production static-file delivery.
 | 2 | Authentication and current principal | completed | Backend `GET /me` |
 | 3 | Shared UI, forms, and error handling | completed | Phases 1-2 |
 | 4 | Device administration | completed | Phase 3 |
-| 5 | User and VPN-client administration | pending | Phase 4 |
+| 5 | User and VPN-client administration | completed | Phase 4 |
 | 6 | Individual access management | pending | Phase 5 |
 | 7 | Server and network administration | pending | Phase 3 |
 | 8 | Fine-grained authorization contract | pending | Phase 6 backend behavior |
@@ -550,7 +551,43 @@ client operations.
 
 ### Notes
 
-Record certificate-download behavior and any backend contract changes here.
+- Added permission-aware user list, create, detail, rename, and delete routes.
+  User detail provides Overview, VPN clients, and intentionally informational
+  Device access tabs. Issuer and subject are omitted from list and read-only
+  presentation, and user deletion or unlinking never deletes or revokes a VPN
+  client.
+- Added multi-client ownership workflows with unowned-client filtering and
+  conflict-safe server confirmation. Ownership mutations invalidate the user,
+  assignment, and ownership caches; renames also invalidate the current
+  principal so a renamed signed-in administrator is not presented stale.
+- Added permission-aware VPN-client list and detail workflows for creation,
+  Easy-RSA import, virtual-address assignment and removal, certificate expiry
+  and revocation state, renewal, packaging, download, and typed-confirmation
+  revocation. Security-sensitive mutations are never optimistic and invalidate
+  the narrow affected client, address, user-client, and list caches.
+- Certificate download first packages the client, fetches the archive directly
+  as `application/zip` with `Cache-Control: no-store`, and uses a temporary Blob
+  URL that is revoked immediately after the hidden download anchor is removed.
+  No archive, Blob URL, storage URL, or SAS URL enters TanStack Query,
+  `localStorage`, `sessionStorage`, logs, or analytics. Azure deployments proxy
+  Blob Storage bytes through the API and support cloud-only archives without a
+  leftover local ZIP.
+- `PUT /clients/{client_name}/package-cert` now returns an empty `204` instead
+  of a filesystem-path JSON body. `GET /clients/{client_name}/download-cert`
+  now documents and returns binary `application/zip` bytes with `no-store` and
+  an attachment filename; Azure no longer returns a JSON SAS URL.
+- Client creation, renewal, revocation, import, packaging, local download, and
+  Azure upload/download failures now use fixed safe certificate-operation
+  errors. Database changes roll back on applicable failures; creation verifies
+  Easy-RSA success, renewal rejects empty certificate details, and revocation
+  requires both certificate revocation and CRL generation before persistence.
+- Virtual-address assignment now returns a fixed `404` for an unknown address
+  and `409` when another client owns it. Phase 5 also removed certificate paths,
+  storage locations, exception contents, and virtual addresses from affected
+  application logs.
+- The reviewed lockfile-only advisory update keeps all direct dependencies and
+  OpenAPI tooling versions unchanged while resolving
+  `@redocly/openapi-core` 1.34.19, `js-yaml` 4.3.1, and `nanoid` 3.3.18.
 
 ## Phase 6: Individual access management
 
@@ -1014,3 +1051,49 @@ Deferred:
   broader route-level code splitting remains production hardening work.
 - No backend, Python, database, privileged system, VPN, firewall, cloud, or API
   contract changes were made, so backend quality gates were not applicable.
+
+2026-08-24 - Phase 5 completed
+Implementation:
+- Added permission-aware user list, create, detail, rename, and delete routes;
+  external-identity presentation controls; Overview, VPN clients, and Device
+  access tabs; multi-client ownership; conflict handling; and cache invalidation
+  without deleting or revoking clients during unlink or user deletion.
+- Added permission-aware VPN-client list and detail routes with creation,
+  Easy-RSA import, virtual-address assignment and removal, certificate state and
+  expiry, renewal, packaging, direct download, and typed-confirmation revocation.
+- Changed packaging to an empty `204` and download to no-store binary ZIP bytes.
+  Azure storage now proxies bytes without SAS URLs and supports cloud-only
+  archives. Certificate boundaries return fixed safe failures and roll back
+  applicable database work; affected logs no longer expose paths, addresses,
+  storage locations, or exception contents.
+- Regenerated the OpenAPI contract and updated frontend documentation. Updated
+  only reviewed vulnerable transitive lockfile resolutions:
+  `@redocly/openapi-core` 1.34.19, `js-yaml` 4.3.1, and `nanoid` 3.3.18.
+Verification:
+- `npm test -- --run src/features/users/user-pages.test.tsx
+  src/features/clients/client-pages.test.tsx`: passed; 2 files and 19 tests.
+- `npm ci`: passed; 258 packages installed and 259 audited with 0
+  vulnerabilities. `npm audit`: passed with 0 vulnerabilities.
+- `npm run api:check`, `npm run lint`, and `npm run typecheck`: passed; generated
+  OpenAPI JSON and TypeScript declarations had no drift and direct tool versions
+  remained compatible with the patched transitive graph.
+- `npm run test`: passed; 22 files and 84 tests. `npm run build`: passed; Vite
+  transformed 2,284 modules and produced the production bundle.
+- `pytest -q tests/test_identity_api.py tests/test_api.py tests/test_openvpn.py
+  tests/test_azure_storage.py`: passed; 72 focused tests.
+- `ruff format --check .`: passed for 41 files. `ruff check` passed for every
+  Phase 5-touched Python and test file. Repository-wide `ruff check .` retains
+  exactly 21 pre-existing findings outside Phase 5 scope.
+- `mypy .`: passed for 37 source files.
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 109 passed with
+  90% total coverage and one existing Starlette/httpx deprecation warning.
+- `git diff --check` and the scoped sensitive-output review passed. Azure,
+  OpenVPN, filesystem, and privileged operations were mocked in focused tests;
+  no real cloud, VPN, firewall, route, or certificate store was changed.
+Deferred:
+- Device-access grant management remains Phase 6; the current tab explicitly
+  avoids presenting application grants as enforced network access.
+- Fine-grained backend authorization remains Phase 8, and deployed Entra/Azure
+  browser smoke testing plus production topology E2E remains Phase 10.
+- The existing Vite main-chunk size advisory, 21 untouched repository Ruff
+  findings, and Starlette/httpx deprecation warning remain unchanged.
