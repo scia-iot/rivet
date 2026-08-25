@@ -268,8 +268,8 @@ curl -X DELETE http://127.0.0.1:8000/users/1/clients/2
 ```
 
 A user may own multiple VPN clients, but each client can belong to only one
-user. These management endpoints use the existing Entra `APP_ROLE` security
-boundary; finer-grained roles can be introduced with the frontend.
+user. FastAPI enforces explicit `users:read` and `users:write` permissions
+on these management endpoints. Frontend presentation does not grant API access.
 
 Grant, list, and revoke individual device access:
 
@@ -295,15 +295,27 @@ Register this app on Azure Entra ID first, then sets three ENVs to enable the se
 3. `AZURE_ENTRAID_APP_ROLE` - the app role assigned by this app.
 
 All three values are required together; missing or partial configuration fails
-closed. Authenticated callers can use `GET /me` to resolve the validated token's
-issuer and subject to a local User. The endpoint never accepts a caller-supplied
-user ID and returns the canonical `sysadmin` role plus the current management
-permission vocabulary. Create the matching local User record before signing in
-to the frontend.
+closed. Authentication validates the token signature, audience, issuer, and
+stable identity before authorization. The configured Entra app role maps to the
+canonical `sysadmin` role and these FastAPI-enforced permissions:
+`devices:read`, `devices:write`, `users:read`, `users:write`,
+`clients:read`, `clients:write`, `access:read`, `access:grant`,
+`server:read`, and `server:write`.
+
+Authenticated callers can use `GET /me` to resolve the validated token issuer
+and subject to a local User. The endpoint never accepts a caller-supplied user
+ID. A registered caller without the configured admin role resolves as
+`device_user` with no control-plane management permissions. Ownership of VPN
+clients and explicit device AccessGrant records are separate resource policies;
+they do not grant management-route access. Create the matching local User record
+before signing in to the frontend. OpenAPI operations publish their enforced
+policy as `x-required-permission`.
 
 Only exact localhost `POST` and `PUT` requests to
 `/clients/{client_name}/connections` bypass bearer authentication for the
-OpenVPN connection scripts. Other localhost API traffic remains protected.
+OpenVPN connection scripts. Remote callers to those endpoints require
+`clients:write`; all other localhost API traffic remains protected. The hook
+operations are documented as `x-local-hook-or-permission`.
 
 Notice: for the consumer client app, two things must be configured on the client app registration:
 

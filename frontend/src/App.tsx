@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Route, Routes, useLocation } from 'react-router'
 
 import { RouteErrorBoundary } from '@/app/error-boundary'
+import { routePermissions } from '@/auth/permissions'
 import { RequirePermission } from '@/auth/principal-session'
 import { AppShell } from '@/components/app-shell'
 import { PlaceholderPage } from '@/pages/placeholder-page'
@@ -76,7 +77,7 @@ export default function App() {
             <Route
               index
               element={
-                <RequirePermission permission="server:read">
+                <RequirePermission permission={routePermissions.overview}>
                   <PlaceholderPage
                     title="Overview"
                     description={OVERVIEW_DESCRIPTION}
@@ -86,7 +87,7 @@ export default function App() {
             />
             <Route
               element={
-                <RequirePermission permission="devices:read">
+                <RequirePermission permission={routePermissions.devices}>
                   <DeviceListPage />
                 </RequirePermission>
               }
@@ -94,7 +95,7 @@ export default function App() {
             />
             <Route
               element={
-                <RequirePermission permission="devices:write">
+                <RequirePermission permission={routePermissions.createDevice}>
                   <CreateDevicePage />
                 </RequirePermission>
               }
@@ -102,7 +103,7 @@ export default function App() {
             />
             <Route
               element={
-                <RequirePermission permission="devices:read">
+                <RequirePermission permission={routePermissions.deviceDetail}>
                   <DeviceDetailPage />
                 </RequirePermission>
               }
@@ -110,7 +111,7 @@ export default function App() {
             />
             <Route
               element={
-                <RequirePermission permission="devices:write">
+                <RequirePermission permission={routePermissions.editDevice}>
                   <EditDevicePage />
                 </RequirePermission>
               }
@@ -119,7 +120,7 @@ export default function App() {
             <Route
               path="users"
               element={
-                <RequirePermission permission="users:read">
+                <RequirePermission permission={routePermissions.users}>
                   <UserListPage />
                 </RequirePermission>
               }
@@ -127,7 +128,7 @@ export default function App() {
             <Route
               path="users/new"
               element={
-                <RequirePermission permission="users:write">
+                <RequirePermission permission={routePermissions.createUser}>
                   <CreateUserPage />
                 </RequirePermission>
               }
@@ -135,7 +136,7 @@ export default function App() {
             <Route
               path="users/:userId"
               element={
-                <RequirePermission permission="users:read">
+                <RequirePermission permission={routePermissions.userDetail}>
                   <UserDetailPage />
                 </RequirePermission>
               }
@@ -143,7 +144,7 @@ export default function App() {
             <Route
               path="users/:userId/edit"
               element={
-                <RequirePermission permission="users:write">
+                <RequirePermission permission={routePermissions.editUser}>
                   <EditUserPage />
                 </RequirePermission>
               }
@@ -151,7 +152,7 @@ export default function App() {
             <Route
               path="clients"
               element={
-                <RequirePermission permission="clients:read">
+                <RequirePermission permission={routePermissions.clients}>
                   <ClientListPage />
                 </RequirePermission>
               }
@@ -159,7 +160,7 @@ export default function App() {
             <Route
               path="clients/:clientName"
               element={
-                <RequirePermission permission="clients:read">
+                <RequirePermission permission={routePermissions.clientDetail}>
                   <ClientDetailPage />
                 </RequirePermission>
               }
@@ -167,7 +168,7 @@ export default function App() {
             <Route
               path="server"
               element={
-                <RequirePermission permission="server:read">
+                <RequirePermission permission={routePermissions.server}>
                   <ServerPage />
                 </RequirePermission>
               }
@@ -175,7 +176,7 @@ export default function App() {
             <Route
               path="server/routes"
               element={
-                <RequirePermission permission="server:read">
+                <RequirePermission permission={routePermissions.serverRoutes}>
                   <ServerRoutesPage />
                 </RequirePermission>
               }
@@ -183,7 +184,7 @@ export default function App() {
             <Route
               path="networks"
               element={
-                <RequirePermission permission="server:read">
+                <RequirePermission permission={routePermissions.networks}>
                   <NetworkListPage />
                 </RequirePermission>
               }
@@ -191,7 +192,7 @@ export default function App() {
             <Route
               path="networks/:networkId"
               element={
-                <RequirePermission permission="server:read">
+                <RequirePermission permission={routePermissions.networkDetail}>
                   <NetworkDetailPage />
                 </RequirePermission>
               }
@@ -199,7 +200,7 @@ export default function App() {
             <Route
               path="access"
               element={
-                <RequirePermission permission="access:read">
+                <RequirePermission permission={routePermissions.access}>
                   <PlaceholderPage
                     title="Access"
                     description="Review individual user-to-device access grants."

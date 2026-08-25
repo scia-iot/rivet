@@ -85,3 +85,98 @@ def test_http_errors_are_rfc7807_problem_details() -> None:
         "detail": "Contract resource was not found.",
         "instance": "http://testserver/test-http-error",
     }
+
+
+def test_openapi_documents_every_management_permission() -> None:
+    """Generated operations expose the permission enforced by FastAPI."""
+    app.openapi_schema = None
+    schema = app.openapi()
+    expected = {
+        ("get", "/devices"): "devices:read",
+        ("post", "/devices"): "devices:write",
+        ("get", "/devices/{device_id}"): "devices:read",
+        ("patch", "/devices/{device_id}"): "devices:write",
+        ("delete", "/devices/{device_id}"): "devices:write",
+        ("get", "/users"): "users:read",
+        ("post", "/users"): "users:write",
+        ("get", "/users/{user_id}"): "users:read",
+        ("patch", "/users/{user_id}"): "users:write",
+        ("delete", "/users/{user_id}"): "users:write",
+        ("get", "/users/{user_id}/devices"): "access:read",
+        (
+            "put",
+            "/users/{user_id}/devices/{device_id}",
+        ): "access:grant",
+        (
+            "delete",
+            "/users/{user_id}/devices/{device_id}",
+        ): "access:grant",
+        ("get", "/users/{user_id}/clients"): "users:read",
+        (
+            "put",
+            "/users/{user_id}/clients/{client_id}",
+        ): "users:write",
+        (
+            "delete",
+            "/users/{user_id}/clients/{client_id}",
+        ): "users:write",
+        ("get", "/clients"): "clients:read",
+        ("post", "/clients"): "clients:write",
+        ("post", "/clients/import"): "clients:write",
+        ("get", "/clients/{client_name}"): "clients:read",
+        (
+            "put",
+            "/clients/{client_name}/package-cert",
+        ): "clients:write",
+        (
+            "get",
+            "/clients/{client_name}/download-cert",
+        ): "clients:write",
+        ("put", "/clients/{client_name}/renew-cert"): "clients:write",
+        ("put", "/clients/{client_name}/revoke"): "clients:write",
+        ("put", "/clients/{client_name}/assign-ip"): "clients:write",
+        (
+            "delete",
+            "/clients/{client_name}/unassign-ip",
+        ): "clients:write",
+        (
+            "post",
+            "/clients/{client_name}/connections",
+        ): "clients:write",
+        (
+            "put",
+            "/clients/{client_name}/connections",
+        ): "clients:write",
+        ("get", "/server"): "server:read",
+        ("post", "/server"): "server:write",
+        ("get", "/server/health"): "server:read",
+        (
+            "get",
+            "/server/assignable-virtual-addresses",
+        ): "server:read",
+        ("get", "/server/routes"): "server:read",
+        ("post", "/server/routes"): "server:write",
+        ("delete", "/server/routes"): "server:write",
+        ("get", "/networks"): "server:read",
+        ("post", "/networks"): "server:write",
+        ("get", "/networks/{network_id}"): "server:read",
+        ("delete", "/networks/{network_id}"): "server:write",
+    }
+
+    actual = {}
+    for path, path_item in schema["paths"].items():
+        if not path.startswith(
+            ("/devices", "/users", "/clients", "/server", "/networks")
+        ):
+            continue
+        for method, operation in path_item.items():
+            permission = operation.get("x-required-permission") or operation.get(
+                "x-local-hook-or-permission"
+            )
+            actual[(method, path)] = permission
+
+    assert actual == expected
+    for method in ("post", "put"):
+        operation = schema["paths"]["/clients/{client_name}/connections"][method]
+        assert "x-required-permission" not in operation
+        assert operation["x-local-hook-or-permission"] == "clients:write"

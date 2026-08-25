@@ -1138,7 +1138,8 @@
         "summary": "Retrieve Clients",
         "tags": [
           "client"
-        ]
+        ],
+        "x-required-permission": "clients:read"
       },
       "post": {
         "operationId": "create_client_clients_post",
@@ -1287,7 +1288,8 @@
         "summary": "Create Client",
         "tags": [
           "client"
-        ]
+        ],
+        "x-required-permission": "clients:write"
       }
     },
     "/clients/import": {
@@ -1429,7 +1431,8 @@
         "summary": "Import Clients",
         "tags": [
           "client"
-        ]
+        ],
+        "x-required-permission": "clients:write"
       }
     },
     "/clients/{client_name}": {
@@ -1581,7 +1584,8 @@
         "summary": "Retrieve Client",
         "tags": [
           "client"
-        ]
+        ],
+        "x-required-permission": "clients:read"
       }
     },
     "/clients/{client_name}/assign-ip": {
@@ -1743,7 +1747,8 @@
         "summary": "Assign Virtual Address",
         "tags": [
           "client"
-        ]
+        ],
+        "x-required-permission": "clients:write"
       }
     },
     "/clients/{client_name}/connections": {
@@ -1905,7 +1910,8 @@
         "summary": "Start Connection",
         "tags": [
           "client"
-        ]
+        ],
+        "x-local-hook-or-permission": "clients:write"
       },
       "put": {
         "operationId": "close_connection_clients__client_name__connections_put",
@@ -2065,7 +2071,8 @@
         "summary": "Close Connection",
         "tags": [
           "client"
-        ]
+        ],
+        "x-local-hook-or-permission": "clients:write"
       }
     },
     "/clients/{client_name}/download-cert": {
@@ -2218,7 +2225,8 @@
         "summary": "Download Client Cert",
         "tags": [
           "client"
-        ]
+        ],
+        "x-required-permission": "clients:write"
       }
     },
     "/clients/{client_name}/package-cert": {
@@ -2363,7 +2371,8 @@
         "summary": "Package Client Cert",
         "tags": [
           "client"
-        ]
+        ],
+        "x-required-permission": "clients:write"
       }
     },
     "/clients/{client_name}/renew-cert": {
@@ -2515,7 +2524,8 @@
         "summary": "Renew Client Cert",
         "tags": [
           "client"
-        ]
+        ],
+        "x-required-permission": "clients:write"
       }
     },
     "/clients/{client_name}/revoke": {
@@ -2667,7 +2677,8 @@
         "summary": "Revoke Client",
         "tags": [
           "client"
-        ]
+        ],
+        "x-required-permission": "clients:write"
       }
     },
     "/clients/{client_name}/unassign-ip": {
@@ -2812,7 +2823,8 @@
         "summary": "Unassign Virtual Address",
         "tags": [
           "client"
-        ]
+        ],
+        "x-required-permission": "clients:write"
       }
     },
     "/devices": {
@@ -2958,7 +2970,8 @@
         "summary": "Retrieve Devices",
         "tags": [
           "device"
-        ]
+        ],
+        "x-required-permission": "devices:read"
       },
       "post": {
         "description": "Register a stable device identity.",
@@ -3108,7 +3121,8 @@
         "summary": "Create Device",
         "tags": [
           "device"
-        ]
+        ],
+        "x-required-permission": "devices:write"
       }
     },
     "/devices/{device_id}": {
@@ -3254,7 +3268,8 @@
         "summary": "Delete Device",
         "tags": [
           "device"
-        ]
+        ],
+        "x-required-permission": "devices:write"
       },
       "get": {
         "description": "Retrieve one registered device.",
@@ -3405,7 +3420,8 @@
         "summary": "Retrieve Device",
         "tags": [
           "device"
-        ]
+        ],
+        "x-required-permission": "devices:read"
       },
       "patch": {
         "description": "Update a device or replace its current VPN client link.",
@@ -3566,12 +3582,13 @@
         "summary": "Update Device",
         "tags": [
           "device"
-        ]
+        ],
+        "x-required-permission": "devices:write"
       }
     },
     "/me": {
       "get": {
-        "description": "Resolve the validated external identity to its local principal.",
+        "description": "Resolve the authenticated external identity to its local principal.",
         "operationId": "retrieve_current_principal_me_get",
         "responses": {
           "200": {
@@ -3871,7 +3888,8 @@
         "summary": "Retrieve Restricted Networks",
         "tags": [
           "server"
-        ]
+        ],
+        "x-required-permission": "server:read"
       },
       "post": {
         "operationId": "create_restricted_network_networks_post",
@@ -4020,7 +4038,8 @@
         "summary": "Create Restricted Network",
         "tags": [
           "server"
-        ]
+        ],
+        "x-required-permission": "server:write"
       }
     },
     "/networks/{network_id}": {
@@ -4165,9 +4184,11 @@
         "summary": "Drop Restricted Network",
         "tags": [
           "server"
-        ]
+        ],
+        "x-required-permission": "server:write"
       },
       "get": {
+        "description": "Retrieve one restricted network.",
         "operationId": "retrieve_restricted_network_networks__network_id__get",
         "parameters": [
           {
@@ -4315,11 +4336,13 @@
         "summary": "Retrieve Restricted Network",
         "tags": [
           "server"
-        ]
+        ],
+        "x-required-permission": "server:read"
       }
     },
     "/server": {
       "get": {
+        "description": "Retrieve the initialized OpenVPN server configuration.",
         "operationId": "get_server_server_get",
         "responses": {
           "200": {
@@ -4456,7 +4479,8 @@
         "summary": "Get Server",
         "tags": [
           "server"
-        ]
+        ],
+        "x-required-permission": "server:read"
       },
       "post": {
         "operationId": "init_server_server_post",
@@ -4595,7 +4619,8 @@
         "summary": "Init Server",
         "tags": [
           "server"
-        ]
+        ],
+        "x-required-permission": "server:write"
       }
     },
     "/server/assignable-virtual-addresses": {
@@ -4740,7 +4765,8 @@
         "summary": "Get Assignable Virtual Addresses",
         "tags": [
           "server"
-        ]
+        ],
+        "x-required-permission": "server:read"
       }
     },
     "/server/health": {
@@ -4881,7 +4907,8 @@
         "summary": "Get Service Health",
         "tags": [
           "server"
-        ]
+        ],
+        "x-required-permission": "server:read"
       }
     },
     "/server/routes": {
@@ -5026,7 +5053,8 @@
         "summary": "Delete Route",
         "tags": [
           "server"
-        ]
+        ],
+        "x-required-permission": "server:write"
       },
       "get": {
         "operationId": "get_routes_server_routes_get",
@@ -5169,7 +5197,8 @@
         "summary": "Get Routes",
         "tags": [
           "server"
-        ]
+        ],
+        "x-required-permission": "server:read"
       },
       "post": {
         "operationId": "add_route_server_routes_post",
@@ -5311,7 +5340,8 @@
         "summary": "Add Route",
         "tags": [
           "server"
-        ]
+        ],
+        "x-required-permission": "server:write"
       }
     },
     "/users": {
@@ -5457,7 +5487,8 @@
         "summary": "Retrieve Users",
         "tags": [
           "user"
-        ]
+        ],
+        "x-required-permission": "users:read"
       },
       "post": {
         "description": "Create a user mapped to an external OAuth identity.",
@@ -5607,7 +5638,8 @@
         "summary": "Create User",
         "tags": [
           "user"
-        ]
+        ],
+        "x-required-permission": "users:write"
       }
     },
     "/users/{user_id}": {
@@ -5753,7 +5785,8 @@
         "summary": "Delete User",
         "tags": [
           "user"
-        ]
+        ],
+        "x-required-permission": "users:write"
       },
       "get": {
         "description": "Retrieve one local user.",
@@ -5904,7 +5937,8 @@
         "summary": "Retrieve User",
         "tags": [
           "user"
-        ]
+        ],
+        "x-required-permission": "users:read"
       },
       "patch": {
         "description": "Update a user's local display name.",
@@ -6065,7 +6099,8 @@
         "summary": "Update User",
         "tags": [
           "user"
-        ]
+        ],
+        "x-required-permission": "users:write"
       }
     },
     "/users/{user_id}/clients": {
@@ -6222,7 +6257,8 @@
         "summary": "Retrieve User Clients",
         "tags": [
           "user"
-        ]
+        ],
+        "x-required-permission": "users:read"
       }
     },
     "/users/{user_id}/clients/{client_id}": {
@@ -6377,7 +6413,8 @@
         "summary": "Unlink User Client",
         "tags": [
           "user"
-        ]
+        ],
+        "x-required-permission": "users:write"
       },
       "put": {
         "description": "Assign a VPN client to a user as an administrative action.",
@@ -6537,7 +6574,8 @@
         "summary": "Link User Client",
         "tags": [
           "user"
-        ]
+        ],
+        "x-required-permission": "users:write"
       }
     },
     "/users/{user_id}/devices": {
@@ -6694,7 +6732,8 @@
         "summary": "Retrieve User Devices",
         "tags": [
           "user"
-        ]
+        ],
+        "x-required-permission": "access:read"
       }
     },
     "/users/{user_id}/devices/{device_id}": {
@@ -6849,7 +6888,8 @@
         "summary": "Revoke Device Access",
         "tags": [
           "user"
-        ]
+        ],
+        "x-required-permission": "access:grant"
       },
       "put": {
         "description": "Grant a user individual access to a device idempotently.",
@@ -7009,7 +7049,8 @@
         "summary": "Grant Device Access",
         "tags": [
           "user"
-        ]
+        ],
+        "x-required-permission": "access:grant"
       }
     }
   }

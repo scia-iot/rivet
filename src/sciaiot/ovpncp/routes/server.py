@@ -6,6 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
+from sciaiot.ovpncp.authorization import (
+    PermissionRoute,
+    RequireServerRead,
+    RequireServerWrite,
+)
 from sciaiot.ovpncp.data.server import (
     Server,
     ServerWithVirtualAddresses,
@@ -17,7 +22,7 @@ from sciaiot.ovpncp.utils.network import is_rfc1918_ipv4_network
 
 logger = logging.getLogger(__name__)
 DBSession = Annotated[Session, Depends(get_session)]
-router = APIRouter()
+router = APIRouter(route_class=PermissionRoute)
 
 
 class RouteRequest(BaseModel):
@@ -33,7 +38,10 @@ class ServiceHealth(BaseModel):
 
 
 @router.post("", response_model=ServerWithVirtualAddresses)
-async def init_server(session: DBSession):
+async def init_server(
+    session: DBSession,
+    _principal: RequireServerWrite,
+):
     logger.info("Initializing the server...")
     server = load_from_config()
 
@@ -45,23 +53,33 @@ async def init_server(session: DBSession):
     return server
 
 
-@router.get("", response_model=ServerWithVirtualAddresses)
-async def get_server(session: DBSession):
+def get_server_record(session: Session) -> Server:
+    """Load the initialized server for authorized route operations."""
     logger.info("Getting the server...")
     server = session.exec(select(Server)).one_or_none()
 
     if not server:
         logger.error("Server not initialized yet!")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Server not found!"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Server not found!",
         )
 
     logger.info("Server retrieved successfully!")
     return server
 
 
+@router.get("", response_model=ServerWithVirtualAddresses)
+async def get_server(
+    session: DBSession,
+    _principal: RequireServerRead,
+):
+    """Retrieve the initialized OpenVPN server configuration."""
+    return get_server_record(session)
+
+
 @router.get("/health", response_model=ServiceHealth)
-async def get_service_health():
+async def get_service_health(_principal: RequireServerRead):
     logger.info("Checking the service health...")
     try:
         service_health = openvpn.get_status()
@@ -78,7 +96,10 @@ async def get_service_health():
 
 
 @router.get("/assignable-virtual-addresses", response_model=list[VirtualAddress])
-async def get_assignable_virtual_addresses(session: DBSession):
+async def get_assignable_virtual_addresses(
+    session: DBSession,
+    _principal: RequireServerRead,
+):
     logger.info("Getting the assignable virtual addresses...")
     statement = select(VirtualAddress).where(VirtualAddress.client == None)
     addresses = session.exec(statement).all()
@@ -87,9 +108,12 @@ async def get_assignable_virtual_addresses(session: DBSession):
 
 
 @router.get("/routes", response_model=list[str])
-async def get_routes(session: DBSession):
+async def get_routes(
+    session: DBSession,
+    _principal: RequireServerRead,
+):
     logger.info("Getting the routes...")
-    server = await get_server(session)
+    server = get_server_record(session)
     try:
         routes = iproute.list(server.dev)
     except Exception as error:
@@ -106,7 +130,11 @@ async def get_routes(session: DBSession):
 
 
 @router.post("/routes", status_code=status.HTTP_204_NO_CONTENT)
-async def add_route(request: RouteRequest, session: DBSession):
+async def add_route(
+    request: RouteRequest,
+    session: DBSession,
+    _principal: RequireServerWrite,
+):
     logger.info("Adding a route...")
     if not is_rfc1918_ipv4_network(request.network, require_cidr=True):
         logger.error("Invalid network address used for a server route.")
@@ -115,7 +143,7 @@ async def add_route(request: RouteRequest, session: DBSession):
             detail="Only internal network address is allowed!",
         )
 
-    server = await get_server(session)
+    server = get_server_record(session)
     try:
         iproute.add(request.network, server.ip, server.dev)
     except Exception as error:
@@ -131,7 +159,11 @@ async def add_route(request: RouteRequest, session: DBSession):
 
 
 @router.delete("/routes", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_route(network: str, session: DBSession):
+async def delete_route(
+    network: str,
+    session: DBSession,
+    _principal: RequireServerWrite,
+):
     logger.info("Deleting a route...")
     if not is_rfc1918_ipv4_network(network, require_cidr=True):
         logger.error("Invalid network address used for route deletion.")
@@ -140,7 +172,7 @@ async def delete_route(network: str, session: DBSession):
             detail="Only internal network address is allowed!",
         )
 
-    server = await get_server(session)
+    server = get_server_record(session)
     try:
         routes = iproute.list(server.dev)
     except Exception as error:

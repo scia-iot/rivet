@@ -1,5 +1,6 @@
 import { useContext } from 'react'
 
+import type { Permission } from '@/auth/permissions'
 import {
   type PrincipalSession,
   PrincipalSessionContext,
@@ -15,7 +16,7 @@ export function usePrincipalSession(): PrincipalSession {
 
 export function hasPermission(
   session: PrincipalSession,
-  permission: string,
+  permission: Permission,
 ): boolean {
   return (
     session.authenticationDisabled ||

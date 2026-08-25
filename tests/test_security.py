@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from sciaiot.ovpncp.main import app
 from sciaiot.ovpncp.middlewares.azure_security import (
     azure_security_middleware,
-    check_role,
     get_token,
 )
 
@@ -184,23 +183,6 @@ def test_blank_authorization_header_returns_problem_401():
     assert response.headers["content-type"].startswith("application/problem+json")
     assert body["status"] == 401
     assert body["detail"] == "Authorization header must be Bearer token!"
-
-
-@patch("sciaiot.ovpncp.middlewares.azure_security.APP_ROLE", "mocked_app_role")
-def test_check_role_uses_only_validated_claims():
-    with patch(
-        "sciaiot.ovpncp.middlewares.azure_security.jwt.get_unverified_claims"
-    ) as get_unverified_claims:
-        check_role({"roles": ["mocked_app_role"]})
-
-    get_unverified_claims.assert_not_called()
-
-
-@patch("sciaiot.ovpncp.middlewares.azure_security.APP_ROLE", "mocked_app_role")
-def test_check_role_incorrect():
-    with pytest.raises(HTTPException) as exc:
-        check_role({"roles": []})
-    assert exc.value.status_code == 403
 
 
 @patch(

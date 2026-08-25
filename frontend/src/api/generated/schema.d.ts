@@ -240,7 +240,7 @@ export interface paths {
         };
         /**
          * Retrieve Current Principal
-         * @description Resolve the validated external identity to its local principal.
+         * @description Resolve the authenticated external identity to its local principal.
          */
         get: operations["retrieve_current_principal_me_get"];
         put?: never;
@@ -276,7 +276,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Retrieve Restricted Network */
+        /**
+         * Retrieve Restricted Network
+         * @description Retrieve one restricted network.
+         */
         get: operations["retrieve_restricted_network_networks__network_id__get"];
         put?: never;
         post?: never;
@@ -294,7 +297,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Server */
+        /**
+         * Get Server
+         * @description Retrieve the initialized OpenVPN server configuration.
+         */
         get: operations["get_server_server_get"];
         put?: never;
         /** Init Server */

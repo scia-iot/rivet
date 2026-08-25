@@ -2,7 +2,6 @@ import ipaddress
 import json
 import logging
 import os
-from collections.abc import Mapping
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
@@ -48,18 +47,6 @@ def get_token(request: Request) -> str:
 
     token = parts[1]
     return token
-
-
-def check_role(claims: Mapping[str, object]) -> None:
-    """Require the configured application role from verified token claims."""
-    roles = claims.get("roles")
-    if isinstance(roles, list) and APP_ROLE in roles:
-        return
-
-    logger.error(f"Application role {APP_ROLE} is required!")
-    raise HTTPException(
-        status.HTTP_403_FORBIDDEN, f"Application role {APP_ROLE} is required!"
-    )
 
 
 def validate_token(request: Request) -> dict[str, object]:
@@ -109,7 +96,6 @@ def validate_token(request: Request) -> dict[str, object]:
                 or not subject
             ):
                 raise JWTClaimsError("Stable identity claims are required.")
-            check_role(payload)
             return payload
         except ExpiredSignatureError:
             logger.error("Token is expired!")
@@ -124,12 +110,9 @@ def validate_token(request: Request) -> dict[str, object]:
         )
 
 
-def _bypasses_authentication(request: Request) -> bool:
-    """Allow only documentation and exact localhost OpenVPN hook requests."""
+def _is_local_connection_hook(request: Request) -> bool:
+    """Return whether the request is an exact loopback OpenVPN hook."""
     url = urlparse(str(request.url))
-    if url.path in ["/docs", "/openapi.json"]:
-        return True
-
     path_parts = url.path.strip("/").split("/")
     is_connection_hook = (
         len(path_parts) == 3
@@ -146,8 +129,18 @@ def _bypasses_authentication(request: Request) -> bool:
     return is_loopback and is_connection_hook
 
 
+def _bypasses_authentication(request: Request) -> bool:
+    """Allow only documentation and exact localhost OpenVPN hook requests."""
+    url = urlparse(str(request.url))
+    is_documentation = url.path in ["/docs", "/openapi.json"]
+    return is_documentation or _is_local_connection_hook(request)
+
+
 async def azure_security_middleware(request: Request, call_next):
     """Validate remote requests while preserving narrow local hook access."""
+    if _is_local_connection_hook(request):
+        request.state.local_connection_hook = True
+
     if not _bypasses_authentication(request):
         try:
             logger.info("Checking access token on Azure Entra ID...")

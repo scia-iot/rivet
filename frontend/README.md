@@ -1,8 +1,9 @@
 # ovpncp frontend
 
-React frontend for the OpenVPN control panel. Device, user, VPN-client, and
-individual-access workflows are implemented; server, network, portal, and
-production-integration work remains phased in the
+React frontend for the OpenVPN control panel. Device, user, VPN-client,
+individual-access, server, network, and fine-grained authorization workflows
+are implemented; the portal and production-integration work remain phased in
+the
 [frontend implementation plan](../docs/frontend-implementation-plan.md).
 
 ## Stack
@@ -41,9 +42,11 @@ subject; a matching local User record must already exist. A `401` or an MSAL
 interaction-required response may start one controlled redirect. Signed-out
 users remain on the unauthenticated layout until they explicitly choose Sign in;
 the redirect guard clears only after `/me` succeeds. Logout failures are handled
-with a generic safe message. A `403` shows the forbidden layout. Navigation is
-filtered by `/me` permissions for usability,
-but FastAPI remains the authorization boundary. Sign-out clears the active MSAL
+with a generic safe message. A `403` shows the forbidden layout.
+Navigation and route presentation are filtered by typed `/me` permissions
+for usability, but FastAPI remains the authorization boundary. The account
+Access menu explains the canonical role and recognized management permissions
+without displaying issuer or subject claims. Sign-out clears the active MSAL
 account and frontend query cache before redirecting.
 
 ## Administrative workflows
@@ -70,7 +73,10 @@ enforcement remains deferred: creating or removing a grant does not apply an
 OpenVPN or firewall policy and does not confirm connectivity. The frontend
 waits for backend confirmation before refreshing grant state. `access:read`
 controls read presentation and `access:grant` controls mutation presentation;
-FastAPI remains authoritative for every request.
+FastAPI remains authoritative for every request. The backend maps the
+configured Entra app role to `sysadmin`; registered non-admin users receive the
+canonical `device_user` role and no management permissions. Each management
+operation documents and enforces its required permission.
 
 ## Checks
 

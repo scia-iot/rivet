@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 
 import { ApiProblemError } from '@/api/problem-details'
 import type { CurrentPrincipal } from '@/auth/current-principal'
+import type { Permission } from '@/auth/permissions'
 import { PrincipalSessionContext } from '@/auth/principal-session-context'
 import {
   hasPermission,
@@ -75,7 +76,7 @@ export function RequirePermission({
   permission,
 }: {
   children: ReactNode
-  permission: string
+  permission: Permission
 }) {
   const session = usePrincipalSession()
   if (!hasPermission(session, permission)) {

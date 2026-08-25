@@ -10,6 +10,7 @@ import {
 import { NavLink, Outlet } from 'react-router'
 
 import { AuthControls } from '@/auth/auth-controls'
+import { routePermissions } from '@/auth/permissions'
 import {
   hasPermission,
   usePrincipalSession,
@@ -21,44 +22,44 @@ const navigation = [
     to: '/',
     label: 'Overview',
     icon: Network,
-    permission: 'server:read',
+    permission: routePermissions.overview,
     end: true,
   },
   {
     to: '/devices',
     label: 'Devices',
     icon: ShieldCheck,
-    permission: 'devices:read',
+    permission: routePermissions.devices,
   },
   {
     to: '/users',
     label: 'Users',
     icon: Users,
-    permission: 'users:read',
+    permission: routePermissions.users,
   },
   {
     to: '/clients',
     label: 'VPN clients',
     icon: Laptop,
-    permission: 'clients:read',
+    permission: routePermissions.clients,
   },
   {
     to: '/server',
     label: 'Server',
     icon: ServerCog,
-    permission: 'server:read',
+    permission: routePermissions.server,
   },
   {
     to: '/networks',
     label: 'Networks',
     icon: Workflow,
-    permission: 'server:read',
+    permission: routePermissions.networks,
   },
   {
     to: '/access',
     label: 'Access',
     icon: KeyRound,
-    permission: 'access:read',
+    permission: routePermissions.access,
   },
 ]
 

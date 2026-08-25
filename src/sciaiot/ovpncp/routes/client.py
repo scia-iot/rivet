@@ -9,6 +9,12 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from sciaiot.ovpncp import dependencies
+from sciaiot.ovpncp.authorization import (
+    PermissionRoute,
+    RequireClientsRead,
+    RequireClientsWrite,
+    RequireConnectionHookAccess,
+)
 from sciaiot.ovpncp.data.server import (
     Cert,
     CertBase,
@@ -21,13 +27,13 @@ from sciaiot.ovpncp.data.server import (
     VirtualAddressBase,
 )
 from sciaiot.ovpncp.dependencies import get_session
-from sciaiot.ovpncp.routes.server import get_server
+from sciaiot.ovpncp.routes.server import get_server_record
 from sciaiot.ovpncp.utils import openvpn
 from sciaiot.ovpncp.utils.logging import mask_sensitive
 
 logger = logging.getLogger(__name__)
 DBSession = Annotated[Session, Depends(get_session)]
-router = APIRouter()
+router = APIRouter(route_class=PermissionRoute)
 
 
 class ClientNetworkRequest(BaseModel):
@@ -62,7 +68,11 @@ def _certificate_failure(operation: str) -> HTTPException:
 
 
 @router.post("", response_model=Client)
-async def create_client(request: ClientBase, session: DBSession):
+async def create_client(
+    request: ClientBase,
+    session: DBSession,
+    _principal: RequireClientsWrite,
+):
     logger.info(f"Creating client {request.name}...")
     try:
         client = Client.model_validate(request)
@@ -87,7 +97,10 @@ async def create_client(request: ClientBase, session: DBSession):
 
 
 @router.get("", response_model=list[Client])
-async def retrieve_clients(session: DBSession):
+async def retrieve_clients(
+    session: DBSession,
+    _principal: RequireClientsRead,
+):
     logger.info("Retrieving all clients...")
     clients = session.exec(select(Client)).all()
     logger.info(f"Found {len(clients)} clients.")
@@ -95,7 +108,11 @@ async def retrieve_clients(session: DBSession):
 
 
 @router.get("/{client_name}", response_model=ClientDetails)
-async def retrieve_client(client_name: str, session: DBSession):
+async def retrieve_client(
+    client_name: str,
+    session: DBSession,
+    _principal: RequireClientsRead,
+):
     logger.info(f"Retrieving client {client_name}...")
     client = get_client_by_name(client_name, session)
     logger.info("Found client.")
@@ -106,7 +123,11 @@ async def retrieve_client(client_name: str, session: DBSession):
     "/{client_name}/package-cert",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def package_client_cert(client_name: str, session: DBSession):
+async def package_client_cert(
+    client_name: str,
+    session: DBSession,
+    _principal: RequireClientsWrite,
+):
     logger.info(f"Packaging client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
     try:
@@ -132,6 +153,7 @@ def download_client_cert(
     client_name: str,
     request: Request,
     session: DBSession,
+    _principal: RequireClientsWrite,
 ):
     logger.info(f"Downloading client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
@@ -162,7 +184,11 @@ def download_client_cert(
 
 
 @router.put("/{client_name}/renew-cert", response_model=CertBase)
-async def renew_client_cert(client_name: str, session: DBSession):
+async def renew_client_cert(
+    client_name: str,
+    session: DBSession,
+    _principal: RequireClientsWrite,
+):
     logger.info(f"Renewing client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
     cert = client.cert
@@ -189,7 +215,11 @@ async def renew_client_cert(client_name: str, session: DBSession):
 
 
 @router.put("/{client_name}/revoke", response_model=ClientBase)
-async def revoke_client(client_name: str, session: DBSession):
+async def revoke_client(
+    client_name: str,
+    session: DBSession,
+    _principal: RequireClientsWrite,
+):
     logger.info(f"Revoking client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
     try:
@@ -211,7 +241,10 @@ async def revoke_client(client_name: str, session: DBSession):
 
 @router.put("/{client_name}/assign-ip", response_model=ClientWithVirtualAddress)
 async def assign_virtual_address(
-    client_name: str, address: VirtualAddressBase, session: DBSession
+    client_name: str,
+    address: VirtualAddressBase,
+    session: DBSession,
+    _principal: RequireClientsWrite,
 ):
     logger.info(f"Assigning a virtual address to client {client_name}...")
     statement = select(VirtualAddress).where(VirtualAddress.ip == address.ip)
@@ -235,7 +268,7 @@ async def assign_virtual_address(
             detail="The virtual address is assigned to another client.",
         )
 
-    server = await get_server(session)
+    server = get_server_record(session)
     client.virtual_address = virtual_address
     openvpn.assign_client_ip(client.name, virtual_address.ip, server.subnet_mask)
 
@@ -253,7 +286,11 @@ async def assign_virtual_address(
 
 
 @router.delete("/{client_name}/unassign-ip", status_code=status.HTTP_204_NO_CONTENT)
-async def unassign_virtual_address(client_name: str, session: DBSession):
+async def unassign_virtual_address(
+    client_name: str,
+    session: DBSession,
+    _principal: RequireClientsWrite,
+):
     logger.info(f"Unassigning virtual address from client {client_name}...")
     client = get_client_by_name(client_name, session)
 
@@ -275,7 +312,10 @@ async def unassign_virtual_address(client_name: str, session: DBSession):
 
 @router.post("/{client_name}/connections", response_model=Connection)
 async def start_connection(
-    client_name: str, request: StartConnectionRequest, session: DBSession
+    client_name: str,
+    request: StartConnectionRequest,
+    session: DBSession,
+    _principal: RequireConnectionHookAccess,
 ):
     logger.info(f"Starting connection for client {client_name}...")
     client = get_client_by_name(client_name, session)
@@ -295,7 +335,10 @@ async def start_connection(
 
 @router.put("/{client_name}/connections", response_model=Connection)
 async def close_connection(
-    client_name: str, request: CloseConnectionRequest, session: DBSession
+    client_name: str,
+    request: CloseConnectionRequest,
+    session: DBSession,
+    _principal: RequireConnectionHookAccess,
 ):
     logger.info(f"Closing connection for client {client_name}...")
     client = get_client_by_name(client_name, session)
@@ -377,7 +420,10 @@ def _import_clients(session: Session) -> dict[str, int]:
 
 
 @router.post("/import", response_model=ClientImportSummary)
-async def import_clients(session: DBSession):
+async def import_clients(
+    session: DBSession,
+    _principal: RequireClientsWrite,
+):
     """Import existing clients from Easy-RSA certificate directory."""
     logger.info("Importing existing clients from Easy-RSA...")
     try:

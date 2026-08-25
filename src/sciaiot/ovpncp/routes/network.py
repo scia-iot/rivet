@@ -6,6 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 from sqlmodel import Session, select
 
+from sciaiot.ovpncp.authorization import (
+    PermissionRoute,
+    RequireServerRead,
+    RequireServerWrite,
+)
 from sciaiot.ovpncp.data.network import RestrictedNetwork
 from sciaiot.ovpncp.dependencies import get_session
 from sciaiot.ovpncp.routes.client import get_client_by_name
@@ -14,7 +19,7 @@ from sciaiot.ovpncp.utils.network import is_rfc1918_ipv4_network
 
 logger = logging.getLogger(__name__)
 DBSession = Annotated[Session, Depends(get_session)]
-router = APIRouter()
+router = APIRouter(route_class=PermissionRoute)
 
 
 class RestrictedNetworkRequest(BaseModel):
@@ -54,7 +59,9 @@ def _network_operation_failure(action: str) -> HTTPException:
 
 @router.post("", response_model=RestrictedNetwork)
 async def create_restricted_network(
-    request: RestrictedNetworkRequest, session: DBSession
+    request: RestrictedNetworkRequest,
+    session: DBSession,
+    _principal: RequireServerWrite,
 ):
     logger.info("Creating restricted network...")
     if request.source_name == request.destination_name:
@@ -111,6 +118,7 @@ async def create_restricted_network(
 @router.get("", response_model=list[RestrictedNetwork])
 async def retrieve_restricted_networks(
     session: DBSession,
+    _principal: RequireServerRead,
     source_name: str | None = None,
 ):
     logger.info("Retrieving restricted networks...")
@@ -122,8 +130,11 @@ async def retrieve_restricted_networks(
     return networks
 
 
-@router.get("/{network_id}", response_model=RestrictedNetwork)
-async def retrieve_restricted_network(network_id: int, session: DBSession):
+def get_restricted_network_record(
+    network_id: int,
+    session: Session,
+) -> RestrictedNetwork:
+    """Load one restricted network for an authorized route operation."""
     logger.info(f"Retrieving restricted network with ID {network_id}...")
     statement = select(RestrictedNetwork).where(RestrictedNetwork.id == network_id)
     network = session.exec(statement).one_or_none()
@@ -139,10 +150,24 @@ async def retrieve_restricted_network(network_id: int, session: DBSession):
     return network
 
 
+@router.get("/{network_id}", response_model=RestrictedNetwork)
+async def retrieve_restricted_network(
+    network_id: int,
+    session: DBSession,
+    _principal: RequireServerRead,
+):
+    """Retrieve one restricted network."""
+    return get_restricted_network_record(network_id, session)
+
+
 @router.delete("/{network_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def drop_restricted_network(network_id: int, session: DBSession):
+async def drop_restricted_network(
+    network_id: int,
+    session: DBSession,
+    _principal: RequireServerWrite,
+):
     logger.info(f"Dropping restricted network with ID {network_id}...")
-    network = await retrieve_restricted_network(network_id, session)
+    network = get_restricted_network_record(network_id, session)
     if network.end_time is not None:
         logger.info("Restricted network was already closed.")
         return

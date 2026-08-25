@@ -2,9 +2,20 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import Session
 
+from sciaiot.ovpncp.authorization import (
+    Permission,
+    PermissionRoute,
+    PrincipalDependency,
+    RequireAccessGrant,
+    RequireAccessRead,
+    RequireDevicesRead,
+    RequireDevicesWrite,
+    RequireUsersRead,
+    RequireUsersWrite,
+)
 from sciaiot.ovpncp.data.identity import (
     AccessGrant,
     CurrentPrincipal,
@@ -28,56 +39,22 @@ from sciaiot.ovpncp.services.identity import (
 )
 
 DBSession = Annotated[Session, Depends(get_session)]
-device_router = APIRouter()
-user_router = APIRouter()
-principal_router = APIRouter()
-
-SYSADMIN_PERMISSIONS = (
-    "devices:read",
-    "devices:write",
-    "users:read",
-    "users:write",
-    "clients:read",
-    "clients:write",
-    "access:read",
-    "access:grant",
-    "server:read",
-    "server:write",
-)
-
-
-def _validated_external_identity(request: Request) -> tuple[str, str]:
-    """Read a stable identity only from middleware-validated token claims."""
-    payload = getattr(request.state, "token_payload", None)
-    if not isinstance(payload, dict):
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            "A validated authentication token is required.",
-        )
-
-    issuer = payload.get("iss")
-    subject = payload.get("sub")
-    if (
-        not isinstance(issuer, str)
-        or not issuer
-        or not isinstance(subject, str)
-        or not subject
-    ):
-        raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED,
-            "The validated token identity is incomplete.",
-        )
-    return issuer, subject
+device_router = APIRouter(route_class=PermissionRoute)
+user_router = APIRouter(route_class=PermissionRoute)
+principal_router = APIRouter(route_class=PermissionRoute)
 
 
 @principal_router.get("/me", response_model=CurrentPrincipal)
 def retrieve_current_principal(
-    request: Request, session: DBSession
+    principal: PrincipalDependency,
+    session: DBSession,
 ) -> CurrentPrincipal:
-    """Resolve the validated external identity to its local principal."""
-    issuer, subject = _validated_external_identity(request)
+    """Resolve the authenticated external identity to its local principal."""
     try:
-        user = UserService(session).get_by_external_identity(issuer, subject)
+        user = UserService(session).get_by_external_identity(
+            principal.issuer,
+            principal.subject,
+        )
     except EntityNotFoundError as error:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(error)) from error
 
@@ -91,8 +68,12 @@ def retrieve_current_principal(
         display_name=user.display_name,
         issuer=user.issuer,
         subject=user.subject,
-        roles=["sysadmin"],
-        permissions=list(SYSADMIN_PERMISSIONS),
+        roles=list(principal.roles),
+        permissions=[
+            permission.value
+            for permission in Permission
+            if permission in principal.permissions
+        ],
     )
 
 
@@ -104,7 +85,11 @@ def _handle_domain_error(error: Exception) -> HTTPException:
 
 
 @device_router.post("", response_model=Device, status_code=status.HTTP_201_CREATED)
-def create_device(request: DeviceBase, session: DBSession) -> Device:
+def create_device(
+    request: DeviceBase,
+    session: DBSession,
+    _principal: RequireDevicesWrite,
+) -> Device:
     """Register a stable device identity."""
     try:
         return DeviceService(session).create(request)
@@ -113,13 +98,20 @@ def create_device(request: DeviceBase, session: DBSession) -> Device:
 
 
 @device_router.get("", response_model=list[Device])
-def retrieve_devices(session: DBSession) -> list[Device]:
+def retrieve_devices(
+    session: DBSession,
+    _principal: RequireDevicesRead,
+) -> list[Device]:
     """List all registered devices."""
     return DeviceService(session).list()
 
 
 @device_router.get("/{device_id}", response_model=Device)
-def retrieve_device(device_id: int, session: DBSession) -> Device:
+def retrieve_device(
+    device_id: int,
+    session: DBSession,
+    _principal: RequireDevicesRead,
+) -> Device:
     """Retrieve one registered device."""
     try:
         return DeviceService(session).get(device_id)
@@ -128,7 +120,12 @@ def retrieve_device(device_id: int, session: DBSession) -> Device:
 
 
 @device_router.patch("/{device_id}", response_model=Device)
-def update_device(device_id: int, request: DeviceUpdate, session: DBSession) -> Device:
+def update_device(
+    device_id: int,
+    request: DeviceUpdate,
+    session: DBSession,
+    _principal: RequireDevicesWrite,
+) -> Device:
     """Update a device or replace its current VPN client link."""
     try:
         return DeviceService(session).update(device_id, request)
@@ -137,7 +134,11 @@ def update_device(device_id: int, request: DeviceUpdate, session: DBSession) -> 
 
 
 @device_router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_device(device_id: int, session: DBSession) -> None:
+def delete_device(
+    device_id: int,
+    session: DBSession,
+    _principal: RequireDevicesWrite,
+) -> None:
     """Delete a device without deleting its VPN client."""
     try:
         DeviceService(session).delete(device_id)
@@ -146,7 +147,11 @@ def delete_device(device_id: int, session: DBSession) -> None:
 
 
 @user_router.post("", response_model=User, status_code=status.HTTP_201_CREATED)
-def create_user(request: UserBase, session: DBSession) -> User:
+def create_user(
+    request: UserBase,
+    session: DBSession,
+    _principal: RequireUsersWrite,
+) -> User:
     """Create a user mapped to an external OAuth identity."""
     try:
         return UserService(session).create(request)
@@ -155,13 +160,20 @@ def create_user(request: UserBase, session: DBSession) -> User:
 
 
 @user_router.get("", response_model=list[User])
-def retrieve_users(session: DBSession) -> list[User]:
+def retrieve_users(
+    session: DBSession,
+    _principal: RequireUsersRead,
+) -> list[User]:
     """List all local users."""
     return UserService(session).list()
 
 
 @user_router.get("/{user_id}", response_model=User)
-def retrieve_user(user_id: int, session: DBSession) -> User:
+def retrieve_user(
+    user_id: int,
+    session: DBSession,
+    _principal: RequireUsersRead,
+) -> User:
     """Retrieve one local user."""
     try:
         return UserService(session).get(user_id)
@@ -170,7 +182,12 @@ def retrieve_user(user_id: int, session: DBSession) -> User:
 
 
 @user_router.patch("/{user_id}", response_model=User)
-def update_user(user_id: int, request: UserUpdate, session: DBSession) -> User:
+def update_user(
+    user_id: int,
+    request: UserUpdate,
+    session: DBSession,
+    _principal: RequireUsersWrite,
+) -> User:
     """Update a user's local display name."""
     try:
         return UserService(session).update(user_id, request)
@@ -179,7 +196,11 @@ def update_user(user_id: int, request: UserUpdate, session: DBSession) -> User:
 
 
 @user_router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_user(user_id: int, session: DBSession) -> None:
+def delete_user(
+    user_id: int,
+    session: DBSession,
+    _principal: RequireUsersWrite,
+) -> None:
     """Delete a user and their access grants."""
     try:
         UserService(session).delete(user_id)
@@ -196,6 +217,7 @@ def grant_device_access(
     device_id: int,
     session: DBSession,
     response: Response,
+    _principal: RequireAccessGrant,
 ) -> AccessGrant:
     """Grant a user individual access to a device idempotently."""
     try:
@@ -211,7 +233,12 @@ def grant_device_access(
     "/{user_id}/devices/{device_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-def revoke_device_access(user_id: int, device_id: int, session: DBSession) -> None:
+def revoke_device_access(
+    user_id: int,
+    device_id: int,
+    session: DBSession,
+    _principal: RequireAccessGrant,
+) -> None:
     """Revoke a user's individual access to a device."""
     try:
         AccessService(session).revoke(user_id, device_id)
@@ -220,7 +247,11 @@ def revoke_device_access(user_id: int, device_id: int, session: DBSession) -> No
 
 
 @user_router.get("/{user_id}/devices", response_model=list[Device])
-def retrieve_user_devices(user_id: int, session: DBSession) -> list[Device]:
+def retrieve_user_devices(
+    user_id: int,
+    session: DBSession,
+    _principal: RequireAccessRead,
+) -> list[Device]:
     """List devices that a user may access."""
     try:
         return AccessService(session).list_devices(user_id)
@@ -237,6 +268,7 @@ def link_user_client(
     client_id: int,
     session: DBSession,
     response: Response,
+    _principal: RequireUsersWrite,
 ) -> UserClient:
     """Assign a VPN client to a user as an administrative action."""
     try:
@@ -252,7 +284,12 @@ def link_user_client(
     "/{user_id}/clients/{client_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-def unlink_user_client(user_id: int, client_id: int, session: DBSession) -> None:
+def unlink_user_client(
+    user_id: int,
+    client_id: int,
+    session: DBSession,
+    _principal: RequireUsersWrite,
+) -> None:
     """Remove a VPN client assignment as an administrative action."""
     try:
         UserClientService(session).unlink(user_id, client_id)
@@ -261,7 +298,11 @@ def unlink_user_client(user_id: int, client_id: int, session: DBSession) -> None
 
 
 @user_router.get("/{user_id}/clients", response_model=list[Client])
-def retrieve_user_clients(user_id: int, session: DBSession) -> list[Client]:
+def retrieve_user_clients(
+    user_id: int,
+    session: DBSession,
+    _principal: RequireUsersRead,
+) -> list[Client]:
     """List VPN clients administratively assigned to a user."""
     try:
         return UserClientService(session).list_clients(user_id)

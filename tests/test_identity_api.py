@@ -41,6 +41,10 @@ def identity_client_fixture() -> Generator[TestClient]:
                 },
             ),
             patch(
+                "sciaiot.ovpncp.middlewares.azure_security.APP_ROLE",
+                "mocked_app_role",
+            ),
+            patch(
                 "sciaiot.ovpncp.utils.openvpn.read_client_cert",
                 return_value={
                     "issued_by": "test-ca",

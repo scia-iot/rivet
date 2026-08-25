@@ -22,7 +22,11 @@ def client_fixture(db_session):
     with (
         patch(
             "sciaiot.ovpncp.middlewares.azure_security.validate_token",
-            return_value={"sub": "mocked_sub"},
+            return_value={
+                "iss": "https://login.example/tenant/v2.0",
+                "sub": "mocked_sub",
+                "roles": ["mocked_app_role"],
+            },
         ),
         patch(
             "sciaiot.ovpncp.middlewares.azure_security.TENANT_ID", "mocked_tenant_id"

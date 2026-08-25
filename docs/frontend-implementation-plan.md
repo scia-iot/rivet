@@ -38,8 +38,8 @@ The frontend scaffold is complete. It includes:
 - zero known npm audit vulnerabilities at the time of scaffolding
 
 The frontend now includes device, user, VPN-client, individual-access,
-and server/network administration. Fine-grained authorization, the device-user
-portal, and production static-file delivery remain pending.
+server/network administration, and fine-grained authorization. The device-user
+portal and production static-file delivery remain pending.
 
 ## Phase status
 
@@ -53,7 +53,7 @@ portal, and production static-file delivery remain pending.
 | 5 | User and VPN-client administration | completed | Phase 4 |
 | 6 | Individual access management | completed | Phase 5 |
 | 7 | Server and network administration | completed | Phase 3 |
-| 8 | Fine-grained authorization contract | pending | Phase 6 backend behavior |
+| 8 | Fine-grained authorization contract | completed | Phase 6 backend behavior |
 | 9 | Device-user portal | pending | Phase 8 |
 | 10 | Production integration and E2E hardening | pending | Phases 4-9 |
 
@@ -780,7 +780,29 @@ server:write
 
 ### Notes
 
-Record the authoritative permission vocabulary here.
+- The authoritative permission vocabulary is `devices:read`,
+  `devices:write`, `users:read`, `users:write`, `clients:read`,
+  `clients:write`, `access:read`, `access:grant`, `server:read`, and
+  `server:write`.
+- Token validation now authenticates verified issuer and subject claims without
+  granting the configured app role globally. Principal normalization maps that
+  configured role to canonical `sysadmin` and all management permissions;
+  registered callers without it resolve as `device_user` with no management
+  permissions.
+- Every device, user, client, access, server, route, and restricted-network
+  management operation has an explicit FastAPI dependency. OpenAPI derives 39
+  operation policy extensions from those same dependencies, preventing
+  enforcement and documentation from drifting.
+- Resource policies authorize only VPN clients owned through UserClient and
+  devices explicitly granted through AccessGrant, returning a non-enumerating
+  `403` on mismatch. Phase 9 will use them for current-user portal endpoints.
+- Only exact loopback `POST` and `PUT`
+  `/clients/{client_name}/connections` requests bypass bearer authentication.
+  Remote callers require `clients:write`; no other route receives the bypass.
+- The frontend uses a typed permission vocabulary and route metadata for route,
+  navigation, and action presentation, continues to render safe backend `403`
+  states, and explains canonical roles and recognized permissions in the
+  account Access menu without showing issuer or subject claims.
 
 ## Phase 9: Device-user portal
 
@@ -1218,3 +1240,42 @@ Deferred:
   reconcile host state after an interrupted partial system change.
 - Frontend coverage instrumentation remains unavailable. Fine-grained backend
   authorization is Phase 8, and deployed browser/E2E verification is Phase 10.
+
+
+2026-08-25 - Phase 8 completed
+Implementation:
+- Separated verified-token authentication from authorization, added canonical
+  principal normalization, explicit permission dependencies on all management
+  routes, ownership and grant resource policies, deterministic permission
+  responses, and narrow hook-or-admin enforcement.
+- Published 39 OpenAPI operation policies from the enforcing dependencies,
+  regenerated the JSON and TypeScript contracts, and documented the exact
+  backend permission matrix and security configuration behavior.
+- Centralized typed frontend permissions and route metadata, retained
+  permission-aware navigation and action hiding plus backend-403 handling, and
+  added a safe account role/permission explanation.
+Verification:
+- `npm ci` and `npm audit`: passed; 258 packages installed, 259 audited,
+  and 0 vulnerabilities.
+- `npm run api:check`, `npm run lint`, and `npm run typecheck`: passed;
+  generated artifacts were reproducible and frontend code was lint/type clean.
+- `npm run test`: passed; 28 files and 116 tests. `npm run build`: passed;
+  Vite transformed 2,294 modules and produced the production bundle.
+- Focused authorization and OpenAPI contract suites passed 23 tests, including
+  direct non-admin calls, admin mapping, resource policies, all 39 operation
+  contracts, and the exact loopback connection hook.
+- `ruff format --check .`, `ruff check .`, and `mypy .`: passed for the
+  full repository.
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 155 passed with
+  91% total coverage; new `authorization.py` reached 95%.
+- `git diff --check` and scoped sensitive-output, unsafe-browser-API,
+  logging, line-length, and privileged-boundary diagnostics passed. No real
+  VPN, firewall, route, certificate, cloud, or other external system was
+  changed.
+Deferred:
+- Phase 9 owns `GET /me/clients`, `GET /me/devices`, device-user portal
+  routes, and any explicitly authorized owned-client credential workflow.
+- Real Entra tenant/browser and isolated privileged-host smoke testing require
+  deployment-specific configuration and remain manual/Phase 10 work.
+- Frontend coverage instrumentation remains unavailable; full and focused
+  Vitest behavior suites provide the recorded frontend verification.
