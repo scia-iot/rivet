@@ -1,9 +1,8 @@
 # ovpncp frontend
 
 React frontend for the OpenVPN control panel. Device, user, VPN-client,
-individual-access, server, network, and fine-grained authorization workflows
-are implemented; the portal and production-integration work remain phased in
-the
+individual-access, server, network, fine-grained authorization, and device-user
+portal workflows are implemented; production integration remains phased in the
 [frontend implementation plan](../docs/frontend-implementation-plan.md).
 
 ## Stack
@@ -77,6 +76,27 @@ FastAPI remains authoritative for every request. The backend maps the
 configured Entra app role to `sysadmin`; registered non-admin users receive the
 canonical `device_user` role and no management permissions. Each management
 operation documents and enforces its required permission.
+
+## Device-user portal
+
+Registered non-admin users land on `/portal`. The portal lists only the
+`id`, `name`, and `revoked` state of VPN clients owned by their current verified
+identity, plus devices with an explicit AccessGrant. It never accepts or places
+a user ID in a portal URL or API request. Device users can download credentials
+for an active owned client; the backend rejects revoked credentials before
+packaging, file access, or cloud storage. The same short-lived, no-store Blob
+download behavior used by administrators removes temporary anchors and object
+URLs immediately.
+
+Device detail URLs require a canonical positive decimal ID. A fixed forbidden
+state does not reveal whether an ungranted device exists; transient failures
+show a safe retry action without exposing backend details.
+
+Portal device pages show `Authorized` separately from `Not enforced`. An
+AccessGrant alone does not apply OpenVPN or firewall policy and does not
+confirm connectivity. Device users cannot create or change clients, identities,
+grants, devices, server state, routes, or networks, and direct navigation to
+those administrative routes remains forbidden.
 
 ## Checks
 

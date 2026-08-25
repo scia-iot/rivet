@@ -1,4 +1,5 @@
 import {
+  House,
   KeyRound,
   Laptop,
   Network,
@@ -18,6 +19,22 @@ import {
 import { cn } from '@/lib/utils'
 
 const navigation = [
+  {
+    to: '/portal',
+    label: 'Portal',
+    icon: House,
+    end: true,
+  },
+  {
+    to: '/portal/clients',
+    label: 'My VPN clients',
+    icon: Laptop,
+  },
+  {
+    to: '/portal/devices',
+    label: 'My devices',
+    icon: ShieldCheck,
+  },
   {
     to: '/',
     label: 'Overview',
@@ -81,7 +98,9 @@ export function AppShell() {
       <div className="mx-auto grid max-w-7xl gap-6 px-4 py-6 lg:grid-cols-[14rem_1fr] lg:px-8">
         <nav aria-label="Primary navigation" className="flex gap-2 overflow-x-auto lg:flex-col">
           {navigation
-            .filter(({ permission }) => hasPermission(session, permission))
+            .filter(({ permission }) =>
+              permission === undefined || hasPermission(session, permission),
+            )
             .map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}

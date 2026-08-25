@@ -7,7 +7,7 @@ from typing import Annotated, Any, cast
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.routing import APIRoute
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from sciaiot.ovpncp.data.identity import AccessGrant, Device, User, UserClient
 from sciaiot.ovpncp.data.server import Client
@@ -257,6 +257,52 @@ def _local_user(
             "The current principal is not authorized for this resource.",
         )
     return user
+
+
+def list_owned_clients(
+    principal: AuthenticatedPrincipal,
+    session: Session,
+) -> list[Client]:
+    """Return only VPN clients assigned to the current principal.
+
+    Args:
+        principal: Canonical authenticated application principal.
+        session: Active persistence session.
+
+    Returns:
+        The principal-owned VPN clients in stable identifier order.
+    """
+    user = _local_user(principal, session)
+    statement = (
+        select(Client)
+        .join(UserClient)
+        .where(UserClient.user_id == user.id)
+        .order_by(col(Client.id))
+    )
+    return list(session.exec(statement).all())
+
+
+def list_granted_devices(
+    principal: AuthenticatedPrincipal,
+    session: Session,
+) -> list[Device]:
+    """Return only devices explicitly granted to the current principal.
+
+    Args:
+        principal: Canonical authenticated application principal.
+        session: Active persistence session.
+
+    Returns:
+        The granted devices in stable identifier order.
+    """
+    user = _local_user(principal, session)
+    statement = (
+        select(Device)
+        .join(AccessGrant)
+        .where(AccessGrant.user_id == user.id)
+        .order_by(col(Device.id))
+    )
+    return list(session.exec(statement).all())
 
 
 def authorize_owned_client(

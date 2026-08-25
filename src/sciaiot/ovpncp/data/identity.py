@@ -65,6 +65,14 @@ class CurrentPrincipal(SQLModel):
     permissions: list[str]
 
 
+class CurrentUserClient(SQLModel):
+    """Minimal VPN client data exposed to its current owner."""
+
+    id: int
+    name: str
+    revoked: bool
+
+
 class AccessGrant(SQLModel, table=True):
     """Permission for one user to access one device."""
 

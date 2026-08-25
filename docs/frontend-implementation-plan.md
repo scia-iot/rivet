@@ -38,8 +38,8 @@ The frontend scaffold is complete. It includes:
 - zero known npm audit vulnerabilities at the time of scaffolding
 
 The frontend now includes device, user, VPN-client, individual-access,
-server/network administration, and fine-grained authorization. The device-user
-portal and production static-file delivery remain pending.
+server/network administration, fine-grained authorization, and the device-user
+portal. Production static-file delivery remains pending.
 
 ## Phase status
 
@@ -54,7 +54,7 @@ portal and production static-file delivery remain pending.
 | 6 | Individual access management | completed | Phase 5 |
 | 7 | Server and network administration | completed | Phase 3 |
 | 8 | Fine-grained authorization contract | completed | Phase 6 backend behavior |
-| 9 | Device-user portal | pending | Phase 8 |
+| 9 | Device-user portal | completed | Phase 8 |
 | 10 | Production integration and E2E hardening | pending | Phases 4-9 |
 
 ## Target architecture
@@ -857,7 +857,30 @@ accept an arbitrary user ID.
 
 ### Notes
 
-Record final user-facing capabilities and intentionally unavailable actions.
+- Current-user APIs derive the local identity only from verified issuer and
+  subject claims. Collection routes use Phase 8 policy helpers; detail and
+  credential routes use the Phase 8 granted-device and owned-client policies.
+  None accepts a user ID, and existing-but-unowned and nonexistent resources
+  return the same fixed `403` response.
+- Registered device users land on `/portal` and see portal, owned-client, and
+  granted-device navigation without administrative navigation. Direct admin
+  routes still render forbidden and remain protected by FastAPI permissions.
+- Portal client pages expose only an owned client's `id`, `name`, and
+  `revoked` state, provide safe setup guidance, and package/download only active
+  credentials through owned-client endpoints. The backend rejects revoked
+  credentials before packaging, file access, or cloud storage. Admin and portal
+  routes share a validated archive service after their distinct authorization
+  boundaries. Archive bytes use no-store fetches and a short-lived Blob URL
+  that is revoked immediately without entering query or browser storage.
+- Portal device pages list and retrieve only explicit grants. Canonical positive
+  decimal IDs are required; a fixed `403` remains non-enumerating, while
+  transient failures expose a safe retry action without backend details.
+  `Authorized` remains distinct from `Not enforced`; the UI states that an
+  AccessGrant does not configure OpenVPN/firewall policy or confirm
+  connectivity.
+- Intentionally unavailable to device users: identity, client, device, grant,
+  server, route, network, certificate-renewal, and certificate-revocation
+  administration. Production serving and deployed browser E2E remain Phase 10.
 
 ## Phase 10: Production integration and E2E hardening
 
@@ -1279,3 +1302,47 @@ Deferred:
   deployment-specific configuration and remain manual/Phase 10 work.
 - Frontend coverage instrumentation remains unavailable; full and focused
   Vitest behavior suites provide the recorded frontend verification.
+
+2026-08-25 - Phase 9 completed
+Implementation:
+- Added token-derived current-user client and device collections, granted-device
+  detail, and owned-client credential package/download routes. Phase 8 resource
+  policies enforce every resource lookup, no portal operation accepts a user
+  ID, and mismatches return a non-enumerating `403`.
+- Added typed portal hooks and stable query keys; portal landing, client list,
+  device list/detail, setup guidance, safe empty/error states, and device-user
+  navigation. Authorized remains distinct from Not enforced.
+- Added owned credential download with no-store archive fetches, immediate Blob
+  URL cleanup, no browser/query persistence, generated OpenAPI artifacts, and
+  synchronized root/frontend documentation. Independent review corrections
+  added an exact three-field current-user client summary, pre-I/O revoked-client
+  rejection, a shared validated certificate archive service, canonical device
+  IDs, and safe retryable transient device errors.
+Verification:
+- TDD red runs captured missing current-user endpoints (`2 failed`) and missing
+  portal routes/UI (`7 failed, 1 passed`) before implementation. Review red runs
+  then captured client-field overexposure, revoked-client privileged work, a
+  transient device error mapped to forbidden, and noncanonical `1e2` parsing.
+  Corrected focused suites passed 4 current-user backend tests, 1 OpenAPI
+  privacy test, 49 stateful admin API tests, and 10 portal tests.
+- `npm ci`: passed; 258 packages installed and 259 audited. `npm audit`: passed
+  with 0 vulnerabilities. `npm run api:check`, `npm run lint`, and `npm run
+  typecheck`: passed with reproducible generated artifacts and no findings.
+- `npm run test`: passed; 29 files and 127 tests. `npm run build`: passed; Vite
+  transformed 2,297 modules and emitted a separate 9.00 kB portal chunk.
+- `ruff format --check .`: passed for 46 files. `ruff check .`: passed. `mypy
+  .`: passed for 42 source files.
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 160 passed with
+  92% total coverage; `authorization.py` reached 97%, `routes/identity.py`
+  reached 84%, and the certificate archive service reached 100%.
+- `git diff --check`, explicit untracked-file whitespace scanning, scoped
+  line-length review, unsafe-browser/persistence/sensitive-output scanning, and
+  privileged-boundary review passed. OpenVPN archive operations were mocked;
+  no real VPN, firewall, route, certificate, cloud, or other external system
+  was changed.
+Deferred:
+- Frontend coverage instrumentation remains unavailable:
+  `npm ls @vitest/coverage-v8 --depth=0` reports `(empty)`. Full and focused
+  Vitest behavior suites provide the recorded frontend verification.
+- Production static-file serving, deployed Entra browser E2E, and isolated
+  privileged-host smoke testing remain Phase 10/manual work.

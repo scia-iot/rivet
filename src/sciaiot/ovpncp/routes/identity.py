@@ -2,9 +2,10 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlmodel import Session
 
+from sciaiot.ovpncp import dependencies
 from sciaiot.ovpncp.authorization import (
     Permission,
     PermissionRoute,
@@ -15,10 +16,15 @@ from sciaiot.ovpncp.authorization import (
     RequireDevicesWrite,
     RequireUsersRead,
     RequireUsersWrite,
+    authorize_granted_device,
+    authorize_owned_client,
+    list_granted_devices,
+    list_owned_clients,
 )
 from sciaiot.ovpncp.data.identity import (
     AccessGrant,
     CurrentPrincipal,
+    CurrentUserClient,
     Device,
     DeviceBase,
     DeviceUpdate,
@@ -29,6 +35,10 @@ from sciaiot.ovpncp.data.identity import (
 )
 from sciaiot.ovpncp.data.server import Client
 from sciaiot.ovpncp.dependencies import get_session
+from sciaiot.ovpncp.services.certificates import (
+    CertificateArchiveError,
+    CertificateArchiveService,
+)
 from sciaiot.ovpncp.services.identity import (
     AccessService,
     DeviceService,
@@ -75,6 +85,131 @@ def retrieve_current_principal(
             if permission in principal.permissions
         ],
     )
+
+
+def _portal_certificate_failure(error: Exception) -> HTTPException:
+    """Return a fixed credential failure without exposing internals."""
+    return HTTPException(
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "The certificate operation failed.",
+    )
+
+
+def _require_active_credentials(client: Client) -> None:
+    """Reject revoked owned credentials before any archive operation."""
+    if client.revoked:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Credentials are unavailable for this client.",
+        )
+
+
+@principal_router.get(
+    "/me/clients",
+    response_model=list[CurrentUserClient],
+    openapi_extra={"x-current-user-resource": "owned-client"},
+)
+def retrieve_current_clients(
+    principal: PrincipalDependency,
+    session: DBSession,
+) -> list[CurrentUserClient]:
+    """List minimal VPN client summaries owned by the principal."""
+    return [
+        CurrentUserClient(
+            id=client.id,
+            name=client.name,
+            revoked=client.revoked,
+        )
+        for client in list_owned_clients(principal, session)
+    ]
+
+
+@principal_router.get(
+    "/me/devices",
+    response_model=list[Device],
+    openapi_extra={"x-current-user-resource": "granted-device"},
+)
+def retrieve_current_devices(
+    principal: PrincipalDependency,
+    session: DBSession,
+) -> list[Device]:
+    """List devices explicitly granted to the authenticated principal."""
+    return list_granted_devices(principal, session)
+
+
+@principal_router.get(
+    "/me/devices/{device_id}",
+    response_model=Device,
+    openapi_extra={"x-current-user-resource": "granted-device"},
+)
+def retrieve_current_device(
+    device_id: int,
+    principal: PrincipalDependency,
+    session: DBSession,
+) -> Device:
+    """Retrieve one device explicitly granted to the principal."""
+    return authorize_granted_device(principal, device_id, session)
+
+
+@principal_router.put(
+    "/me/clients/{client_name}/package-cert",
+    status_code=status.HTTP_204_NO_CONTENT,
+    openapi_extra={"x-current-user-resource": "owned-client"},
+)
+def package_current_client_certificate(
+    client_name: str,
+    principal: PrincipalDependency,
+    session: DBSession,
+) -> None:
+    """Package credentials only for a client owned by the principal."""
+    client = authorize_owned_client(principal, client_name, session)
+    _require_active_credentials(client)
+    try:
+        CertificateArchiveService(dependencies.certs_directory).package(client)
+    except CertificateArchiveError as error:
+        raise _portal_certificate_failure(error) from error
+
+
+@principal_router.get(
+    "/me/clients/{client_name}/download-cert",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/zip": {
+                    "schema": {
+                        "type": "string",
+                        "format": "binary",
+                    }
+                }
+            },
+            "description": "Owned client certificate archive.",
+        }
+    },
+    openapi_extra={"x-current-user-resource": "owned-client"},
+)
+def download_current_client_certificate(
+    client_name: str,
+    request: Request,
+    principal: PrincipalDependency,
+    session: DBSession,
+) -> Response:
+    """Download credentials only for a client owned by the principal."""
+    client = authorize_owned_client(principal, client_name, session)
+    _require_active_credentials(client)
+    try:
+        return CertificateArchiveService(
+            dependencies.certs_directory
+        ).download_response(
+            client,
+            from_cloud_storage=getattr(
+                request.state,
+                "certificate_download_from_azure",
+                False,
+            ),
+        )
+    except CertificateArchiveError as error:
+        raise _portal_certificate_failure(error) from error
 
 
 def _handle_domain_error(error: Exception) -> HTTPException:

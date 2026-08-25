@@ -1,6 +1,5 @@
 import ipaddress
 import logging
-import os
 from datetime import datetime
 from typing import Annotated
 
@@ -28,6 +27,10 @@ from sciaiot.ovpncp.data.server import (
 )
 from sciaiot.ovpncp.dependencies import get_session
 from sciaiot.ovpncp.routes.server import get_server_record
+from sciaiot.ovpncp.services.certificates import (
+    CertificateArchiveError,
+    CertificateArchiveService,
+)
 from sciaiot.ovpncp.utils import openvpn
 from sciaiot.ovpncp.utils.logging import mask_sensitive
 
@@ -131,8 +134,8 @@ async def package_client_cert(
     logger.info(f"Packaging client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
     try:
-        openvpn.package_client_cert(client.name, dependencies.certs_directory)
-    except Exception as error:
+        CertificateArchiveService(dependencies.certs_directory).package(client)
+    except CertificateArchiveError as error:
         raise _certificate_failure("packaging") from error
     logger.info("Client certificate packaged successfully!")
 
@@ -158,29 +161,20 @@ def download_client_cert(
     logger.info(f"Downloading client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
     try:
-        openvpn.validate_name(client.name)
-        file_name = f"{client.name}.zip"
-        if getattr(request.state, "certificate_download_from_azure", False):
-            return Response(
-                headers={"Cache-Control": "no-store"},
-                media_type="application/zip",
-            )
-        file_path = os.path.join(dependencies.certs_directory, file_name)
-        with open(file_path, "rb") as archive:
-            content = archive.read()
-    # This is the safety boundary around filesystem and archive operations;
-    # their implementation-specific errors must never reach the response.
-    except Exception as error:
+        response = CertificateArchiveService(
+            dependencies.certs_directory
+        ).download_response(
+            client,
+            from_cloud_storage=getattr(
+                request.state,
+                "certificate_download_from_azure",
+                False,
+            ),
+        )
+    except CertificateArchiveError as error:
         raise _certificate_failure("download") from error
     logger.info("Client certificate ready to be downloaded.")
-    return Response(
-        content=content,
-        headers={
-            "Cache-Control": "no-store",
-            "Content-Disposition": f'attachment; filename="{file_name}"',
-        },
-        media_type="application/zip",
-    )
+    return response
 
 
 @router.put("/{client_name}/renew-cert", response_model=CertBase)

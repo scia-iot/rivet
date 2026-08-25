@@ -50,6 +50,45 @@ def test_openapi_documents_current_principal_contract() -> None:
     }
 
 
+def test_openapi_documents_current_user_resource_contracts() -> None:
+    """Portal operations expose typed data and enforced resource policy."""
+    app.openapi_schema = None
+
+    schema = app.openapi()
+    policies = {
+        ("get", "/me/clients"): "owned-client",
+        ("get", "/me/devices"): "granted-device",
+        ("get", "/me/devices/{device_id}"): "granted-device",
+        (
+            "put",
+            "/me/clients/{client_name}/package-cert",
+        ): "owned-client",
+        (
+            "get",
+            "/me/clients/{client_name}/download-cert",
+        ): "owned-client",
+    }
+
+    for (method, path), policy in policies.items():
+        operation = schema["paths"][path][method]
+        assert operation["x-current-user-resource"] == policy
+        assert "x-required-permission" not in operation
+        assert all(
+            parameter["name"] != "user_id"
+            for parameter in operation.get("parameters", [])
+        )
+
+    clients = schema["paths"]["/me/clients"]["get"]["responses"]["200"]
+    client_items = clients["content"]["application/json"]["schema"]["items"]
+    devices = schema["paths"]["/me/devices"]["get"]["responses"]["200"]
+    device_items = devices["content"]["application/json"]["schema"]["items"]
+    assert client_items["$ref"].endswith("/CurrentUserClient")
+    assert device_items["$ref"].endswith("/Device")
+    client_model = schema["components"]["schemas"]["CurrentUserClient"]
+    assert set(client_model["required"]) == {"id", "name", "revoked"}
+    assert set(client_model["properties"]) == {"id", "name", "revoked"}
+
+
 def test_openapi_generation_does_not_call_privileged_operations() -> None:
     """Building the schema must never touch VPN, firewall, or route state."""
     app.openapi_schema = None

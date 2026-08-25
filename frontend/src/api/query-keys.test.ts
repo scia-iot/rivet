@@ -13,6 +13,12 @@ describe('query key factories', () => {
     expect(queryKeys.users.devices(7)).toEqual(queryKeys.users.devices(7))
   })
 
+  it('creates current-user portal keys without arbitrary user IDs', () => {
+    expect(queryKeys.portal.clients).toEqual(['portal', 'clients'])
+    expect(queryKeys.portal.devices).toEqual(['portal', 'devices'])
+    expect(queryKeys.portal.device(21)).toEqual(['portal', 'devices', 21])
+  })
+
   it('creates stable server and restricted-network keys', () => {
     expect(queryKeys.server.routes).toEqual(['server', 'routes'])
     expect(queryKeys.networks.all).toEqual(['networks'])

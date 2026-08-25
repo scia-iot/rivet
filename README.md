@@ -311,6 +311,20 @@ they do not grant management-route access. Create the matching local User record
 before signing in to the frontend. OpenAPI operations publish their enforced
 policy as `x-required-permission`.
 
+Current-user portal APIs derive the local user only from verified token
+`issuer` and `subject` claims. `GET /me/clients` returns only client `id`,
+`name`, and `revoked` state; `GET /me/devices` and
+`GET /me/devices/{device_id}` expose only explicitly granted resources. Owned,
+active credential packaging and no-store ZIP download use
+`PUT /me/clients/{client_name}/package-cert` and
+`GET /me/clients/{client_name}/download-cert`. Revoked credentials receive a
+fixed `409` before packaging, file access, or cloud storage. Existing but
+unowned
+and nonexistent resources receive the same `403` response, so these APIs cannot
+be used to enumerate another user's resources. None of the `/me/...` operations
+accepts a user ID. Admin and portal certificate routes share the same validated
+archive service after their distinct authorization checks.
+
 Only exact localhost `POST` and `PUT` requests to
 `/clients/{client_name}/connections` bypass bearer authentication for the
 OpenVPN connection scripts. Remote callers to those endpoints require

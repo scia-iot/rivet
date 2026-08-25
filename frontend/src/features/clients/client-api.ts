@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { triggerArchiveDownload } from '@/api/download'
 import type { components } from '@/api/generated/schema'
 import { queryKeys } from '@/api/query-keys'
 import { useApiClient } from '@/api/use-api-client'
@@ -208,21 +209,6 @@ export function useRevokeCertificate() {
   })
 }
 
-function triggerArchiveDownload(archive: Blob, clientName: string) {
-  const objectUrl = URL.createObjectURL(archive)
-  const anchor = document.createElement('a')
-  try {
-    anchor.href = objectUrl
-    anchor.download = `${clientName}.zip`
-    anchor.hidden = true
-    document.body.append(anchor)
-    anchor.click()
-  } finally {
-    anchor.remove()
-    URL.revokeObjectURL(objectUrl)
-  }
-}
-
 export function useCertificateDownload() {
   const client = useApiClient()
   return useCallback(
@@ -241,7 +227,7 @@ export function useCertificateDownload() {
       if (!(data instanceof Blob)) {
         throw new Error('The certificate archive response was invalid.')
       }
-      triggerArchiveDownload(data, clientName)
+      triggerArchiveDownload(data, `${clientName}.zip`)
     },
     [client],
   )

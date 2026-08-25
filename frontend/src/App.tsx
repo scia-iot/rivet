@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react'
-import { Route, Routes, useLocation } from 'react-router'
+import { Navigate, Route, Routes, useLocation } from 'react-router'
 
 import { RouteErrorBoundary } from '@/app/error-boundary'
 import { routePermissions } from '@/auth/permissions'
 import { RequirePermission } from '@/auth/principal-session'
+import { usePrincipalSession } from '@/auth/use-principal-session'
 import { AppShell } from '@/components/app-shell'
 import { PlaceholderPage } from '@/pages/placeholder-page'
 
@@ -15,6 +16,7 @@ const loadUserPages = () => import('@/features/users/user-pages')
 const loadClientPages = () => import('@/features/clients/client-pages')
 const loadServerPages = () => import('@/features/server/server-pages')
 const loadNetworkPages = () => import('@/features/networks/network-pages')
+const loadPortalPages = () => import('@/features/portal/portal-pages')
 const DeviceListPage = lazy(async () => ({
   default: (await loadDevicePages()).DeviceListPage,
 }))
@@ -57,12 +59,42 @@ const NetworkListPage = lazy(async () => ({
 const NetworkDetailPage = lazy(async () => ({
   default: (await loadNetworkPages()).NetworkDetailPage,
 }))
+const PortalLandingPage = lazy(async () => ({
+  default: (await loadPortalPages()).PortalLandingPage,
+}))
+const PortalClientsPage = lazy(async () => ({
+  default: (await loadPortalPages()).PortalClientsPage,
+}))
+const PortalDevicesPage = lazy(async () => ({
+  default: (await loadPortalPages()).PortalDevicesPage,
+}))
+const PortalDeviceDetailPage = lazy(async () => ({
+  default: (await loadPortalPages()).PortalDeviceDetailPage,
+}))
 
 function RouteLoading() {
   return (
     <main aria-busy="true" className="grid min-h-[60vh] place-items-center p-6">
       <p role="status">Loading page...</p>
     </main>
+  )
+}
+
+function LandingPage() {
+  const session = usePrincipalSession()
+  if (
+    session.authenticationDisabled === false &&
+    session.principal?.roles.includes('device_user') === true
+  ) {
+    return <Navigate replace to="/portal" />
+  }
+  return (
+    <RequirePermission permission={routePermissions.overview}>
+      <PlaceholderPage
+        title="Overview"
+        description={OVERVIEW_DESCRIPTION}
+      />
+    </RequirePermission>
   )
 }
 
@@ -74,16 +106,13 @@ export default function App() {
       <Suspense fallback={<RouteLoading />}>
         <Routes location={location}>
           <Route element={<AppShell />}>
+            <Route index element={<LandingPage />} />
+            <Route element={<PortalLandingPage />} path="portal" />
+            <Route element={<PortalClientsPage />} path="portal/clients" />
+            <Route element={<PortalDevicesPage />} path="portal/devices" />
             <Route
-              index
-              element={
-                <RequirePermission permission={routePermissions.overview}>
-                  <PlaceholderPage
-                    title="Overview"
-                    description={OVERVIEW_DESCRIPTION}
-                  />
-                </RequirePermission>
-              }
+              element={<PortalDeviceDetailPage />}
+              path="portal/devices/:deviceId"
             />
             <Route
               element={
