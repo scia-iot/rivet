@@ -3,7 +3,9 @@ import os
 # Set dummy environment variables before importing the app to avoid security middleware failure
 os.environ["AZURE_ENTRAID_TENANT_ID"] = "mock"
 os.environ["AZURE_ENTRAID_APP_CLIENT_ID"] = "mock"
-os.environ["AZURE_ENTRAID_APP_ROLE"] = "mock"
+os.environ["AZURE_ENTRAID_USER_ROLE"] = "user"
+os.environ["AZURE_ENTRAID_ADMIN_ROLE"] = "admin"
+os.environ["AZURE_ENTRAID_SERVICE_ADMIN_ROLE"] = "ServiceAdmin"
 
 import logging
 from unittest.mock import patch

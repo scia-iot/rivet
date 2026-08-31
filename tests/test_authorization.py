@@ -15,6 +15,7 @@ from sciaiot.ovpncp.authorization import (
     Permission,
     authorize_granted_device,
     authorize_owned_client,
+    get_authenticated_principal,
 )
 from sciaiot.ovpncp.data.identity import AccessGrant, Device, User, UserClient
 from sciaiot.ovpncp.data.server import Client
@@ -91,7 +92,9 @@ def authorization_context_fixture() -> Generator[
         claims: dict[str, object] = {
             "iss": device_user.issuer,
             "sub": device_user.subject,
-            "roles": ["Device.User"],
+            "oid": "device-user-object-id",
+            "roles": ["user"],
+            "scp": "access_as_user",
         }
 
         def get_session_override() -> Generator[Session]:
@@ -106,9 +109,11 @@ def authorization_context_fixture() -> Generator[
             patch("sciaiot.ovpncp.main.create_app_directory"),
             patch("sciaiot.ovpncp.main.create_tables"),
             patch("sciaiot.ovpncp.main.init_scripts"),
+            patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
+            patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.APP_ROLE",
-                "ControlPlane.Admin",
+                "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+                "ServiceAdmin",
             ),
             TestClient(app) as test_client,
         ):
@@ -213,10 +218,10 @@ def test_exact_loopback_connection_hook_remains_available(
 def test_sysadmin_role_receives_authoritative_permissions(
     authorization_context: tuple[TestClient, dict[str, object], Session],
 ) -> None:
-    """The configured Entra role maps to the canonical sysadmin policy."""
+    """A delegated admin role maps to the canonical sysadmin policy."""
     test_client, claims, _ = authorization_context
     claims["sub"] = "admin-subject"
-    claims["roles"] = ["ControlPlane.Admin"]
+    claims["roles"] = ["admin"]
 
     principal_response = test_client.get("/me")
     devices_response = test_client.get("/devices")
@@ -227,6 +232,215 @@ def test_sysadmin_role_receives_authoritative_permissions(
         permission.value for permission in Permission
     ]
     assert devices_response.status_code == 200
+
+
+def test_service_admin_receives_authoritative_permissions(
+    authorization_context: tuple[TestClient, dict[str, object], Session],
+) -> None:
+    """An app-only ServiceAdmin receives the full management policy."""
+    test_client, claims, _ = authorization_context
+    claims["sub"] = "business-platform-object-id"
+    claims["oid"] = "business-platform-object-id"
+    claims["roles"] = ["ServiceAdmin"]
+    claims.pop("scp")
+
+    devices_response = test_client.get("/devices")
+
+    assert devices_response.status_code == 200
+    principal = get_authenticated_principal(_principal_request(dict(claims)))
+
+    assert principal.roles == ("service_admin",)
+    assert principal.permissions == frozenset(Permission)
+
+
+def _principal_request(claims: dict[str, object]) -> MagicMock:
+    """Build a request carrying middleware-validated claims."""
+    request = MagicMock()
+    request.state.token_payload = claims
+    return request
+
+
+@pytest.mark.parametrize(
+    "claims",
+    [
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "subject",
+            "oid": "object-id",
+            "roles": [],
+            "scp": "access_as_user",
+        },
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "subject",
+            "oid": "object-id",
+            "roles": ["unknown"],
+            "scp": "access_as_user",
+        },
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "subject",
+            "oid": "object-id",
+            "roles": ["user", "admin"],
+            "scp": "access_as_user",
+        },
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "subject",
+            "oid": "object-id",
+            "roles": ["admin", "unknown"],
+            "scp": "access_as_user",
+        },
+    ],
+)
+def test_missing_unknown_and_ambiguous_roles_fail_closed(
+    claims: dict[str, object],
+) -> None:
+    """Only one explicitly configured app role can select a policy."""
+    with (
+        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
+        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+        patch(
+            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            "ServiceAdmin",
+        ),
+        pytest.raises(HTTPException) as error,
+    ):
+        get_authenticated_principal(_principal_request(claims))
+
+    assert error.value.status_code == 403
+    assert error.value.detail == "The token has no recognized application role."
+
+
+@pytest.mark.parametrize(
+    "claims",
+    [
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "subject",
+            "oid": "object-id",
+            "roles": ["user"],
+        },
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "subject",
+            "oid": "object-id",
+            "roles": ["admin"],
+            "scp": "another_scope",
+        },
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "same-object-id",
+            "oid": "same-object-id",
+            "roles": ["user"],
+            "scp": "access_as_user",
+        },
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "subject",
+            "roles": ["user"],
+            "scp": "access_as_user",
+        },
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "subject",
+            "oid": 42,
+            "roles": ["admin"],
+            "scp": "access_as_user",
+        },
+    ],
+)
+def test_delegated_roles_require_user_token_and_access_scope(
+    claims: dict[str, object],
+) -> None:
+    """Human roles cannot authorize app-only or unscoped tokens."""
+    with (
+        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
+        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+        patch(
+            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            "ServiceAdmin",
+        ),
+        pytest.raises(HTTPException) as error,
+    ):
+        get_authenticated_principal(_principal_request(claims))
+
+    assert error.value.status_code == 403
+    assert error.value.detail == "The token is not valid for delegated access."
+
+
+@pytest.mark.parametrize(
+    "claims",
+    [
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "service-subject",
+            "oid": "different-object-id",
+            "roles": ["ServiceAdmin"],
+        },
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "service-object-id",
+            "oid": "service-object-id",
+            "roles": ["ServiceAdmin"],
+            "scp": "access_as_user",
+        },
+    ],
+)
+def test_service_admin_requires_unscoped_app_only_token(
+    claims: dict[str, object],
+) -> None:
+    """ServiceAdmin cannot authorize delegated or ambiguously scoped tokens."""
+    with (
+        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
+        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+        patch(
+            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            "ServiceAdmin",
+        ),
+        pytest.raises(HTTPException) as error,
+    ):
+        get_authenticated_principal(_principal_request(claims))
+
+    assert error.value.status_code == 403
+    assert error.value.detail == "The token is not valid for app-only access."
+
+
+@pytest.mark.parametrize(
+    ("user_role", "admin_role", "service_role"),
+    [
+        (None, "admin", "ServiceAdmin"),
+        ("   ", "admin", "ServiceAdmin"),
+        ("user", " admin ", "ServiceAdmin"),
+        ("user", "user", "ServiceAdmin"),
+    ],
+)
+def test_missing_or_duplicate_role_configuration_fails_closed(
+    user_role: str | None,
+    admin_role: str,
+    service_role: str,
+) -> None:
+    """Role mappings must be present and mutually distinct."""
+    claims: dict[str, object] = {
+        "iss": "https://login.example/tenant/v2.0",
+        "sub": "subject",
+        "oid": "object-id",
+        "roles": ["user"],
+        "scp": "access_as_user",
+    }
+    with (
+        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", user_role),
+        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", admin_role),
+        patch(
+            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            service_role,
+        ),
+        pytest.raises(HTTPException) as error,
+    ):
+        get_authenticated_principal(_principal_request(claims))
+
+    assert error.value.status_code == 500
+    assert error.value.detail == "Authorization service is misconfigured."
 
 
 def test_owned_client_and_granted_device_policies(
@@ -256,8 +470,8 @@ def test_owned_client_and_granted_device_policies(
     assert device_error.value.status_code == 403
 
 
-def test_validate_token_does_not_require_admin_role() -> None:
-    """Signature and identity validation are independent of authorization."""
+def test_validate_token_accepts_complete_role_configuration() -> None:
+    """Signature validation accepts explicit authorization configuration."""
     request = MagicMock()
     request.headers.get.return_value = "Bearer signed-token"
     keys = MagicMock()
@@ -274,9 +488,11 @@ def test_validate_token_does_not_require_admin_role() -> None:
             "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID",
             "client",
         ),
+        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
+        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.APP_ROLE",
-            "ControlPlane.Admin",
+            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            "ServiceAdmin",
         ),
         patch(
             "sciaiot.ovpncp.middlewares.azure_security.urlopen",
@@ -291,7 +507,7 @@ def test_validate_token_does_not_require_admin_role() -> None:
             return_value={
                 "iss": "https://login.microsoftonline.com/tenant/v2.0",
                 "sub": "device-user-subject",
-                "roles": ["Device.User"],
+                "roles": ["user"],
             },
         ),
     ):

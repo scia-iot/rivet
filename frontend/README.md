@@ -80,9 +80,11 @@ enforcement remains deferred: creating or removing a grant does not apply an
 OpenVPN or firewall policy and does not confirm connectivity. The frontend
 waits for backend confirmation before refreshing grant state. `access:read`
 controls read presentation and `access:grant` controls mutation presentation;
-FastAPI remains authoritative for every request. The backend maps the
-configured Entra app role to `sysadmin`; registered non-admin users receive the
-canonical `device_user` role and no management permissions. Each management
+FastAPI remains authoritative for every request. The backend maps the exact
+Entra role value `user` to `device_user` with no management permissions and
+maps `admin` to `sysadmin`. App-only tokens carrying exactly `ServiceAdmin`
+map to `service_admin` and receive the same management permissions as
+`sysadmin`. Missing, unknown, or multiple roles are denied. Each management
 operation documents and enforces its required permission.
 
 ## Device-user portal

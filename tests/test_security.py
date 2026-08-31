@@ -18,7 +18,9 @@ client = TestClient(app)
 @patch(
     "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID", "mocked_app_client_id"
 )
-@patch("sciaiot.ovpncp.middlewares.azure_security.APP_ROLE", "mocked_app_role")
+@patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user")
+@patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin")
+@patch("sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
 @patch(
     "sciaiot.ovpncp.middlewares.azure_security.validate_token",
     return_value={"sub": "mocked_sub"},
@@ -35,7 +37,9 @@ def test_azure_security_middleware_success(mock_validate_token):
 @patch(
     "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID", "mocked_app_client_id"
 )
-@patch("sciaiot.ovpncp.middlewares.azure_security.APP_ROLE", "mocked_app_role")
+@patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user")
+@patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin")
+@patch("sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
 @patch(
     "sciaiot.ovpncp.middlewares.azure_security.validate_token",
     side_effect=HTTPException(status_code=401, detail="Mocked Exception"),
@@ -185,7 +189,9 @@ def test_get_token_no_authorization_header():
     "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID",
     "mocked_app_client_id",
 )
-@patch("sciaiot.ovpncp.middlewares.azure_security.APP_ROLE", "mocked_app_role")
+@patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user")
+@patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin")
+@patch("sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
 def test_blank_authorization_header_returns_problem_401():
     """Whitespace-only bearer input is a handled authentication failure."""
     request = MagicMock(spec=Request)

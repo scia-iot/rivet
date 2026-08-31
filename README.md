@@ -48,11 +48,40 @@ npm run dev
 
 ## Installation
 
-In order to run along with OpenVPN server, the ROOT privilege is required.
+Python 3.14 or newer is required. The service needs root privileges because it
+manages OpenVPN, firewall rules, routes, and protected certificate files.
+
+The current application imports the Entra token validator during startup, so
+install the `security` extra even when SQLite and local certificate storage are
+used:
 
 ```shell
-sudo pipx install ovpncp
+sudo pipx install "ovpncp[security]"
 ```
+
+Use the `azure` extra when Azure Blob Storage is configured. It includes the
+`security` dependencies:
+
+```shell
+sudo pipx install "ovpncp[azure]"
+```
+
+Add `mysql` or `postgres` to the selected extras when using either database,
+for example `ovpncp[azure,postgres]`.
+
+Wheels contain dependency metadata, not copies of third-party packages. A
+local wheel installation must therefore select the same extras explicitly and
+allow pipx to resolve them:
+
+```shell
+sudo pipx install \
+  "ovpncp[azure] @ file:///absolute/path/to/ovpncp-0.1.7-py3-none-any.whl"
+```
+
+To replace an existing pipx installation, stop the service, run
+`sudo pipx uninstall ovpncp`, install the new package with the appropriate
+extras, and start the service again. Verify the installed version and service
+health before removing the wheel used for deployment.
 
 ## OpenVPN Server Setup
 
@@ -279,32 +308,52 @@ restricted-network, certificate, and firewall operations remain unchanged.
 The API also provides `GET`, `PATCH`, and `DELETE` operations under `/devices`
 and `/users`. Deleting a device does not delete or revoke its OpenVPN client.
 
-### [Optional] Enable Security with Azure Entra ID
+### Configure Required Authentication with Microsoft Entra ID
 
-Register this app on Azure Entra ID first, then sets three ENVs to enable the security middleware:
+Register the API in Microsoft Entra ID and set these five backend environment
+variables before starting ovpncp:
 
-1. `AZURE_ENTRAID_TENANT_ID` - the tenant ID of Azure Entra ID directory.
+1. `AZURE_ENTRAID_TENANT_ID` - the tenant ID containing the API registration.
 
-2. `AZURE_ENTRAID_APP_CLIENT_ID` - the application (client) ID of this app that registered.
+2. `AZURE_ENTRAID_APP_CLIENT_ID` - the Application (client) ID of the API
+   registration.
 
-3. `AZURE_ENTRAID_APP_ROLE` - the app role assigned by this app.
+3. `AZURE_ENTRAID_USER_ROLE` - the delegated user app-role value (`user`).
 
-All three values are required together; missing or partial configuration fails
+4. `AZURE_ENTRAID_ADMIN_ROLE` - the delegated administrator app-role value
+   (`admin`).
+
+5. `AZURE_ENTRAID_SERVICE_ADMIN_ROLE` - the app-only service app-role value
+   (`ServiceAdmin`).
+
+All five values are required together, must be non-empty, and the three role
+values must be distinct. Missing, partial, or duplicate configuration fails
 closed. Authentication validates the token signature, audience, issuer, and
-stable identity before authorization. The configured Entra app role maps to the
-canonical `sysadmin` role and these FastAPI-enforced permissions:
+stable identity before authorization.
+
+Delegated `user` and `admin` tokens must contain the `access_as_user` scope and
+a non-empty `oid` distinct from `sub`. They map to `device_user` and `sysadmin`,
+respectively. App-only `ServiceAdmin` tokens must have `oid` equal to `sub` and
+must not contain `scp`; they map to `service_admin`. Both `sysadmin` and
+`service_admin` receive these FastAPI-enforced permissions:
 `devices:read`, `devices:write`, `users:read`, `users:write`,
 `clients:read`, `clients:write`, `access:read`, `access:grant`,
 `server:read`, and `server:write`.
 
 Authenticated callers can use `GET /me` to resolve the validated token issuer
 and subject to a local User. The endpoint never accepts a caller-supplied user
-ID. A registered caller without the configured admin role resolves as
-`device_user` with no control-plane management permissions. Ownership of VPN
-clients and explicit device AccessGrant records are separate resource policies;
-they do not grant management-route access. Create the matching local User record
-before signing in to the frontend. OpenAPI operations publish their enforced
-policy as `x-required-permission`.
+ID. The `user` app role resolves as `device_user` with no control-plane
+management permissions. Missing, unknown, or multiple token roles are rejected
+instead of defaulting to `device_user`. Ownership of VPN clients and explicit
+device AccessGrant records are separate resource policies; they do not grant
+management-route access. Create the matching local User record before signing
+in to the frontend. OpenAPI operations publish their enforced policy as
+`x-required-permission`.
+
+Migration: remove `AZURE_ENTRAID_APP_ROLE` and define all three explicit role
+variables before restarting the service. There is deliberately no legacy
+fallback; an existing `ServiceAdmin` value is never interpreted as an
+interactive administrator role.
 
 Current-user portal APIs derive the local user only from verified token
 `issuer` and `subject` claims. `GET /me/clients` returns only client `id`,

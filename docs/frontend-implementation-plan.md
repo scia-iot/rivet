@@ -291,18 +291,18 @@ accept a browser-supplied user ID as the current identity.
   identity is not registered locally.
 - The final `CurrentPrincipal` schema is:
   `id: number`, `display_name: string`, `issuer: string`, `subject: string`,
-  `roles: string[]`, and `permissions: string[]`. The current validated Entra
-  application role maps to the canonical local role `sysadmin`.
+  `roles: string[]`, and `permissions: string[]`. Roles and permissions are
+  canonical backend values; the frontend never derives them from token roles.
 - The authoritative Phase 2 permission vocabulary is `devices:read`,
   `devices:write`, `users:read`, `users:write`, `clients:read`,
   `clients:write`, `access:read`, `access:grant`, `server:read`, and
-  `server:write`. FastAPI's existing required Entra application role remains
-  authoritative; frontend permission checks only filter navigation and render
-  route-level forbidden states. Fine-grained backend policies remain Phase 8.
-- Token roles are checked only after signature and claim validation. Missing or
-  partial Entra configuration fails closed, unexpected security failures do not
-  log exception contents, and tokens/OAuth subjects are absent from frontend
-  logs and safe errors.
+  `server:write`. FastAPI permission dependencies remain authoritative;
+  frontend permission checks only filter navigation and render route-level
+  forbidden states.
+- Token roles are checked only after signature and claim validation. All five
+  Entra settings are required, and invalid configuration fails closed.
+  Unexpected security failures do not log exception contents, and tokens/OAuth
+  subjects are absent from frontend logs and safe errors.
 - The localhost security exception is limited to actual loopback peers making
   exact `POST` or `PUT` requests to `/clients/{client_name}/connections`.
   A loopback Host header from a remote peer does not grant the bypass.
@@ -737,8 +737,8 @@ operations with safe confirmations and actionable failures.
 
 ### Objective
 
-Replace the coarse global APP_ROLE assumption with explicit backend policies
-needed by both sysadmins and device users.
+Use explicit backend policies and Entra role mappings for device users,
+interactive system administrators, and app-only service administrators.
 
 ### Backend work
 
@@ -786,10 +786,13 @@ server:write
   `clients:write`, `access:read`, `access:grant`, `server:read`, and
   `server:write`.
 - Token validation now authenticates verified issuer and subject claims without
-  granting the configured app role globally. Principal normalization maps that
-  configured role to canonical `sysadmin` and all management permissions;
-  registered callers without it resolve as `device_user` with no management
-  permissions.
+  granting a token role globally.
+- Principal normalization requires exactly one configured role. Delegated
+  `user` and `admin` tokens require `access_as_user` and map to `device_user`
+  and `sysadmin`; `device_user` has no management permissions. App-only
+  `ServiceAdmin` tokens must omit `scp`, map to `service_admin`, and receive the
+  same management permissions as `sysadmin`. Missing, unknown, or multiple
+  roles are denied.
 - Every device, user, client, access, server, route, and restricted-network
   management operation has an explicit FastAPI dependency. OpenAPI derives 39
   operation policy extensions from those same dependencies, preventing

@@ -29,6 +29,8 @@ export const permissionDescriptions = {
 export const roleDescriptions: Record<string, string> = {
   sysadmin: 'System administrator with control-plane management permissions.',
   device_user: 'Device user limited to explicitly owned and granted resources.',
+  service_admin:
+    'Service administrator with full control-plane management permissions.',
 }
 
 export const routePermissions = {

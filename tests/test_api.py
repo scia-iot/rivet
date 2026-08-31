@@ -24,8 +24,9 @@ def client_fixture(db_session):
             "sciaiot.ovpncp.middlewares.azure_security.validate_token",
             return_value={
                 "iss": "https://login.example/tenant/v2.0",
-                "sub": "mocked_sub",
-                "roles": ["mocked_app_role"],
+                "sub": "service-object-id",
+                "oid": "service-object-id",
+                "roles": ["ServiceAdmin"],
             },
         ),
         patch(
@@ -35,9 +36,11 @@ def client_fixture(db_session):
             "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID",
             "mocked_app_client_id",
         ),
+        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
+        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.APP_ROLE",
-            "mocked_app_role",
+            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            "ServiceAdmin",
         ),
     ):
         client = TestClient(app)

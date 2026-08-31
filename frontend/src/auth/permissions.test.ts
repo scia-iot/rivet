@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   PERMISSIONS,
   permissionDescriptions,
+  roleDescriptions,
   routePermissions,
 } from '@/auth/permissions'
 
@@ -21,6 +22,14 @@ describe('authorization metadata', () => {
       'server:write',
     ])
     expect(Object.keys(permissionDescriptions)).toEqual(PERMISSIONS)
+  })
+
+  it('describes every canonical backend role', () => {
+    expect(Object.keys(roleDescriptions)).toEqual([
+      'sysadmin',
+      'device_user',
+      'service_admin',
+    ])
   })
 
   it('declares required permissions for every administration route', () => {

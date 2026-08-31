@@ -98,23 +98,66 @@ def get_authenticated_principal(request: Request) -> AuthenticatedPrincipal:
             "The validated token identity is incomplete.",
         )
 
-    configured_admin_role = azure_security.APP_ROLE
-    if not isinstance(configured_admin_role, str) or not configured_admin_role:
+    role_config = {
+        "device_user": azure_security.USER_ROLE,
+        "sysadmin": azure_security.ADMIN_ROLE,
+        "service_admin": azure_security.SERVICE_ADMIN_ROLE,
+    }
+    configured_roles = tuple(role_config.values())
+    if not all(
+        isinstance(role, str) and bool(role) and role == role.strip()
+        for role in configured_roles
+    ) or len(set(configured_roles)) != len(configured_roles):
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "Authorization service is misconfigured.",
         )
 
     token_roles = payload.get("roles")
-    has_admin_role = (
-        isinstance(token_roles, list) and configured_admin_role in token_roles
+    if (
+        not isinstance(token_roles, list)
+        or len(token_roles) != 1
+        or not isinstance(token_roles[0], str)
+        or token_roles[0] not in configured_roles
+    ):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "The token has no recognized application role.",
+        )
+
+    token_role = token_roles[0]
+    canonical_role = next(
+        name for name, configured in role_config.items() if configured == token_role
     )
-    if has_admin_role:
-        roles = ("sysadmin",)
+    object_id = payload.get("oid")
+    is_app_only = (
+        isinstance(object_id, str) and bool(object_id) and object_id == subject
+    )
+    has_human_object_id = (
+        isinstance(object_id, str) and bool(object_id) and object_id != subject
+    )
+    if canonical_role == "service_admin":
+        if not is_app_only or payload.get("scp") is not None:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "The token is not valid for app-only access.",
+            )
+        roles = (canonical_role,)
         permissions = frozenset(SYSADMIN_PERMISSIONS)
     else:
-        roles = ("device_user",)
-        permissions = frozenset()
+        token_scope = payload.get("scp")
+        scopes = token_scope.split() if isinstance(token_scope, str) else []
+        if not has_human_object_id or azure_security.DELEGATED_SCOPE not in scopes:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "The token is not valid for delegated access.",
+            )
+        roles = (canonical_role,)
+        permissions = (
+            frozenset(SYSADMIN_PERMISSIONS)
+            if canonical_role == "sysadmin"
+            else frozenset()
+        )
 
     return AuthenticatedPrincipal(
         issuer=issuer,

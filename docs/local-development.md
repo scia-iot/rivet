@@ -54,12 +54,25 @@ Set these variables before starting it:
 ```shell
 export AZURE_ENTRAID_TENANT_ID="<tenant-id>"
 export AZURE_ENTRAID_APP_CLIENT_ID="<api-application-client-id>"
-export AZURE_ENTRAID_APP_ROLE="<administrator-app-role-value>"
+export AZURE_ENTRAID_USER_ROLE="user"
+export AZURE_ENTRAID_ADMIN_ROLE="admin"
+export AZURE_ENTRAID_SERVICE_ADMIN_ROLE="ServiceAdmin"
 ```
 
 `AZURE_ENTRAID_APP_CLIENT_ID` is the Application (client) ID of the API
-registration, not the SPA registration. `AZURE_ENTRAID_APP_ROLE` is the app
-role value that maps an authenticated user to the `sysadmin` role.
+registration, not the SPA registration. The three role settings must be
+non-empty and distinct. Their Entra values map `user` to `device_user`, `admin`
+to `sysadmin`, and `ServiceAdmin` to `service_admin`. Both administrator roles
+receive all control-plane management permissions.
+
+Delegated `user` and `admin` tokens require the `access_as_user` scope and a
+non-empty `oid` different from `sub`. App-only `ServiceAdmin` tokens require
+`oid` equal to `sub` and no `scp` claim. Missing, unknown, or multiple roles are
+rejected.
+
+Migration: remove `AZURE_ENTRAID_APP_ROLE` and define all three new role
+variables before restarting the backend. The legacy setting has no fallback,
+so `ServiceAdmin` is never silently treated as an interactive admin role.
 
 The SPA needs the corresponding browser-facing settings. Create its local
 environment file:

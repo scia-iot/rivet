@@ -37,12 +37,16 @@ def identity_client_fixture() -> Generator[TestClient]:
                 return_value={
                     "iss": "https://login.example/tenant/v2.0",
                     "sub": "test-subject",
-                    "roles": ["mocked_app_role"],
+                    "oid": "test-object-id",
+                    "roles": ["admin"],
+                    "scp": "access_as_user",
                 },
             ),
+            patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
+            patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.APP_ROLE",
-                "mocked_app_role",
+                "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+                "ServiceAdmin",
             ),
             patch(
                 "sciaiot.ovpncp.utils.openvpn.read_client_cert",
@@ -120,7 +124,7 @@ def test_current_principal_rejects_partial_validated_identity(
         "sciaiot.ovpncp.middlewares.azure_security.validate_token",
         return_value={
             "iss": "https://login.example/tenant/v2.0",
-            "roles": ["mocked_app_role"],
+            "roles": ["admin"],
         },
     ):
         response = identity_client.get("/me")

@@ -15,7 +15,10 @@ logger = logging.getLogger(__name__)
 
 TENANT_ID = os.environ.get("AZURE_ENTRAID_TENANT_ID")
 APP_CLIENT_ID = os.environ.get("AZURE_ENTRAID_APP_CLIENT_ID")
-APP_ROLE = os.environ.get("AZURE_ENTRAID_APP_ROLE")
+USER_ROLE = os.environ.get("AZURE_ENTRAID_USER_ROLE")
+ADMIN_ROLE = os.environ.get("AZURE_ENTRAID_ADMIN_ROLE")
+SERVICE_ADMIN_ROLE = os.environ.get("AZURE_ENTRAID_SERVICE_ADMIN_ROLE")
+DELEGATED_SCOPE = "access_as_user"
 
 
 def get_token(request: Request) -> str:
@@ -51,7 +54,15 @@ def get_token(request: Request) -> str:
 
 def validate_token(request: Request) -> dict[str, object]:
     """Validate a bearer token and return only its verified claims."""
-    if not all([TENANT_ID, APP_CLIENT_ID, APP_ROLE]):
+    if not all(
+        [
+            TENANT_ID,
+            APP_CLIENT_ID,
+            USER_ROLE,
+            ADMIN_ROLE,
+            SERVICE_ADMIN_ROLE,
+        ]
+    ):
         logger.error(
             "Azure Identity environment variables are not properly configured!"
         )

@@ -38,6 +38,9 @@ function roleLabel(role: string): string {
   if (role === 'device_user') {
     return 'Device user'
   }
+  if (role === 'service_admin') {
+    return 'Service administrator'
+  }
   return 'Application role'
 }
 

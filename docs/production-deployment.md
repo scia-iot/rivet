@@ -66,8 +66,8 @@ sudoedit /etc/ovpncp/ovpncp.env
 Use the azure extra instead when Azure Blob Storage is required. Add the MySQL
 or PostgreSQL extra for those database backends.
 
-Replace every angle-bracket placeholder in /etc/ovpncp/ovpncp.env. All three
-AZURE_ENTRAID values are required together. Authentication fails closed.
+Replace every angle-bracket placeholder in `/etc/ovpncp/ovpncp.env`. All five
+`AZURE_ENTRAID_*` values are required together. Authentication fails closed.
 Storage connection strings and database credentials are secrets and must stay
 in the mode-0600 environment file or an equivalent secret manager.
 
@@ -181,9 +181,24 @@ https://ovpncp.example.com/
 ~~~
 
 Use the same root as the front-channel logout URL when configured. The SPA
-registration needs delegated access to VITE_ENTRA_API_SCOPE. The API
-registration must match the tenant, audience, and administrator app role in
-/etc/ovpncp/ovpncp.env. Never put a client secret in frontend configuration.
+registration needs delegated access to `VITE_ENTRA_API_SCOPE`, which must be
+`api://<api-application-client-id>/access_as_user`.
+
+The API registration defines three distinct app roles:
+
+- `user`, allowed for Users/Groups;
+- `admin`, allowed for Users/Groups;
+- `ServiceAdmin`, allowed for Applications.
+
+Assign users and groups only to `user` or `admin`. Assign the business
+platform service principal to `ServiceAdmin`. The API accepts delegated
+`user` and `admin` tokens only with the `access_as_user` scope, while
+`ServiceAdmin` requires an app-only token and receives all management
+permissions.
+
+Before upgrading an existing installation, remove `AZURE_ENTRAID_APP_ROLE`
+and configure the three explicit role variables in the environment file.
+Never put a client secret in frontend configuration.
 
 ## Verify the release
 
