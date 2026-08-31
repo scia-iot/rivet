@@ -21,12 +21,23 @@ mypy .
 pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing
 ```
 
-## Frontend scaffold
+## Local full-stack development
 
-The React, TypeScript, Vite, Tailwind CSS, shadcn/ui, and MSAL scaffold lives in
-[`frontend/`](frontend/README.md). Feature workflows and production static-file
-integration are intentionally deferred. The phased implementation source of
-truth is [`docs/frontend-implementation-plan.md`](docs/frontend-implementation-plan.md).
+Run FastAPI and the Vite frontend in separate terminals by following the
+[local full-stack development guide](docs/local-development.md). The guide
+covers runtime-directory setup, matching backend and frontend Entra settings,
+the local `/api` proxy, identity prerequisites, and the UI-only and Playwright
+alternatives.
+
+## Frontend
+
+The complete React, TypeScript, Vite, Tailwind CSS, shadcn/ui, and MSAL
+application lives in [`frontend/`](frontend/README.md). It includes admin and
+device-user workflows, fine-grained authorization presentation, and
+Playwright coverage. The phased implementation source of truth is
+[`docs/frontend-implementation-plan.md`](docs/frontend-implementation-plan.md).
+Use the [production deployment runbook](docs/production-deployment.md) for the
+reviewed Nginx, systemd, security-header, build, smoke, and rollback workflow.
 
 ```shell
 cd frontend
@@ -79,37 +90,21 @@ sudo systemctl restart openvpn
 
 ## Running as a systemd Service (Recommended)
 
-To ensure the application starts automatically on boot and restarts if it crashes:
-
-1. Create a service file at `/etc/systemd/system/ovpncp.service`:
-
-```ini
-[Unit]
-Description=OpenVPN Control Panel
-After=network.target openvpn.service
-
-[Service]
-Type=simple
-User=root
-Group=root
-# Use 'which ovpncp' to find the absolute path if different
-ExecStart=/root/.local/bin/ovpncp
-# Path to your environment variables file
-EnvironmentFile=/opt/ovpncp/.env
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-2. Enable and start the service:
+Production uses the reviewed
+[`deploy/systemd/ovpncp.service`](deploy/systemd/ovpncp.service). It keeps
+FastAPI on loopback behind Nginx, publishes the external API root as `/api`,
+and restricts filesystem writes while retaining required host privileges.
 
 ```shell
+sudo install -m 0644 deploy/systemd/ovpncp.service \
+  /etc/systemd/system/ovpncp.service
 sudo systemctl daemon-reload
 sudo systemctl enable ovpncp
-sudo systemctl start ovpncp
+sudo systemctl restart ovpncp
 ```
+
+Complete the remaining production steps in the
+[production deployment runbook](docs/production-deployment.md).
 
 ## API - Basic Usage
 

@@ -2,7 +2,9 @@
 
 React frontend for the OpenVPN control panel. Device, user, VPN-client,
 individual-access, server, network, fine-grained authorization, and device-user
-portal workflows are implemented; production integration remains phased in the
+portal workflows are implemented. Production delivery uses the reviewed
+[Nginx and systemd runbook](../docs/production-deployment.md), and progress is
+recorded in the
 [frontend implementation plan](../docs/frontend-implementation-plan.md).
 
 ## Stack
@@ -16,10 +18,14 @@ portal workflows are implemented; production integration remains phased in the
 - TanStack Query for server state
 - generated OpenAPI types and openapi-fetch
 - Vitest and Testing Library
+- Playwright
 
 ## Setup
 
 Node.js 22.22.2+ or 24.15.0+ is required.
+
+For the complete two-terminal FastAPI and Vite workflow, follow the
+[local full-stack development guide](../docs/local-development.md).
 
 ```shell
 cd frontend
@@ -33,6 +39,8 @@ produce a blocking configuration error. For explicit local UI development only,
 set `VITE_AUTH_DISABLED=true`; the header always shows when this unsafe local
 mode is active, and it does not disable backend authentication. Vite proxies
 `/api/*` to `http://127.0.0.1:8000/*` during local development.
+Login and logout use the exact root of the current origin; register that HTTPS
+root URI for every deployed Entra SPA environment.
 
 Configured sessions use an MSAL redirect, preserve the requested frontend URL,
 select the returned account, acquire API tokens silently, and resolve the local
@@ -98,6 +106,40 @@ confirm connectivity. Device users cannot create or change clients, identities,
 grants, devices, server state, routes, or networks, and direct navigation to
 those administrative routes remains forbidden.
 
+## Production and E2E
+
+Copy `.env.production.example` to the gitignored
+`.env.production.local`, replace every placeholder, and build with:
+
+```shell
+npm run build:production
+```
+
+The production guard requires authentication, concrete Entra UUIDs and API
+scope, only reviewed browser-exposed variables, and the same-origin `/api` base.
+Nginx serves `dist`, applies SPA fallback and browser security headers, and
+proxies `/api` to loopback FastAPI. See the
+[production deployment runbook](../docs/production-deployment.md).
+
+The Playwright suite covers the authentication shell and redirect return,
+admin navigation, device create/edit/delete confirmation, client assignment,
+access grant/revoke, device-user denial, and a Vite-proxy request to a
+loopback-only test FastAPI instance:
+
+```shell
+npx playwright install chromium
+npm run test:e2e
+```
+
+The controlled identity is available only when Vite is simultaneously in
+development, `e2e` mode, and explicitly opted in by the Playwright server.
+A separate dual-build check proves the seam is absent from both ordinary
+production output and `vite build --mode e2e`.
+
+Use `npm run smoke:production` with `OVPNCP_BASE_URL` after deployment. The
+credential-free checker validates static fallback, asset caching, security
+headers, and the unauthenticated API boundary without printing response data.
+
 ## Checks
 
 Regenerate the checked-in FastAPI contract and TypeScript declarations after
@@ -119,7 +161,11 @@ npm run api:check
 npm run lint
 npm run typecheck
 npm run test
+npm run test:production
+npm run test:e2e:production-guard
+npm run test:e2e
 npm run build
+npm run build:production
 ```
 
 Use `npx shadcn@latest add <component>` from this directory when another local

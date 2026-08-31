@@ -1,0 +1,198 @@
+"""Production reverse-proxy and release configuration tests."""
+
+import re
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from sciaiot.ovpncp import main
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+NGINX_TEMPLATE = REPOSITORY_ROOT / "deploy/nginx/ovpncp.conf.template"
+PRODUCTION_RUNBOOK = REPOSITORY_ROOT / "docs/production-deployment.md"
+SYSTEMD_SERVICE = REPOSITORY_ROOT / "deploy/systemd/ovpncp.service"
+
+
+@pytest.fixture
+def nginx_configuration() -> str:
+    """Return the production Nginx template."""
+    return NGINX_TEMPLATE.read_text(encoding="utf-8")
+
+
+def _location(configuration: str, declaration: str) -> str:
+    """Return one non-nested Nginx location block.
+
+    Args:
+        configuration: Complete Nginx configuration text.
+        declaration: Exact location declaration without its opening brace.
+
+    Returns:
+        The matching location body.
+
+    Raises:
+        AssertionError: If the requested block is absent.
+    """
+    match = re.search(
+        rf"{re.escape(declaration)}\s*\{{(?P<body>[^{{}}]*)\}}",
+        configuration,
+    )
+    assert match is not None
+    return match.group("body")
+
+
+def test_api_prefix_is_separate_from_spa_history_fallback(
+    nginx_configuration: str,
+) -> None:
+    """API requests are stripped once and can never fall through to HTML."""
+    exact_api = _location(nginx_configuration, "location = /api")
+    api_prefix = _location(nginx_configuration, "location ^~ /api/")
+    spa = _location(nginx_configuration, "location /")
+
+    for api_location in (exact_api, api_prefix):
+        assert "proxy_pass http://ovpncp_api/;" in api_location
+        assert "proxy_set_header X-Forwarded-For $remote_addr;" in api_location
+        assert "proxy_set_header Host $server_name;" in api_location
+        assert "proxy_set_header X-Forwarded-Host $server_name;" in api_location
+        assert "proxy_set_header Host $host;" not in api_location
+        assert "$proxy_add_x_forwarded_for" not in api_location
+        assert "try_files" not in api_location
+        assert "proxy_buffering off;" in api_location
+        assert "proxy_request_buffering off;" in api_location
+
+    assert "try_files $uri /index.html;" in spa
+    assert "proxy_pass" not in spa
+    assert nginx_configuration.index("location ^~ /api/") < (
+        nginx_configuration.index("location /")
+    )
+
+
+def test_frontend_assets_have_deliberate_cache_policy(
+    nginx_configuration: str,
+) -> None:
+    """Only fingerprinted Vite assets receive immutable caching."""
+    cache_map = re.search(
+        r"map \$uri \$ovpncp_cache_control\s*\{(?P<body>[^{}]*)\}",
+        nginx_configuration,
+    )
+    assert cache_map is not None
+    cache_policy = cache_map.group("body")
+
+    assert 'default "no-store";' in cache_policy
+    assert '~^/assets/ "public, max-age=31536000, immutable";' in cache_policy
+    assert '~^/favicon\\.svg$ "public, max-age=3600";' in cache_policy
+    cache_header = "add_header Cache-Control $ovpncp_cache_control always;"
+    assert cache_header in nginx_configuration
+    assert "location = /index.html" in nginx_configuration
+    assert "location ^~ /assets/" in nginx_configuration
+
+
+def test_frontend_and_api_responses_receive_security_headers(
+    nginx_configuration: str,
+) -> None:
+    """The public TLS boundary applies required browser protections."""
+    normalized_configuration = " ".join(nginx_configuration.split())
+    hsts_name = "Strict-Transport-Security "
+    hsts_value = '"max-age=31536000; includeSubDomains" always;'
+    expected_headers = {
+        'Content-Security-Policy "',
+        'Cross-Origin-Opener-Policy "same-origin-allow-popups" always;',
+        'Cross-Origin-Resource-Policy "same-origin" always;',
+        'Permissions-Policy "camera=(), geolocation=(), microphone=()" always;',
+        'Referrer-Policy "no-referrer" always;',
+        hsts_name + hsts_value,
+        'X-Content-Type-Options "nosniff" always;',
+        'X-Frame-Options "DENY" always;',
+    }
+    for header in expected_headers:
+        assert f"add_header {header}" in normalized_configuration
+
+    assert "default-src 'self'" in nginx_configuration
+    assert "object-src 'none'" in nginx_configuration
+    assert "frame-ancestors 'none'" in nginx_configuration
+    assert "connect-src 'self' https://login.microsoftonline.com" in (
+        nginx_configuration
+    )
+    assert "frame-src https://login.microsoftonline.com" in nginx_configuration
+
+
+def test_tls_template_uses_explicit_environment_substitutions(
+    nginx_configuration: str,
+) -> None:
+    """Deployment requires an exact host, TLS files, and release root."""
+    required_variables = {
+        "${OVPNCP_HOSTNAME}",
+        "${OVPNCP_FRONTEND_ROOT}",
+        "${OVPNCP_TLS_CERTIFICATE}",
+        "${OVPNCP_TLS_KEY}",
+    }
+    assert required_variables <= set(
+        re.findall(r"\$\{OVPNCP_[A-Z_]+\}", nginx_configuration)
+    )
+    assert "listen 443 ssl;" in nginx_configuration
+    redirect = "return 308 https://${OVPNCP_HOSTNAME}$request_uri;"
+    assert redirect in nginx_configuration
+    assert "server_tokens off;" in nginx_configuration
+    assert nginx_configuration.count("access_log off;") == 4
+    assert nginx_configuration.count("error_log /dev/null crit;") == 2
+
+
+def test_systemd_keeps_fastapi_on_the_trusted_loopback_boundary() -> None:
+    """The privileged API is not exposed beside the TLS proxy."""
+    configuration = SYSTEMD_SERVICE.read_text(encoding="utf-8")
+
+    assert "Environment=HOST=127.0.0.1" in configuration
+    assert "Environment=PORT=8000" in configuration
+    assert "Environment=OVPNCP_ROOT_PATH=/api" in configuration
+    assert "EnvironmentFile=/etc/ovpncp/ovpncp.env" in configuration
+    assert "ExecStart=/opt/ovpncp/venv/bin/ovpncp" in configuration
+    assert "User=root" in configuration
+    assert "UMask=0077" in configuration
+
+
+def test_static_release_is_outside_the_api_writable_tree() -> None:
+    """Nginx can read releases that the privileged API cannot modify."""
+    runbook = PRODUCTION_RUNBOOK.read_text(encoding="utf-8")
+    service = SYSTEMD_SERVICE.read_text(encoding="utf-8")
+
+    assert "/srv/ovpncp/frontend/current" in runbook
+    assert "/opt/ovpncp/frontend" not in runbook
+    assert "sudo chmod -R u=rwX,go=rX" in runbook
+    assert "ReadWritePaths=/etc/openvpn /opt/ovpncp" in service
+    assert "ProtectSystem=strict" in service
+    assert "/srv/ovpncp" not in service
+
+
+def test_application_runner_trusts_only_the_loopback_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Uvicorn cannot trust caller-supplied forwarding headers directly."""
+    monkeypatch.setenv("OVPNCP_ROOT_PATH", "/api")
+    with patch.object(main.uvicorn, "run") as uvicorn_run:
+        main.run()
+
+    uvicorn_run.assert_called_once_with(
+        main.app,
+        host=main.HOST,
+        port=int(main.PORT),
+        log_config=str(main.LOG_CONFIG),
+        proxy_headers=True,
+        forwarded_allow_ips="127.0.0.1",
+        root_path="/api",
+        server_header=False,
+        access_log=False,
+    )
+
+
+def test_application_runner_rejects_an_unknown_root_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only direct development and the reviewed /api topology are valid."""
+    monkeypatch.setenv("OVPNCP_ROOT_PATH", "/unexpected")
+
+    with (
+        patch.object(main.uvicorn, "run") as uvicorn_run,
+        pytest.raises(ValueError, match="OVPNCP_ROOT_PATH"),
+    ):
+        main.run()
+    uvicorn_run.assert_not_called()

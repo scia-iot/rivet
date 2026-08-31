@@ -38,6 +38,7 @@ const instance = vi.hoisted(() => ({
 vi.mock('@/auth/config', () => ({
   apiScopes: ['api://test/access'],
   isAuthenticationDisabled: false,
+  isE2EAuthenticationMode: false,
   loginRequest: { scopes: ['api://test/access'] },
 }))
 vi.mock('@azure/msal-react', () => ({

@@ -85,5 +85,20 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-def run():
-    uvicorn.run(app, host=HOST, port=int(PORT), log_config=str(LOG_CONFIG))
+def run() -> None:
+    """Run the API with the reviewed direct or /api proxy topology."""
+    root_path = os.environ.get("OVPNCP_ROOT_PATH", "").strip()
+    if root_path not in ("", "/api"):
+        raise ValueError("OVPNCP_ROOT_PATH must be empty or /api.")
+
+    uvicorn.run(
+        app,
+        host=HOST,
+        port=int(PORT),
+        log_config=str(LOG_CONFIG),
+        proxy_headers=True,
+        forwarded_allow_ips="127.0.0.1",
+        root_path=root_path,
+        server_header=False,
+        access_log=False,
+    )

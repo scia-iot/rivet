@@ -3,11 +3,12 @@ import type { ReactNode } from 'react'
 
 import {
   isAuthenticationDisabled,
+  isE2EAuthenticationMode,
   msalInstance,
 } from '@/auth/config'
 
 export function AuthenticationProvider({ children }: { children: ReactNode }) {
-  if (isAuthenticationDisabled) {
+  if (isAuthenticationDisabled || isE2EAuthenticationMode) {
     return children
   }
 

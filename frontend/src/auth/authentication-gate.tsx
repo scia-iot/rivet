@@ -5,7 +5,10 @@ import { type ReactNode, useEffect, useState } from 'react'
 
 import { ApiProblemError } from '@/api/problem-details'
 import { useCurrentPrincipal } from '@/auth/current-principal'
-import { isAuthenticationDisabled } from '@/auth/config'
+import {
+  isAuthenticationDisabled,
+  isE2EAuthenticationMode,
+} from '@/auth/config'
 import {
   clearAuthenticationRedirectGuard,
   redirectForLogin,
@@ -15,6 +18,7 @@ import {
   PrincipalSessionProvider,
 } from '@/auth/principal-session'
 import { Button } from '@/components/ui/button'
+import { E2EAuthenticationGate } from '@/test/e2e-authentication'
 
 function AuthenticationStatusLayout({
   error = false,
@@ -162,6 +166,9 @@ function ConfiguredAuthenticationGate({ children }: { children: ReactNode }) {
 }
 
 export function AuthenticationGate({ children }: { children: ReactNode }) {
+  if (isE2EAuthenticationMode) {
+    return <E2EAuthenticationGate>{children}</E2EAuthenticationGate>
+  }
   if (isAuthenticationDisabled) {
     return (
       <PrincipalSessionProvider

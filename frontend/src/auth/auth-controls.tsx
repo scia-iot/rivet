@@ -6,6 +6,7 @@ import { useState } from 'react'
 import {
   isAuthenticationConfigured,
   isAuthenticationDisabled,
+  isE2EAuthenticationMode,
 } from '@/auth/config'
 import {
   PERMISSIONS,
@@ -164,6 +165,9 @@ function ConfiguredAuthControls() {
 }
 
 export function AuthControls() {
+  if (isE2EAuthenticationMode) {
+    return <Badge variant="secondary">Controlled E2E identity</Badge>
+  }
   if (isAuthenticationDisabled) {
     return <Badge variant="secondary">Authentication disabled locally</Badge>
   }

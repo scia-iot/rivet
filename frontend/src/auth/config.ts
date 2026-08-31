@@ -5,12 +5,32 @@ import {
   type RedirectRequest,
 } from '@azure/msal-browser'
 
+import { rootRedirectUri } from '@/auth/redirect-uri'
+import { allowsE2EAuthenticationMode } from '@/test/e2e-auth-mode'
+
 const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID?.trim()
 const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID?.trim()
 const apiScope = import.meta.env.VITE_ENTRA_API_SCOPE?.trim()
 
 export const isAuthenticationDisabled =
   import.meta.env.VITE_AUTH_DISABLED === 'true'
+
+const configuredE2EAccessToken = import.meta.env.DEV
+  ? import.meta.env.VITE_E2E_ACCESS_TOKEN?.trim() || null
+  : null
+
+export const isE2EAuthenticationMode = import.meta.env.DEV
+  ? allowsE2EAuthenticationMode({
+      accessToken: configuredE2EAccessToken ?? undefined,
+      development: true,
+      mode: import.meta.env.MODE,
+      requested: import.meta.env.VITE_E2E_AUTH_MODE,
+    })
+  : false
+
+export const e2eAccessToken = isE2EAuthenticationMode
+  ? configuredE2EAccessToken
+  : null
 
 export const isAuthenticationConfigured = Boolean(
   tenantId && clientId && apiScope,
@@ -22,8 +42,8 @@ const msalConfiguration: Configuration = {
   auth: {
     clientId: clientId ?? '',
     authority: `https://login.microsoftonline.com/${tenantId ?? 'common'}`,
-    redirectUri: window.location.origin,
-    postLogoutRedirectUri: window.location.origin,
+    redirectUri: rootRedirectUri(window.location.origin),
+    postLogoutRedirectUri: rootRedirectUri(window.location.origin),
   },
   cache: {
     cacheLocation: BrowserCacheLocation.SessionStorage,

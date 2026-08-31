@@ -110,10 +110,23 @@ def validate_token(request: Request) -> dict[str, object]:
         )
 
 
+def _route_path(request: Request) -> str:
+    """Return the URL path with the trusted ASGI root prefix removed."""
+    path = urlparse(str(request.url)).path
+    scope = getattr(request, "scope", {})
+    root_path = scope.get("root_path", "") if isinstance(scope, dict) else ""
+    if not isinstance(root_path, str) or not root_path:
+        return path
+    if path == root_path:
+        return ""
+    if path.startswith(root_path) and path[len(root_path)] == "/":
+        return path[len(root_path) :]
+    return path
+
+
 def _is_local_connection_hook(request: Request) -> bool:
     """Return whether the request is an exact loopback OpenVPN hook."""
-    url = urlparse(str(request.url))
-    path_parts = url.path.strip("/").split("/")
+    path_parts = _route_path(request).strip("/").split("/")
     is_connection_hook = (
         len(path_parts) == 3
         and path_parts[0] == "clients"
@@ -131,8 +144,7 @@ def _is_local_connection_hook(request: Request) -> bool:
 
 def _bypasses_authentication(request: Request) -> bool:
     """Allow only documentation and exact localhost OpenVPN hook requests."""
-    url = urlparse(str(request.url))
-    is_documentation = url.path in ["/docs", "/openapi.json"]
+    is_documentation = _route_path(request) in ["/docs", "/openapi.json"]
     return is_documentation or _is_local_connection_hook(request)
 
 

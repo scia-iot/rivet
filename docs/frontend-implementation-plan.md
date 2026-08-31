@@ -39,7 +39,8 @@ The frontend scaffold is complete. It includes:
 
 The frontend now includes device, user, VPN-client, individual-access,
 server/network administration, fine-grained authorization, and the device-user
-portal. Production static-file delivery remains pending.
+portal, plus guarded production delivery through Nginx and Playwright E2E
+coverage.
 
 ## Phase status
 
@@ -55,7 +56,7 @@ portal. Production static-file delivery remains pending.
 | 7 | Server and network administration | completed | Phase 3 |
 | 8 | Fine-grained authorization contract | completed | Phase 6 backend behavior |
 | 9 | Device-user portal | completed | Phase 8 |
-| 10 | Production integration and E2E hardening | pending | Phases 4-9 |
+| 10 | Production integration and E2E hardening | completed | Phases 4-9 |
 
 ## Target architecture
 
@@ -924,7 +925,25 @@ Production builds must continue to fail closed.
 
 ### Notes
 
-Record the selected serving topology and deployment commands here.
+- Nginx owns TLS and serves a versioned `frontend/dist` release. Same-origin
+  browser requests use `/api`; Nginx strips that prefix once and proxies to
+  FastAPI on `127.0.0.1:8000`, while SPA fallback remains limited to non-API
+  paths.
+- `npm run build:production` rejects disabled authentication, missing or
+  placeholder Entra identifiers, invalid API scopes, unreviewed `VITE_*`
+  variables, and API bases other than `/api`. The Nginx template uses an
+  explicit four-variable `envsubst` allowlist so native variables remain intact.
+- Nginx applies no-store defaults, immutable caching only to fingerprinted
+  assets, browser security headers, disabled access/error logs, and unbuffered
+  API proxying. Uvicorn trusts forwarding data only from the loopback proxy.
+  The trusted ASGI root is removed before exact documentation and loopback-hook
+  path matching, preserving the narrow direct OpenVPN hook exception.
+- Login and logout use the exact public origin root registered as an Entra SPA
+  redirect URI.
+- Playwright uses an explicitly enabled development-only controlled identity
+  and a generated per-run credential. A dual-build guard enables every E2E flag
+  and proves the seam is absent from production and `--mode e2e` build output.
+- Exact deployment and rollback commands are in `docs/production-deployment.md`.
 
 ## Cross-phase security rules
 
@@ -1346,3 +1365,53 @@ Deferred:
   Vitest behavior suites provide the recorded frontend verification.
 - Production static-file serving, deployed Entra browser E2E, and isolated
   privileged-host smoke testing remain Phase 10/manual work.
+
+2026-08-27 - Phase 10 completed
+Implementation:
+- Added a same-origin Nginx topology with isolated `/api` proxying, SPA history
+  fallback, explicit cache policy, TLS and browser security headers, disabled
+  request-bearing proxy logs and buffering, a root-owned static release tree
+  outside API write access, a hardened loopback systemd service, guarded
+  production configuration, deployment smoke checks, and a complete
+  installation and rollback runbook.
+- Restricted Uvicorn forwarding-header trust to the loopback proxy, published
+  and normalized the `/api` root before exact documentation and loopback-hook
+  matching, disabled access/server headers, and added deployment regression
+  coverage without changing application API paths.
+- Added Playwright coverage for the authentication shell and intended-route
+  return, admin navigation, device create/edit/delete confirmation, client
+  assignment, access grant/revoke, and forbidden device-user navigation. The
+  controlled identity requires explicit E2E development mode and a generated
+  per-run credential; production builds remain fail closed.
+Verification:
+- `npm ci` and `npm audit`: passed; 261 packages installed, 262 audited, and 0
+  vulnerabilities.
+- `npm run api:check`, `npm run lint`, and `npm run typecheck`: passed with
+  reproducible generated artifacts and no findings.
+- `npm run test`: passed; 31 files and 133 tests. `npm run build` and the
+  authenticated `npm run build:production`: passed; Vite transformed 2,300
+  modules and emitted the deployable artifact.
+- `npm run test:production`: passed; 8 production-configuration and safe-smoke
+  tests. `npm run test:e2e:production-guard`: passed for production and E2E
+  build modes with every controlled-identity flag set.
+- `CI=true npm run test:e2e`: passed; 5 Chromium scenarios covering all Phase
+  10 browser workflows and a real Vite proxy request to a loopback-only test
+  FastAPI authentication boundary.
+- `pytest -q tests/test_production_deployment.py`: passed; 8 tests. `ruff
+  format --check .`, `ruff check .`, and `mypy .`: passed for the full
+  repository and 44 typed source files.
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 169 passed with
+  92% total coverage. The Nginx template rendered correctly through the
+  documented allowlisted `envsubst` command.
+- `git diff --check`, untracked-file whitespace review, hardcoded-credential
+  scanning, and privileged-boundary review passed. No real VPN, firewall,
+  route, certificate, cloud, or other external system was changed.
+Deferred:
+- This container has no Nginx binary or systemd unit validator, so `nginx -t`,
+  unit activation, TLS/header smoke, and real Entra login/logout remain
+  environment-specific checks documented in the production runbook.
+- Mutation E2E workflows use deterministic browser API interception; the real
+  test FastAPI path is the `/api/me` authentication boundary. Chromium is the
+  configured browser target.
+- Privileged VPN, route, firewall, certificate, and Azure verification must run
+  only on an isolated deployment and remains manual.

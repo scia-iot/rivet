@@ -117,6 +117,30 @@ def test_localhost_connection_hook_has_narrow_authentication_bypass(
     mock_validate_token.assert_not_called()
 
 
+@patch("sciaiot.ovpncp.middlewares.azure_security.validate_token")
+def test_localhost_connection_hook_survives_the_production_root_path(
+    mock_validate_token,
+):
+    """The `/api` ASGI root must not disable the exact local hook."""
+    request = MagicMock(spec=Request)
+    request.url = MagicMock()
+    request.url.__str__.return_value = (
+        "http://127.0.0.1:8000/api/clients/edge-client/connections"
+    )
+    request.scope = {"root_path": "/api"}
+    request.method = "POST"
+    request.client.host = "127.0.0.1"
+
+    async def call_next(req):
+        return MagicMock()
+
+    import asyncio
+
+    asyncio.run(azure_security_middleware(request, call_next))
+
+    mock_validate_token.assert_not_called()
+
+
 @patch(
     "sciaiot.ovpncp.middlewares.azure_security.validate_token",
     return_value={"iss": "issuer", "sub": "subject", "roles": ["role"]},

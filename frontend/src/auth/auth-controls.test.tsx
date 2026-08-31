@@ -24,6 +24,7 @@ const instance = vi.hoisted(() => ({
 vi.mock('@/auth/config', () => ({
   isAuthenticationConfigured: true,
   isAuthenticationDisabled: false,
+  isE2EAuthenticationMode: false,
 }))
 vi.mock('@azure/msal-react', () => ({
   useIsAuthenticated: () => true,

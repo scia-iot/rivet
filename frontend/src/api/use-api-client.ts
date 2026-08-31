@@ -7,7 +7,11 @@ import { useMsal } from '@azure/msal-react'
 import { useMemo } from 'react'
 
 import { apiBaseUrl, createApiClient } from '@/api/client'
-import { apiScopes } from '@/auth/config'
+import {
+  apiScopes,
+  e2eAccessToken,
+  isE2EAuthenticationMode,
+} from '@/auth/config'
 import { redirectForInteraction } from '@/auth/redirect-coordinator'
 
 export async function acquireAccessToken(
@@ -34,12 +38,25 @@ export async function acquireAccessToken(
   }
 }
 
+function controlledE2EAccessToken(): Promise<string> {
+  if (e2eAccessToken === null) {
+    return Promise.reject(
+      new Error('A controlled E2E access token is required.'),
+    )
+  }
+  return Promise.resolve(e2eAccessToken)
+}
+
 export function useApiClient() {
   const { accounts, instance } = useMsal()
 
   return useMemo(
     () =>
-      createApiClient(apiBaseUrl, () => acquireAccessToken(instance, accounts)),
+      createApiClient(apiBaseUrl, () =>
+        isE2EAuthenticationMode
+          ? controlledE2EAccessToken()
+          : acquireAccessToken(instance, accounts),
+      ),
     [accounts, instance],
   )
 }

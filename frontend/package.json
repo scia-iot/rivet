@@ -12,9 +12,14 @@
     "api:generate": "npm run api:export && openapi-typescript openapi.json --output src/api/generated/schema.d.ts",
     "dev": "vite",
     "build": "tsc -b --pretty false && vite build",
+    "build:production": "node scripts/check_production_env.mjs && npm run build",
     "lint": "oxlint .",
     "preview": "vite preview",
+    "smoke:production": "node scripts/smoke_production.mjs",
     "test": "vitest run",
+    "test:e2e": "node scripts/run_e2e.mjs",
+    "test:e2e:production-guard": "node scripts/check_e2e_production_guard.mjs",
+    "test:production": "node --test scripts/check_production_env.test.mjs scripts/smoke_production.test.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc -b --pretty false"
   },
@@ -39,6 +44,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.0",

@@ -54,6 +54,27 @@ jobs:
         npm run typecheck
         npm run test
         npm run build
+        npm run test:production
+        npm run test:e2e:production-guard
+
+    - name: Build deployable frontend
+      working-directory: frontend
+      env:
+        VITE_API_BASE_URL: /api
+        VITE_AUTH_DISABLED: "false"
+        VITE_ENTRA_API_SCOPE: >-
+          api://22222222-2222-4222-8222-222222222222/access_as_user
+        VITE_ENTRA_CLIENT_ID: 11111111-1111-4111-8111-111111111111
+        VITE_ENTRA_TENANT_ID: 00000000-0000-4000-8000-000000000000
+      run: npm run build:production
+
+    - name: Install Playwright browser
+      working-directory: frontend
+      run: npx playwright install --with-deps chromium
+
+    - name: Run deterministic frontend E2E tests
+      working-directory: frontend
+      run: npm run test:e2e
 
     - name: Lint with Ruff
       uses: astral-sh/ruff-action@v3
