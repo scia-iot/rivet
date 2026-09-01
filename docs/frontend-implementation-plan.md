@@ -57,6 +57,7 @@ coverage.
 | 8 | Fine-grained authorization contract | completed | Phase 6 backend behavior |
 | 9 | Device-user portal | completed | Phase 8 |
 | 10 | Production integration and E2E hardening | completed | Phases 4-9 |
+| 11 | Automatic Entra user registration | completed | Phase 2 |
 
 ## Target architecture
 
@@ -788,11 +789,10 @@ server:write
 - Token validation now authenticates verified issuer and subject claims without
   granting a token role globally.
 - Principal normalization requires exactly one configured role. Delegated
-  `user` and `admin` tokens require `access_as_user` and map to `device_user`
-  and `sysadmin`; `device_user` has no management permissions. App-only
-  `ServiceAdmin` tokens must omit `scp`, map to `service_admin`, and receive the
-  same management permissions as `sysadmin`. Missing, unknown, or multiple
-  roles are denied.
+  `device_user` and `sysadmin` tokens require `access_as_user`;
+  `device_user` has no management permissions. App-only `ServiceAdmin` tokens
+  must omit `scp`, map to `service_admin`, and receive the same management
+  permissions as `sysadmin`. Missing, unknown, or multiple roles are denied.
 - Every device, user, client, access, server, route, and restricted-network
   management operation has an explicit FastAPI dependency. OpenAPI derives 39
   operation policy extensions from those same dependencies, preventing
@@ -947,6 +947,89 @@ Production builds must continue to fail closed.
   and a generated per-run credential. A dual-build guard enables every E2E flag
   and proves the seam is absent from production and `--mode e2e` build output.
 - Exact deployment and rollback commands are in `docs/production-deployment.md`.
+
+## Phase 11: Automatic Entra user registration
+
+### Objective
+
+Allow a successfully authenticated interactive Microsoft Entra user to become
+a local ovpncp user on their first `GET /me` request without a separate
+administrator bootstrap step.
+
+### Backend work
+
+- Add `AZURE_ENTRAID_AUTO_REGISTER_USERS`, enabled by default. Accept only
+  explicit boolean values and fail closed when the configured value is invalid.
+- Keep `GET /me` as the single sign-in resolution endpoint. Do not add a
+  bootstrap endpoint or accept issuer, subject, display name, role, or other
+  registration values from the browser.
+- Create a missing local user only from middleware-validated delegated claims:
+  the exact `iss` and `sub`, and a bounded display name derived in order from
+  validated `name`, then `preferred_username`, then a fixed safe fallback.
+- Auto-register only delegated users whose validated Entra role maps to
+  `device_user` or `sysadmin`. Never auto-register the app-only
+  `service_admin` principal.
+- Preserve existing users, including administrator-renamed display names; the
+  sign-in path must not overwrite or resynchronize existing records.
+- Make concurrent first requests idempotent so an issuer/subject race resolves
+  to one local user rather than an error or duplicate record.
+- When automatic registration is disabled, preserve the existing fixed `403`
+  response for an unknown identity.
+- Never log access tokens, issuer/subject identifiers, or other stable identity
+  identifiers from this flow.
+
+### Frontend work
+
+- Continue using `GET /me` as the only frontend sign-in resolution call.
+- Do not decode access tokens in the browser and do not add a client-side
+  registration or bootstrap route.
+
+### Tests
+
+- The setting defaults to enabled, accepts documented explicit boolean values,
+  and fails closed on invalid values.
+- First delegated `device_user` and `sysadmin` requests create one correctly
+  mapped local user from validated claims.
+- Missing, invalid, and overlong display-name claims use the documented safe
+  precedence, bound, and fallback behavior.
+- Existing users and renamed display names are unchanged.
+- Simultaneous first requests resolve idempotently to the same user.
+- Disabled registration keeps the fixed unknown-identity `403` behavior.
+- App-only `service_admin` requests never create a local user.
+- Logs, errors, and responses do not expose tokens or stable identifiers beyond
+  the existing authorized `CurrentPrincipal` contract.
+- Frontend authentication tests prove `/me` remains the sole resolution call
+  and no token-decoding/bootstrap flow is introduced.
+
+### Exit criteria
+
+- A first interactive Entra sign-in resolves through `GET /me` and creates a
+  local `device_user` or `sysadmin` exactly once.
+- Disabled or invalid configuration fails closed without changing the existing
+  unknown-user authorization response.
+- Existing identities and app-only service administration behavior are
+  unchanged.
+- Focused authentication tests and all applicable backend/frontend quality
+  gates pass.
+- README, example environment, and production deployment documentation describe
+  the default, accepted values, disablement behavior, and security boundary.
+
+### Notes
+
+- `AZURE_ENTRAID_AUTO_REGISTER_USERS` defaults to enabled, accepts only exact
+  case-insensitive `true` or `false`, and is validated before every `GET /me`
+  lookup. Invalid values return a fixed fail-closed `500`; disabled registration
+  retains the existing fixed unknown-identity `403`.
+- Missing delegated `device_user` and `sysadmin` identities are created from
+  only validated `iss`, `sub`, and a printable, trimmed, 255-character display
+  name selected from `name`, then `preferred_username`, then the fixed
+  `Microsoft Entra user` fallback. Existing names are never overwritten.
+- The unique external-identity constraint plus IntegrityError rollback/re-read
+  makes concurrent creation idempotent. App-only `service_admin` remains
+  lookup-only, and safe-error coverage verifies no token or stable claim leakage.
+- The frontend still performs one `GET /me` request and has no token decoder or
+  registration/bootstrap route. The response contract did not change, and
+  `npm run api:check` confirmed no generated OpenAPI drift.
 
 ## Cross-phase security rules
 
@@ -1418,3 +1501,43 @@ Deferred:
   configured browser target.
 - Privileged VPN, route, firewall, certificate, and Azure verification must run
   only on an isolated deployment and remains manual.
+
+2026-09-01 - Phase 11 completed
+Implementation:
+- Added default-enabled, strictly parsed automatic Entra User registration on
+  `GET /me`, with trusted-claim-only bounded naming, fixed safe errors,
+  delegated-role restriction, existing-name preservation, and app-only
+  `service_admin` exclusion.
+- Added atomic external-identity get-or-create behavior that resolves a unique
+  constraint race by rolling back and re-reading the winning User.
+- Kept the frontend sign-in path unchanged and added regression proof that
+  `GET /me` is its only principal-resolution request. Updated the README,
+  production runbook, environment example, and current role examples.
+Verification:
+- The initial focused TDD run produced the expected 12 failures for lookup-only
+  `/me`, absent strict configuration handling, missing trusted claim naming,
+  and missing race-idempotent persistence.
+- `pytest -q tests/test_identity_api.py tests/test_authorization.py
+  tests/test_security.py`: passed; 77 tests.
+- `npm run test -- --run src/auth/current-principal.test.tsx`: passed; 1 file
+  and 1 test.
+- `ruff format --check .` and `ruff check .`: passed; all 50 files were already
+  formatted and the full repository had no lint findings.
+- `mypy --exclude '^build/' .`: passed; 44 source files had no issues after
+  excluding the duplicate generated package.
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: passed; 202
+  tests with 92% total coverage.
+- `npm ci`: passed; 261 packages were installed and 262 audited. `npm audit`:
+  passed with 0 vulnerabilities. `npm run api:check`, `npm run lint`, and
+  `npm run typecheck`: passed with no generated-contract drift, lint findings,
+  or type errors.
+- `npm run test`: passed; 31 files and 134 tests. `npm run build`: passed;
+  Vite transformed 2,300 modules and emitted the production artifact.
+- `git diff --check`: passed. No privileged VPN, firewall, route, certificate,
+  cloud, or other external operation was invoked.
+Deferred:
+- `mypy .` is blocked by a pre-existing/generated duplicate package under
+  `build/lib/sciaiot`; it reported the duplicate alongside
+  `src/sciaiot/__init__.py`. The build-excluded full-tree mypy gate passed.
+- Real-tenant interactive sign-in and concurrent requests against the selected
+  production database remain environment-specific smoke checks.

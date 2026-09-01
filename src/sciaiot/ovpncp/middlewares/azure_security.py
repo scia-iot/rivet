@@ -19,6 +19,28 @@ USER_ROLE = os.environ.get("AZURE_ENTRAID_USER_ROLE")
 ADMIN_ROLE = os.environ.get("AZURE_ENTRAID_ADMIN_ROLE")
 SERVICE_ADMIN_ROLE = os.environ.get("AZURE_ENTRAID_SERVICE_ADMIN_ROLE")
 DELEGATED_SCOPE = "access_as_user"
+AUTO_REGISTER_USERS_ENV = "AZURE_ENTRAID_AUTO_REGISTER_USERS"
+
+
+def auto_register_users_enabled() -> bool:
+    """Return the strict automatic local-user registration setting.
+
+    Returns:
+        ``True`` when unset or explicitly true, and ``False`` when
+        explicitly false.
+
+    Raises:
+        ValueError: If the environment value is not an explicit boolean.
+    """
+    value = os.environ.get(AUTO_REGISTER_USERS_ENV)
+    if value is None:
+        return True
+    normalized = value.casefold()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise ValueError("Automatic user registration is misconfigured.")
 
 
 def get_token(request: Request) -> str:

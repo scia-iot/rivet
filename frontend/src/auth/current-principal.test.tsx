@@ -16,7 +16,7 @@ function CurrentPrincipalProbe() {
 }
 
 describe('current principal query', () => {
-  it('resolves the signed-in account through GET /me', async () => {
+  it('uses GET /me as its only sign-in resolution request', async () => {
     getMock.mockResolvedValueOnce({
       data: {
         id: 12,
@@ -39,5 +39,7 @@ describe('current principal query', () => {
 
     await waitFor(() => expect(screen.getByText('Alice')).toBeVisible())
     expect(getMock).toHaveBeenCalledWith('/me')
+    expect(getMock).toHaveBeenCalledTimes(1)
+    expect(getMock.mock.calls.map(([path]) => path)).toEqual(['/me'])
   })
 })

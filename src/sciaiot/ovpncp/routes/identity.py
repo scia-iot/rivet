@@ -35,6 +35,7 @@ from sciaiot.ovpncp.data.identity import (
 )
 from sciaiot.ovpncp.data.server import Client
 from sciaiot.ovpncp.dependencies import get_session
+from sciaiot.ovpncp.middlewares import azure_security
 from sciaiot.ovpncp.services.certificates import (
     CertificateArchiveError,
     CertificateArchiveService,
@@ -44,6 +45,7 @@ from sciaiot.ovpncp.services.identity import (
     DeviceService,
     EntityConflictError,
     EntityNotFoundError,
+    IdentityRegistrationError,
     UserClientService,
     UserService,
 )
@@ -61,12 +63,35 @@ def retrieve_current_principal(
 ) -> CurrentPrincipal:
     """Resolve the authenticated external identity to its local principal."""
     try:
-        user = UserService(session).get_by_external_identity(
+        auto_register = azure_security.auto_register_users_enabled()
+    except ValueError as configuration_error:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "Automatic user registration is misconfigured.",
+        ) from configuration_error
+
+    user_service = UserService(session)
+    try:
+        user = user_service.get_by_external_identity(
             principal.issuer,
             principal.subject,
         )
     except EntityNotFoundError as error:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(error)) from error
+        if principal.roles == ("service_admin",) or not auto_register:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, str(error)) from error
+        try:
+            user = user_service.get_or_create_external_identity(
+                UserBase(
+                    display_name=principal.registration_display_name,
+                    issuer=principal.issuer,
+                    subject=principal.subject,
+                )
+            )
+        except IdentityRegistrationError as registration_error:
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "Automatic user registration failed.",
+            ) from registration_error
 
     if user.id is None:
         raise HTTPException(

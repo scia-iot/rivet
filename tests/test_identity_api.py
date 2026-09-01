@@ -1,14 +1,20 @@
+import os
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from pathlib import Path
+from threading import Barrier
 from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
+from sciaiot.ovpncp.data.identity import User, UserBase
 from sciaiot.ovpncp.dependencies import get_session
 from sciaiot.ovpncp.main import app
+from sciaiot.ovpncp.services.identity import UserService
 
 
 @pytest.fixture(name="identity_client")
@@ -104,16 +110,259 @@ def test_current_principal_is_resolved_from_validated_token(
     }
 
 
-def test_current_principal_requires_a_registered_local_user(
+def test_current_principal_auto_registers_a_missing_local_user(
     identity_client: TestClient,
 ) -> None:
-    """An authenticated external identity has no implicit local access."""
-    response = identity_client.get("/me")
+    """The first delegated `/me` request creates its local identity."""
+    with patch(
+        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+        return_value={
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "new-subject",
+            "oid": "new-object-id",
+            "name": "New Operator",
+            "roles": ["admin"],
+            "scp": "access_as_user",
+        },
+    ):
+        response = identity_client.get(
+            "/me?display_name=Browser+Supplied&subject=browser-subject"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "New Operator"
+    assert response.json()["subject"] == "new-subject"
+    assert response.json()["roles"] == ["sysadmin"]
+    users = identity_client.get("/users")
+    assert users.status_code == 200
+    assert len(users.json()) == 1
+
+
+def test_current_principal_preserves_an_existing_renamed_user(
+    identity_client: TestClient,
+) -> None:
+    """Validated claims never overwrite the local administrator-owned name."""
+    created = identity_client.post(
+        "/users",
+        json={
+            "display_name": "Locally Renamed",
+            "issuer": "https://login.example/tenant/v2.0",
+            "subject": "test-subject",
+        },
+    )
+    assert created.status_code == 201
+
+    with patch(
+        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+        return_value={
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "test-subject",
+            "oid": "test-object-id",
+            "name": "Token Name",
+            "roles": ["admin"],
+            "scp": "access_as_user",
+        },
+    ):
+        response = identity_client.get("/me")
+
+    assert response.status_code == 200
+    assert response.json()["display_name"] == "Locally Renamed"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected_status"),
+    [
+        (None, 200),
+        ("true", 200),
+        ("TRUE", 200),
+        ("false", 403),
+        ("FALSE", 403),
+        ("yes", 500),
+        ("1", 500),
+        (" true ", 500),
+    ],
+)
+def test_auto_registration_setting_is_strict_and_defaults_enabled(
+    identity_client: TestClient,
+    value: str | None,
+    expected_status: int,
+) -> None:
+    """Only explicit booleans configure automatic local registration."""
+    environment = os.environ.copy()
+    if value is None:
+        environment.pop("AZURE_ENTRAID_AUTO_REGISTER_USERS", None)
+    else:
+        environment["AZURE_ENTRAID_AUTO_REGISTER_USERS"] = value
+
+    with patch.dict(os.environ, environment, clear=True):
+        response = identity_client.get("/me")
+
+    assert response.status_code == expected_status
+    if expected_status == 403:
+        assert response.json()["detail"] == (
+            "The signed-in identity is not registered for this application."
+        )
+    if expected_status == 500:
+        assert response.json()["detail"] == (
+            "Automatic user registration is misconfigured."
+        )
+
+
+def test_invalid_auto_registration_setting_fails_closed_for_existing_user(
+    identity_client: TestClient,
+) -> None:
+    """An invalid registration flag is never ignored for known identities."""
+    created = identity_client.post(
+        "/users",
+        json={
+            "display_name": "Existing User",
+            "issuer": "https://login.example/tenant/v2.0",
+            "subject": "test-subject",
+        },
+    )
+    assert created.status_code == 201
+
+    with patch.dict(
+        os.environ,
+        {"AZURE_ENTRAID_AUTO_REGISTER_USERS": "invalid"},
+    ):
+        response = identity_client.get("/me")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == (
+        "Automatic user registration is misconfigured."
+    )
+
+
+def test_auto_registration_errors_do_not_expose_validated_identity(
+    identity_client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Registration failures keep tokens and stable claims out of diagnostics."""
+    claims = {
+        "iss": "https://login.example/private-issuer",
+        "sub": "stable-private-subject",
+        "oid": "private-object-id",
+        "name": "Private Display Name",
+        "roles": ["admin"],
+        "scp": "access_as_user",
+    }
+    with (
+        patch(
+            "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+            return_value=claims,
+        ),
+        patch.dict(
+            os.environ,
+            {"AZURE_ENTRAID_AUTO_REGISTER_USERS": "invalid"},
+        ),
+    ):
+        response = identity_client.get(
+            "/me",
+            headers={"Authorization": "Bearer private-token-value"},
+        )
+
+    diagnostics = caplog.text + response.text
+    assert response.status_code == 500
+    assert "private-token-value" not in diagnostics
+    assert "private-issuer" not in diagnostics
+    assert "stable-private-subject" not in diagnostics
+    assert "private-object-id" not in diagnostics
+    assert "Private Display Name" not in diagnostics
+
+
+@pytest.mark.parametrize(
+    ("name", "preferred_username", "expected"),
+    [
+        ("  Display Name  ", "ignored@example.com", "Display Name"),
+        (42, "person@example.com", "person@example.com"),
+        ("A" * 300, "ignored@example.com", "A" * 255),
+        (None, "   ", "Microsoft Entra user"),
+    ],
+)
+def test_auto_registration_uses_a_bounded_validated_claim_display_name(
+    identity_client: TestClient,
+    name: object,
+    preferred_username: object,
+    expected: str,
+) -> None:
+    """Display names use trusted claim precedence, bounds, and safe fallback."""
+    claims: dict[str, object] = {
+        "iss": "https://login.example/tenant/v2.0",
+        "sub": f"display-name-{len(expected)}",
+        "oid": f"object-id-{len(expected)}",
+        "roles": ["user"],
+        "scp": "access_as_user",
+        "name": name,
+        "preferred_username": preferred_username,
+    }
+    with patch(
+        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+        return_value=claims,
+    ):
+        response = identity_client.get("/me")
+
+    assert response.status_code == 200
+    assert response.json()["display_name"] == expected
+    assert response.json()["roles"] == ["device_user"]
+
+
+def test_service_admin_is_never_auto_registered(
+    identity_client: TestClient,
+) -> None:
+    """App-only service administration never creates a local User."""
+    with patch(
+        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+        return_value={
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "service-object-id",
+            "oid": "service-object-id",
+            "name": "Service application",
+            "roles": ["ServiceAdmin"],
+        },
+    ):
+        response = identity_client.get("/me")
+        users = identity_client.get("/users")
 
     assert response.status_code == 403
     assert response.json()["detail"] == (
         "The signed-in identity is not registered for this application."
     )
+    assert users.status_code == 200
+    assert users.json() == []
+
+
+def test_racing_auto_registration_is_idempotent(tmp_path: Path) -> None:
+    """Concurrent first-user creation resolves to one external identity."""
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'identity-race.db'}",
+        connect_args={"check_same_thread": False},
+    )
+    SQLModel.metadata.create_all(engine)
+    barrier = Barrier(4)
+
+    def register() -> int:
+        with Session(engine) as session:
+            barrier.wait()
+            user = UserService(session).get_or_create_external_identity(
+                UserBase(
+                    display_name="Race User",
+                    issuer="https://login.example/tenant/v2.0",
+                    subject="race-subject",
+                )
+            )
+            assert user.id is not None
+            return user.id
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        user_ids = list(executor.map(lambda _: register(), range(4)))
+
+    with Session(engine) as session:
+        users = list(session.exec(select(User)).all())
+    engine.dispose()
+
+    assert len(set(user_ids)) == 1
+    assert len(users) == 1
 
 
 def test_current_principal_rejects_partial_validated_identity(

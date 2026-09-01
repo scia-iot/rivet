@@ -310,45 +310,61 @@ and `/users`. Deleting a device does not delete or revoke its OpenVPN client.
 
 ### Configure Required Authentication with Microsoft Entra ID
 
-Register the API in Microsoft Entra ID and set these five backend environment
-variables before starting ovpncp:
+Register the API in Microsoft Entra ID and set these five required backend
+environment variables before starting ovpncp:
 
 1. `AZURE_ENTRAID_TENANT_ID` - the tenant ID containing the API registration.
 
 2. `AZURE_ENTRAID_APP_CLIENT_ID` - the Application (client) ID of the API
    registration.
 
-3. `AZURE_ENTRAID_USER_ROLE` - the delegated user app-role value (`user`).
+3. `AZURE_ENTRAID_USER_ROLE` - the delegated user app-role value
+   (`device_user`).
 
 4. `AZURE_ENTRAID_ADMIN_ROLE` - the delegated administrator app-role value
-   (`admin`).
+   (`sysadmin`).
 
 5. `AZURE_ENTRAID_SERVICE_ADMIN_ROLE` - the app-only service app-role value
    (`ServiceAdmin`).
 
-All five values are required together, must be non-empty, and the three role
-values must be distinct. Missing, partial, or duplicate configuration fails
-closed. Authentication validates the token signature, audience, issuer, and
-stable identity before authorization.
+Set `AZURE_ENTRAID_AUTO_REGISTER_USERS=true` to control automatic local User
+registration. It defaults to enabled. Only exact `true` or `false` values,
+matched case-insensitively without surrounding whitespace, are accepted.
+Invalid values make `GET /me` fail closed, including for an existing user.
+Set it to `false` to require administrative User creation and retain the fixed
+`403` response for an unknown identity.
 
-Delegated `user` and `admin` tokens must contain the `access_as_user` scope and
-a non-empty `oid` distinct from `sub`. They map to `device_user` and `sysadmin`,
-respectively. App-only `ServiceAdmin` tokens must have `oid` equal to `sub` and
-must not contain `scp`; they map to `service_admin`. Both `sysadmin` and
-`service_admin` receive these FastAPI-enforced permissions:
+All five required values must be non-empty, and the three role values must be
+distinct. Missing, partial, or duplicate configuration fails closed.
+Authentication validates the token signature, audience, issuer, and stable
+identity before authorization.
+
+Delegated `device_user` and `sysadmin` tokens must contain the
+`access_as_user` scope and a non-empty `oid` distinct from `sub`. App-only
+`ServiceAdmin` tokens must have `oid` equal to `sub` and must not contain
+`scp`; they map to `service_admin`. Both `sysadmin` and `service_admin`
+receive these FastAPI-enforced permissions:
 `devices:read`, `devices:write`, `users:read`, `users:write`,
 `clients:read`, `clients:write`, `access:read`, `access:grant`,
 `server:read`, and `server:write`.
 
 Authenticated callers can use `GET /me` to resolve the validated token issuer
 and subject to a local User. The endpoint never accepts a caller-supplied user
-ID. The `user` app role resolves as `device_user` with no control-plane
-management permissions. Missing, unknown, or multiple token roles are rejected
-instead of defaulting to `device_user`. Ownership of VPN clients and explicit
-device AccessGrant records are separate resource policies; they do not grant
-management-route access. Create the matching local User record before signing
-in to the frontend. OpenAPI operations publish their enforced policy as
-`x-required-permission`.
+ID, registration identity, display name, or role. With automatic registration
+enabled, the first successful delegated `GET /me` creates a missing local
+`device_user` or `sysadmin` from the validated `iss` and `sub` claims. Its
+display name uses a validated printable `name`, then `preferred_username`,
+bounded to 255 characters, or the fixed `Microsoft Entra user` fallback.
+Existing local records and administrator-renamed display names are never
+overwritten. Concurrent first requests resolve to the same User. App-only
+`ServiceAdmin` identities are never auto-registered.
+
+Missing, unknown, or multiple token roles are rejected instead of defaulting
+to `device_user`. Ownership of VPN clients and explicit device AccessGrant
+records are separate resource policies; they do not grant management-route
+access. The frontend continues to resolve sign-in only through `GET /me` and
+does not decode tokens or call a registration/bootstrap route. OpenAPI
+operations publish their enforced policy as `x-required-permission`.
 
 Migration: remove `AZURE_ENTRAID_APP_ROLE` and define all three explicit role
 variables before restarting the service. There is deliberately no legacy

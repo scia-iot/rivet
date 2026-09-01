@@ -1,5 +1,6 @@
 """Business operations for users, devices, and access grants."""
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from sciaiot.ovpncp.data.identity import (
@@ -21,6 +22,10 @@ class EntityNotFoundError(Exception):
 
 class EntityConflictError(Exception):
     """Raised when a domain uniqueness rule would be violated."""
+
+
+class IdentityRegistrationError(Exception):
+    """Raised when local identity registration cannot finish safely."""
 
 
 class DeviceService:
@@ -183,6 +188,42 @@ class UserService:
         user = self.session.get(User, user_id)
         if user is None:
             raise EntityNotFoundError(f"User with ID {user_id} not found.")
+        return user
+
+    def get_or_create_external_identity(self, request: UserBase) -> User:
+        """Create one local identity or return the concurrent winner.
+
+        Args:
+            request: Trusted external identity and bounded display values.
+
+        Returns:
+            The existing or newly persisted local user.
+
+        Raises:
+            IdentityRegistrationError: If a uniqueness race cannot be
+                reconciled to a matching local identity.
+        """
+        statement = select(User).where(
+            User.issuer == request.issuer,
+            User.subject == request.subject,
+        )
+        existing = self.session.exec(statement).first()
+        if existing is not None:
+            return existing
+
+        user = User.model_validate(request)
+        self.session.add(user)
+        try:
+            self.session.commit()
+        except IntegrityError:
+            self.session.rollback()
+            concurrent_user = self.session.exec(statement).first()
+            if concurrent_user is None:
+                raise IdentityRegistrationError(
+                    "Automatic user registration failed."
+                ) from None
+            return concurrent_user
+        self.session.refresh(user)
         return user
 
     def get_by_external_identity(self, issuer: str, subject: str) -> User:

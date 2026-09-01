@@ -66,10 +66,18 @@ sudoedit /etc/ovpncp/ovpncp.env
 Use the azure extra instead when Azure Blob Storage is required. Add the MySQL
 or PostgreSQL extra for those database backends.
 
-Replace every angle-bracket placeholder in `/etc/ovpncp/ovpncp.env`. All five
-`AZURE_ENTRAID_*` values are required together. Authentication fails closed.
-Storage connection strings and database credentials are secrets and must stay
-in the mode-0600 environment file or an equivalent secret manager.
+Replace every angle-bracket placeholder in `/etc/ovpncp/ovpncp.env`. The five
+tenant, client, and role `AZURE_ENTRAID_*` values are required together.
+Authentication fails closed. Storage connection strings and database
+credentials are secrets and must stay in the mode-0600 environment file or an
+equivalent secret manager.
+
+`AZURE_ENTRAID_AUTO_REGISTER_USERS` is optional and defaults to `true`.
+It accepts only exact `true` or `false` values, case-insensitively and without
+surrounding whitespace. An invalid value makes every `GET /me` request fail
+closed. Set it to `false` to require administrators to create local User
+records before sign-in; unknown identities then retain the fixed `403`
+response.
 
 ## Build the environment-specific frontend
 
@@ -186,15 +194,23 @@ registration needs delegated access to `VITE_ENTRA_API_SCOPE`, which must be
 
 The API registration defines three distinct app roles:
 
-- `user`, allowed for Users/Groups;
-- `admin`, allowed for Users/Groups;
+- `device_user`, allowed for Users/Groups;
+- `sysadmin`, allowed for Users/Groups;
 - `ServiceAdmin`, allowed for Applications.
 
-Assign users and groups only to `user` or `admin`. Assign the business
-platform service principal to `ServiceAdmin`. The API accepts delegated
-`user` and `admin` tokens only with the `access_as_user` scope, while
-`ServiceAdmin` requires an app-only token and receives all management
-permissions.
+Assign users and groups only to `device_user` or `sysadmin`. Assign the
+business platform service principal to `ServiceAdmin`. The API accepts
+delegated roles only with the `access_as_user` scope, while `ServiceAdmin`
+requires an app-only token and receives all management permissions.
+
+With automatic registration enabled, the frontend's first authenticated
+`GET /me` creates a missing delegated `device_user` or `sysadmin` exactly
+once. The identity comes only from the middleware-validated `iss` and `sub`
+claims. A bounded display name comes from validated `name`, then
+`preferred_username`, then a fixed safe fallback. The browser supplies none
+of these values and does not decode its token or use a registration/bootstrap
+route. Existing users and locally renamed display names are preserved.
+App-only `ServiceAdmin` identities are never automatically registered.
 
 Before upgrading an existing installation, remove `AZURE_ENTRAID_APP_ROLE`
 and configure the three explicit role variables in the environment file.

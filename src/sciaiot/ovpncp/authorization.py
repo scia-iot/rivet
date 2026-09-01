@@ -30,6 +30,8 @@ class Permission(StrEnum):
 
 
 SYSADMIN_PERMISSIONS = tuple(Permission)
+AUTO_REGISTRATION_DISPLAY_NAME = "Microsoft Entra user"
+MAX_USER_DISPLAY_NAME_LENGTH = 255
 
 
 class PermissionRoute(APIRoute):
@@ -63,6 +65,19 @@ class AuthenticatedPrincipal:
     subject: str
     roles: tuple[str, ...]
     permissions: frozenset[Permission]
+    registration_display_name: str = AUTO_REGISTRATION_DISPLAY_NAME
+
+
+def _registration_display_name(payload: dict[str, object]) -> str:
+    """Derive a bounded display name only from verified token claims."""
+    for claim in ("name", "preferred_username"):
+        value = payload.get(claim)
+        if not isinstance(value, str):
+            continue
+        candidate = value.strip()
+        if candidate and all(character.isprintable() for character in candidate):
+            return candidate[:MAX_USER_DISPLAY_NAME_LENGTH]
+    return AUTO_REGISTRATION_DISPLAY_NAME
 
 
 def get_authenticated_principal(request: Request) -> AuthenticatedPrincipal:
@@ -164,6 +179,7 @@ def get_authenticated_principal(request: Request) -> AuthenticatedPrincipal:
         subject=subject,
         roles=roles,
         permissions=permissions,
+        registration_display_name=_registration_display_name(payload),
     )
 
 
