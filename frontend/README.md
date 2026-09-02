@@ -125,8 +125,10 @@ npm run build:production
 
 The production guard requires authentication, concrete Entra UUIDs and API
 scope, only reviewed browser-exposed variables, and the same-origin `/api` base.
-Nginx serves `dist`, applies SPA fallback and browser security headers, and
-proxies `/api` to loopback FastAPI. See the
+Azure Application Gateway terminates public TLS and enforces the listener
+hostname. Nginx receives restricted plain HTTP, serves `dist`, applies SPA
+fallback and browser security headers, and proxies `/api` to loopback FastAPI.
+No hostname or TLS key is compiled into or installed with the frontend. See the
 [production deployment runbook](../docs/production-deployment.md).
 
 The Playwright suite covers the authentication shell and redirect return,

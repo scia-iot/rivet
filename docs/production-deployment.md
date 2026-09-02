@@ -7,6 +7,10 @@ narrow.
 
 ## Selected topology
 
+TLS terminates at Azure Application Gateway. Its HTTPS listener owns public
+hostname matching and HTTPS enforcement, then forwards plain HTTP over the
+restricted virtual network to Nginx on port 80.
+
 Nginx serves frontend/dist and proxies browser API requests under /api to
 FastAPI on 127.0.0.1:8000.
 
@@ -14,6 +18,10 @@ FastAPI on 127.0.0.1:8000.
 Browser
   |
   | HTTPS
+  v
+Azure Application Gateway
+  |
+  | private HTTP :80
   v
 Nginx
   |-- /assets/*, /favicon.svg, and SPA routes -> frontend/dist
@@ -23,6 +31,26 @@ Nginx
 The /api prefix prevents collisions between browser routes such as /devices
 and FastAPI routes with the same paths. Nginx strips the prefix once. FastAPI
 remains the authorization boundary and is not exposed publicly.
+
+Configure Application Gateway manually with these backend settings:
+
+- Backend protocol: `HTTP`
+- Backend port: `80`
+- Backend pool target: the VM private address reachable through peering
+- Host-name override: disabled, preserving the listener-selected host
+- Custom health probe: HTTP port 80, path `/`, expected status `200`
+- Public HTTP listener: redirect to the public HTTPS listener
+
+Plain HTTP is acceptable only inside this restricted backend hop. The VM
+network security group must enforce both rules:
+
+- Allow port 80 only from the Application Gateway subnet.
+- Do not allow port 8000 from any remote network.
+
+Nginx is deliberately the default backend virtual host because the Application
+Gateway listener owns hostname matching. It preserves the selected Host header
+and reports `X-Forwarded-Proto: https` to FastAPI because every accepted public
+request has already passed the gateway's HTTPS-only listener.
 
 The Nginx template provides:
 
@@ -43,8 +71,8 @@ repository's secret-safe logging rules.
 
 - Python 3.14 and a virtual environment under /opt/ovpncp/venv
 - Node.js 22.22.2+ or 24.15.0+
-- Nginx with HTTP SSL and proxy modules
-- an HTTPS certificate and private key readable by Nginx
+- Nginx with HTTP and proxy modules
+- Azure Application Gateway, peering, and the restricted backend NSG rule
 - OpenVPN, Easy-RSA, iptables, and iproute2
 - an Entra API registration and SPA registration
 
@@ -156,23 +184,24 @@ loopback-only OpenVPN connection-hook exception.
 
 ## Install Nginx
 
-Set the exact hostname, release root, and TLS paths. The envsubst allowlist
-leaves Nginx variables such as $uri and $remote_addr intact.
+Only the release root is rendered locally; the public hostname and TLS
+certificate remain Application Gateway concerns. The envsubst allowlist leaves
+Nginx variables such as $uri, $http_host, and $remote_addr intact.
 
 ~~~shell
-export OVPNCP_HOSTNAME=ovpncp.example.com
 export OVPNCP_FRONTEND_ROOT=/srv/ovpncp/frontend/current
-export OVPNCP_TLS_CERTIFICATE=/etc/ovpncp/tls/fullchain.pem
-export OVPNCP_TLS_KEY=/etc/ovpncp/tls/privkey.pem
 
-OVPNCP_TEMPLATE_VARIABLES='
-${OVPNCP_HOSTNAME} ${OVPNCP_FRONTEND_ROOT}
-${OVPNCP_TLS_CERTIFICATE} ${OVPNCP_TLS_KEY}'
+OVPNCP_TEMPLATE_VARIABLES='${OVPNCP_FRONTEND_ROOT}'
 envsubst "${OVPNCP_TEMPLATE_VARIABLES}" < deploy/nginx/ovpncp.conf.template \
   | sudo tee /etc/nginx/conf.d/ovpncp.conf >/dev/null
 
+if [ -L /etc/nginx/sites-enabled/default ]; then
+  sudo mv /etc/nginx/sites-enabled/default /etc/nginx/default-site.disabled
+fi
+
 sudo nginx -t
-sudo systemctl reload nginx
+sudo systemctl enable nginx
+sudo systemctl reload-or-restart nginx
 ~~~
 
 The template belongs inside Nginx's http context. Adjust the include path on

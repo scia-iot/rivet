@@ -52,9 +52,11 @@ def test_api_prefix_is_separate_from_spa_history_fallback(
     for api_location in (exact_api, api_prefix):
         assert "proxy_pass http://ovpncp_api/;" in api_location
         assert "proxy_set_header X-Forwarded-For $remote_addr;" in api_location
-        assert "proxy_set_header Host $server_name;" in api_location
-        assert "proxy_set_header X-Forwarded-Host $server_name;" in api_location
-        assert "proxy_set_header Host $host;" not in api_location
+        assert "proxy_set_header Host $http_host;" in api_location
+        assert "proxy_set_header X-Forwarded-Host $http_host;" in api_location
+        assert "proxy_set_header X-Forwarded-Proto https;" in api_location
+        assert "$server_name" not in api_location
+        assert "proxy_set_header X-Forwarded-Proto $scheme;" not in api_location
         assert "$proxy_add_x_forwarded_for" not in api_location
         assert "try_files" not in api_location
         assert "proxy_buffering off;" in api_location
@@ -90,7 +92,7 @@ def test_frontend_assets_have_deliberate_cache_policy(
 def test_frontend_and_api_responses_receive_security_headers(
     nginx_configuration: str,
 ) -> None:
-    """The public TLS boundary applies required browser protections."""
+    """Responses retain browser protections behind the public TLS boundary."""
     normalized_configuration = " ".join(nginx_configuration.split())
     hsts_name = "Strict-Transport-Security "
     hsts_value = '"max-age=31536000; includeSubDomains" always;'
@@ -116,29 +118,37 @@ def test_frontend_and_api_responses_receive_security_headers(
     assert "frame-src https://login.microsoftonline.com" in nginx_configuration
 
 
-def test_tls_template_uses_explicit_environment_substitutions(
+def test_application_gateway_backend_is_private_plain_http(
     nginx_configuration: str,
 ) -> None:
-    """Deployment requires an exact host, TLS files, and release root."""
-    required_variables = {
-        "${OVPNCP_HOSTNAME}",
-        "${OVPNCP_FRONTEND_ROOT}",
-        "${OVPNCP_TLS_CERTIFICATE}",
-        "${OVPNCP_TLS_KEY}",
-    }
-    assert required_variables <= set(
+    """Application Gateway owns host matching and public TLS enforcement."""
+    assert {"${OVPNCP_FRONTEND_ROOT}"} == set(
         re.findall(r"\$\{OVPNCP_[A-Z_]+\}", nginx_configuration)
     )
-    assert "listen 443 ssl;" in nginx_configuration
-    redirect = "return 308 https://${OVPNCP_HOSTNAME}$request_uri;"
-    assert redirect in nginx_configuration
+    assert "listen 80 default_server;" in nginx_configuration
+    assert "listen [::]:80 default_server;" in nginx_configuration
+    assert "server_name _;" in nginx_configuration
+    assert "listen 443" not in nginx_configuration
+    assert "ssl_certificate" not in nginx_configuration
+    assert "return 30" not in nginx_configuration
     assert "server_tokens off;" in nginx_configuration
-    assert nginx_configuration.count("access_log off;") == 4
-    assert nginx_configuration.count("error_log /dev/null crit;") == 2
+    assert nginx_configuration.count("access_log off;") == 3
+    assert nginx_configuration.count("error_log /dev/null crit;") == 1
+
+
+def test_runbook_documents_the_application_gateway_trust_boundary() -> None:
+    """Operators keep HTTP private and enforce HTTPS at the gateway listener."""
+    runbook = PRODUCTION_RUNBOOK.read_text(encoding="utf-8")
+
+    assert "TLS terminates at Azure Application Gateway" in runbook
+    assert "Backend protocol: `HTTP`" in runbook
+    assert "Backend port: `80`" in runbook
+    assert "only from the Application Gateway subnet" in runbook
+    assert "Do not expose port 8000" in runbook
 
 
 def test_systemd_keeps_fastapi_on_the_trusted_loopback_boundary() -> None:
-    """The privileged API is not exposed beside the TLS proxy."""
+    """The privileged API is not exposed beside the trusted HTTP proxy."""
     configuration = SYSTEMD_SERVICE.read_text(encoding="utf-8")
 
     assert "Environment=HOST=127.0.0.1" in configuration

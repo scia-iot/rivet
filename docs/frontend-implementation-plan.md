@@ -929,19 +929,22 @@ Production builds must continue to fail closed.
 
 ### Notes
 
-- Nginx owns TLS and serves a versioned `frontend/dist` release. Same-origin
-  browser requests use `/api`; Nginx strips that prefix once and proxies to
-  FastAPI on `127.0.0.1:8000`, while SPA fallback remains limited to non-API
-  paths.
+- Azure Application Gateway owns public TLS, hostname matching, and HTTPS
+  enforcement. It forwards restricted plain HTTP to Nginx on port 80. Nginx
+  serves a versioned `frontend/dist` release; same-origin browser requests use
+  `/api`, which Nginx strips once before proxying to FastAPI on
+  `127.0.0.1:8000`.
 - `npm run build:production` rejects disabled authentication, missing or
   placeholder Entra identifiers, invalid API scopes, unreviewed `VITE_*`
   variables, and API bases other than `/api`. The Nginx template uses an
-  explicit four-variable `envsubst` allowlist so native variables remain intact.
+  explicit one-variable `envsubst` allowlist so native variables remain intact.
 - Nginx applies no-store defaults, immutable caching only to fingerprinted
   assets, browser security headers, disabled access/error logs, and unbuffered
-  API proxying. Uvicorn trusts forwarding data only from the loopback proxy.
-  The trusted ASGI root is removed before exact documentation and loopback-hook
-  path matching, preserving the narrow direct OpenVPN hook exception.
+  API proxying. It preserves the gateway-selected host and forwards the fixed
+  public HTTPS scheme. Uvicorn trusts forwarding data only from the loopback
+  proxy. The trusted ASGI root is removed before exact documentation and
+  loopback-hook path matching, preserving the narrow direct OpenVPN hook
+  exception.
 - Login and logout use the exact public origin root registered as an Entra SPA
   redirect URI.
 - Playwright uses an explicitly enabled development-only controlled identity
@@ -1555,11 +1558,12 @@ Deferred:
 2026-08-27 - Phase 10 completed
 Implementation:
 - Added a same-origin Nginx topology with isolated `/api` proxying, SPA history
-  fallback, explicit cache policy, TLS and browser security headers, disabled
-  request-bearing proxy logs and buffering, a root-owned static release tree
-  outside API write access, a hardened loopback systemd service, guarded
-  production configuration, deployment smoke checks, and a complete
-  installation and rollback runbook.
+  fallback, explicit cache policy, Application Gateway TLS handoff, browser
+  security headers, disabled request-bearing proxy logs and buffering, and a
+  root-owned static release tree outside API write access. The deployment also
+  includes a hardened loopback systemd service, guarded production
+  configuration, deployment smoke checks, and a complete installation and
+  rollback runbook.
 - Restricted Uvicorn forwarding-header trust to the loopback proxy, published
   and normalized the `/api` root before exact documentation and loopback-hook
   matching, disabled access/server headers, and added deployment regression

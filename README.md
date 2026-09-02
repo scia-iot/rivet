@@ -119,10 +119,12 @@ sudo systemctl restart openvpn
 
 ## Running as a systemd Service (Recommended)
 
-Production uses the reviewed
-[`deploy/systemd/ovpncp.service`](deploy/systemd/ovpncp.service). It keeps
-FastAPI on loopback behind Nginx, publishes the external API root as `/api`,
-and restricts filesystem writes while retaining required host privileges.
+Production terminates public TLS and hostname matching at Azure Application
+Gateway, which forwards private HTTP to Nginx. Nginx serves the UI and proxies
+`/api` to FastAPI on loopback. The reviewed
+[`deploy/systemd/ovpncp.service`](deploy/systemd/ovpncp.service) publishes that
+external API root and restricts filesystem writes while retaining required
+host privileges.
 
 ```shell
 sudo install -m 0644 deploy/systemd/ovpncp.service \
