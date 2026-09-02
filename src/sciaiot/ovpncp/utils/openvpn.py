@@ -11,6 +11,9 @@ from cryptography.x509.oid import NameOID
 
 logger = logging.getLogger(__name__)
 
+CLIENT_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+CLIENT_NAME_MAX_LENGTH = 255
+
 status_pattern = re.compile(r"(.*?)Active: (.*?) since (.*?); (.*?) ago")
 client_pattern = re.compile(r"(\w+),(\d+\.\d+\.\d+\.\d+)")
 default = "N/A"
@@ -19,9 +22,17 @@ openvpn_log_dir = "/var/log/openvpn"
 easyrsa_dir = f"{openvpn_dir}/easy-rsa"
 
 
-def validate_name(name: str):
-    """Validate that the name only contains alphanumeric characters, underscores, and dashes."""
-    if not re.match(r"^[a-zA-Z0-9_-]+$", name):
+def is_valid_name(name: str) -> bool:
+    """Return whether a name is safe and fits persisted entity limits."""
+    return (
+        0 < len(name) <= CLIENT_NAME_MAX_LENGTH
+        and CLIENT_NAME_PATTERN.fullmatch(name) is not None
+    )
+
+
+def validate_name(name: str) -> None:
+    """Reject names outside the safe OpenVPN client-name domain."""
+    if not is_valid_name(name):
         logger.error(f"Invalid name '{name}' provided!")
         raise ValueError(f"Invalid name '{name}' provided!")
 

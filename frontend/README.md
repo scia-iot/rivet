@@ -63,9 +63,15 @@ through `/devices`. User lifecycle and multi-client ownership are available
 through `/users`; unlinking or deleting a user does not delete or revoke the
 VPN client. The user-detail Device access tab lists application-level
 AccessGrant records and lets administrators grant or revoke those records.
-`/clients` supports creation and Easy-RSA import, virtual-address
-assignment, certificate renewal and packaging, typed-confirmation revocation,
-and ZIP download.
+`/clients` supports creation and deliberate bulk Easy-RSA import,
+virtual-address assignment, certificate renewal and packaging,
+typed-confirmation revocation, and ZIP download. Bulk import always scans all
+existing Easy-RSA client certificates. It defaults to importing VPN Clients
+only; creating matching edge Devices requires selecting an unchecked option in
+the confirmation dialog. The completion summary reports Clients added,
+updated, and skipped, plus Devices created, already linked, and in conflict
+when Device creation was selected. Existing Device names and Client links are
+never reassigned to resolve a conflict.
 
 Certificate downloads are fetched directly as `application/zip` with
 `Cache-Control: no-store`. Azure Blob Storage deployments proxy the archive

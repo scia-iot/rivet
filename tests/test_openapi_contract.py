@@ -89,6 +89,41 @@ def test_openapi_documents_current_user_resource_contracts() -> None:
     assert set(client_model["properties"]) == {"id", "name", "revoked"}
 
 
+def test_openapi_documents_optional_bulk_client_import_contract() -> None:
+    """Bulk import publishes an optional request and every outcome count."""
+    app.openapi_schema = None
+
+    schema = app.openapi()
+    operation = schema["paths"]["/clients/import"]["post"]
+    request_body = operation["requestBody"]
+    request_schema = request_body["content"]["application/json"]["schema"]
+    request_model = schema["components"]["schemas"]["ClientImportRequest"]
+    response = operation["responses"]["200"]["content"]["application/json"]
+    summary_reference = response["schema"]
+    summary = schema["components"]["schemas"]["ClientImportSummary"]
+
+    assert "required" not in request_body
+    assert request_schema["anyOf"] == [
+        {"$ref": "#/components/schemas/ClientImportRequest"},
+        {"type": "null"},
+    ]
+    assert request_model["properties"]["create_devices"] == {
+        "default": False,
+        "title": "Create Devices",
+        "type": "boolean",
+    }
+    assert summary_reference["$ref"].endswith("/ClientImportSummary")
+    assert set(summary["properties"]) == {
+        "added",
+        "updated",
+        "clients_skipped",
+        "devices_created",
+        "devices_already_linked",
+        "device_conflicts",
+    }
+    assert set(summary["required"]) == set(summary["properties"])
+
+
 def test_openapi_generation_does_not_call_privileged_operations() -> None:
     """Building the schema must never touch VPN, firewall, or route state."""
     app.openapi_schema = None

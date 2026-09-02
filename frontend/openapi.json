@@ -186,11 +186,39 @@
         "title": "ClientDetails",
         "type": "object"
       },
+      "ClientImportRequest": {
+        "description": "Options for importing discovered Easy-RSA clients.",
+        "properties": {
+          "create_devices": {
+            "default": false,
+            "title": "Create Devices",
+            "type": "boolean"
+          }
+        },
+        "title": "ClientImportRequest",
+        "type": "object"
+      },
       "ClientImportSummary": {
-        "description": "Counts of client records changed during certificate import.",
+        "description": "Counts of Client and optional Device outcomes during import.",
         "properties": {
           "added": {
             "title": "Added",
+            "type": "integer"
+          },
+          "clients_skipped": {
+            "title": "Clients Skipped",
+            "type": "integer"
+          },
+          "device_conflicts": {
+            "title": "Device Conflicts",
+            "type": "integer"
+          },
+          "devices_already_linked": {
+            "title": "Devices Already Linked",
+            "type": "integer"
+          },
+          "devices_created": {
+            "title": "Devices Created",
             "type": "integer"
           },
           "updated": {
@@ -200,7 +228,11 @@
         },
         "required": [
           "added",
-          "updated"
+          "updated",
+          "clients_skipped",
+          "devices_created",
+          "devices_already_linked",
+          "device_conflicts"
         ],
         "title": "ClientImportSummary",
         "type": "object"
@@ -1320,6 +1352,23 @@
       "post": {
         "description": "Import existing clients from Easy-RSA certificate directory.",
         "operationId": "import_clients_clients_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ClientImportRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

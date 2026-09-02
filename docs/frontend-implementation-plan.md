@@ -58,6 +58,7 @@ coverage.
 | 9 | Device-user portal | completed | Phase 8 |
 | 10 | Production integration and E2E hardening | completed | Phases 4-9 |
 | 11 | Automatic Entra user registration | completed | Phase 2 |
+| 12 | Bulk Easy-RSA client and Device import | completed | Phase 5 |
 
 ## Target architecture
 
@@ -1031,6 +1032,105 @@ administrator bootstrap step.
   registration/bootstrap route. The response contract did not change, and
   `npm run api:check` confirmed no generated OpenAPI drift.
 
+## Phase 12: Bulk Easy-RSA client and Device import
+
+### Objective
+
+Provide one deliberate administrator workflow that scans every existing
+Easy-RSA client certificate, imports the corresponding VPN Clients, and can
+optionally create matching edge Devices without changing existing ownership or
+assignment relationships.
+
+### Backend contract
+
+- Extend `POST /clients/import` with an optional typed request body containing
+  `create_devices: bool = false`. Requests with no body remain valid and retain
+  the existing client-only behavior.
+- Preserve the existing `added` and `updated` response fields. Add explicit
+  client-skipped, Device-created, Device-already-linked, and Device-conflict
+  counts so every discovered valid client and requested Device outcome is
+  visible in the import summary.
+- Validate every discovered certificate name before using it as a Client or
+  Device name. Invalid names and unreadable/empty certificate records are
+  counted as skipped clients and never reach a path, command, or Device write.
+- When Device creation is selected, create at most one Device for each valid
+  imported Client, using the validated Client name and linking its `client_id`.
+  Only a Device with that same name already linked to that Client is
+  idempotently complete.
+- Never reassign an existing Device or Client. A same-name unlinked Device, a
+  same-name Device linked to another Client, or a differently named Device
+  already linked to the Client is a counted conflict and remains unchanged.
+- Keep all Client, certificate, virtual-address, and optional Device database
+  writes in one transaction. Any unexpected certificate, filesystem, or
+  database failure rolls the transaction back and returns the existing fixed,
+  safe certificate-operation failure.
+
+### Frontend work
+
+- Replace the immediate import button action with an accessible confirmation
+  dialog that states all existing Easy-RSA clients will be scanned.
+- Add an unchecked `Create matching edge devices` checkbox. Keep it unchecked
+  whenever the dialog opens so Device creation always requires an explicit
+  choice.
+- Lock duplicate confirmation, keep the dialog pending until the backend
+  confirms completion, and do not optimistically change client or Device data.
+- Present the returned client added, updated, and skipped counts and, when
+  Device creation was requested, the created, already-linked, and conflict
+  counts. Import failures use fixed safe retry guidance.
+- Invalidate VPN-client queries after every successful import. Invalidate
+  Device queries only when `create_devices` was requested.
+
+### Tests
+
+- No-body and `{"create_devices": false}` requests retain client-only
+  compatibility and return all explicit zero Device counts.
+- A selected import creates matching named Devices linked to new and existing
+  valid Clients, and a repeated import reports them as already linked.
+- Existing Device-name and Client-link conflicts are counted without changing
+  either relationship; invalid names and unreadable certificate records are
+  counted as skipped without unsafe boundary calls.
+- A failure after staged Client or Device changes rolls back the entire import,
+  returns fixed safe diagnostics, and does not expose paths or exception text.
+- The dialog explains the scan, starts with Device creation unchecked, sends
+  the selected typed option, blocks repeated submission, waits for completion,
+  shows all applicable counts, handles fixed failures, and restores focus.
+- Client queries are invalidated after success; Device queries are invalidated
+  only for imports that requested Device creation.
+
+### Exit criteria
+
+- One manual `/clients` workflow imports all valid existing Easy-RSA Clients
+  and optionally creates matching linked Devices with no silent reassignment.
+- The API remains backward compatible for no-body callers and publishes the
+  typed request and expanded summary through deterministic OpenAPI artifacts.
+- Client and Device outcomes are explicit, idempotent, transactional, and
+  covered at success, conflict, validation, and rollback boundaries.
+- Focused TDD evidence and all applicable backend/frontend quality gates pass.
+- README and frontend workflow documentation describe the client-only default,
+  explicit Device option, summary counts, and conflict behavior.
+
+### Notes
+
+- `POST /clients/import` accepts no body or the optional typed
+  `create_devices` option, which defaults to false. Every response includes
+  Client added, updated, and skipped counts plus Device created,
+  already-linked, and conflict counts.
+- Discovered names must use the bounded OpenVPN client-name domain before any
+  certificate, IP, model, or database work. Empty certificate records are
+  skipped. Client, certificate, virtual-address, and optional Device changes
+  use one commit and the existing fixed rollback failure boundary.
+- Optional Device creation is idempotent only for an exact same-name,
+  same-Client link. Same-name unlinked or differently linked Devices and
+  differently named Devices already linked to the Client remain unchanged and
+  are reported as conflicts.
+- The `/clients` import action now opens an accessible confirmation dialog.
+  Device creation is unchecked on every open, duplicate confirmation is
+  synchronously locked, pending work cannot dismiss the dialog, failures use
+  fixed retry guidance, and cache invalidation follows the requested scope.
+- The generated OpenAPI request/summary contract, root API examples, and
+  frontend workflow documentation describe the client-only default, explicit
+  Device option, outcome counts, and conflict behavior.
+
 ## Cross-phase security rules
 
 Every phase must preserve these rules:
@@ -1541,3 +1641,40 @@ Deferred:
   `src/sciaiot/__init__.py`. The build-excluded full-tree mypy gate passed.
 - Real-tenant interactive sign-in and concurrent requests against the selected
   production database remain environment-specific smoke checks.
+
+2026-09-02 - Phase 12 completed
+Implementation:
+- Added an optional typed bulk-import request, expanded six-count summary,
+  bounded pre-I/O client-name validation, skipped invalid/unreadable records,
+  optional matching Device creation, exact idempotency/conflict handling, and
+  one transactional rollback boundary without reassigning existing links.
+- Replaced immediate frontend import with an accessible, pending-safe dialog,
+  an explicitly unchecked Device option, fixed safe errors, complete
+  conditional result counts, and selective Client/Device cache invalidation.
+- Regenerated deterministic OpenAPI artifacts and updated the root and frontend
+  documentation for the default, option, summary, and conflict semantics.
+Verification:
+- Backend TDD red: `pytest -q tests/test_client_import.py` reported 5 failed
+  and 1 passed before implementation. Final focused import tests passed 6.
+- Frontend TDD red reported 4 failed and 9 passed for missing dialog and typed
+  mutation behavior. Final focused client API/page tests passed 2 files and 13
+  tests. The combined backend/API regression suite passed 83 tests.
+- `npm ci`: passed; 261 packages installed and 262 audited. `npm audit` passed
+  with 0 vulnerabilities. `npm run api:check`, `npm run lint`, and `npm run
+  typecheck` passed.
+- `npm run test`: passed; 32 files and 138 tests. `npm run build`: passed; Vite
+  transformed 2,300 modules and emitted the production bundle.
+- `ruff format --check .` passed for 51 files and `ruff check .` passed.
+  `mypy --exclude '^build/' .` passed for 45 source files.
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: passed; 209 tests
+  with 92% total coverage. `routes/client.py` reached 99% coverage.
+- `git diff --check` and scoped transaction, invalid-name logging,
+  sensitive-error, accessibility, and cache-invalidation reviews passed.
+  Certificate, VPN, firewall, route, cloud, and other external operations were
+  mocked or not invoked.
+Deferred:
+- Plain `mypy .` remains blocked by the pre-existing duplicate generated
+  package under `build/lib/sciaiot`; it reported the duplicate alongside
+  `src/sciaiot/__init__.py`. The build-excluded source-tree gate passed.
+- Frontend coverage instrumentation remains unavailable; full and focused
+  Vitest behavior suites provide the recorded frontend verification.

@@ -162,11 +162,27 @@ curl -X POST http://127.0.0.1:8000/clients \
     EOF
 ```
 
-Import existing clients from Easy-RSA:
+Import every valid existing client from Easy-RSA. With no request body, the
+operation imports VPN Clients only:
 
 ```shell
 curl -X POST http://127.0.0.1:8000/clients/import
 ```
+
+To also create matching edge Devices, make the option explicit:
+
+```shell
+curl -X POST http://127.0.0.1:8000/clients/import \
+    -H "Content-Type: application/json" \
+    --data '{"create_devices": true}'
+```
+
+The response reports Clients added, updated, and skipped. It also reports
+Devices created, already linked, and in conflict. A Device is already linked
+only when its name matches the Client and it already links to that Client. A
+same-name unlinked Device, a same-name Device linked elsewhere, or a
+differently named Device already linked to the Client is a conflict; imports
+never reassign those relationships.
 
 Create a gateway client with the private network behind it:
 

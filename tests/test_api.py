@@ -857,7 +857,14 @@ def test_import_clients(
 
     response = client.post("/clients/import")
     assert response.status_code == 200
-    assert response.json() == {"added": 2, "updated": 0}
+    assert response.json() == {
+        "added": 2,
+        "updated": 0,
+        "clients_skipped": 0,
+        "devices_created": 0,
+        "devices_already_linked": 0,
+        "device_conflicts": 0,
+    }
 
     # Verify IP assignment
     response = client.get("/clients/existing_client_1")
@@ -880,7 +887,14 @@ def test_import_clients(
 
     response = client.post("/clients/import")
     assert response.status_code == 200
-    assert response.json() == {"added": 0, "updated": 1}
+    assert response.json() == {
+        "added": 0,
+        "updated": 1,
+        "clients_skipped": 0,
+        "devices_created": 0,
+        "devices_already_linked": 0,
+        "device_conflicts": 0,
+    }
 
     response = client.get("/clients/existing_client_2")
     assert response.json()["virtual_address"]["ip"] == "10.8.0.12"
@@ -892,7 +906,14 @@ def test_import_clients(
 
     response = client.post("/clients/import")
     assert response.status_code == 200
-    assert response.json() == {"added": 0, "updated": 0}
+    assert response.json() == {
+        "added": 0,
+        "updated": 0,
+        "clients_skipped": 1,
+        "devices_created": 0,
+        "devices_already_linked": 0,
+        "device_conflicts": 0,
+    }
 
 
 @pytest.mark.parametrize(

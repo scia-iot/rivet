@@ -685,12 +685,31 @@ export interface components {
             virtual_address: components["schemas"]["VirtualAddressBase"] | null;
         };
         /**
+         * ClientImportRequest
+         * @description Options for importing discovered Easy-RSA clients.
+         */
+        ClientImportRequest: {
+            /**
+             * Create Devices
+             * @default false
+             */
+            create_devices: boolean;
+        };
+        /**
          * ClientImportSummary
-         * @description Counts of client records changed during certificate import.
+         * @description Counts of Client and optional Device outcomes during import.
          */
         ClientImportSummary: {
             /** Added */
             added: number;
+            /** Clients Skipped */
+            clients_skipped: number;
+            /** Device Conflicts */
+            device_conflicts: number;
+            /** Devices Already Linked */
+            devices_already_linked: number;
+            /** Devices Created */
+            devices_created: number;
             /** Updated */
             updated: number;
         };
@@ -1228,7 +1247,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ClientImportRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

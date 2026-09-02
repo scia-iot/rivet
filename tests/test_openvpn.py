@@ -86,6 +86,7 @@ def test_validate_name():
     validate_name("client1")
     validate_name("client_1")
     validate_name("client-1")
+    validate_name("a" * 255)
 
     # Invalid names
     with pytest.raises(ValueError, match="Invalid name"):
@@ -94,6 +95,8 @@ def test_validate_name():
         validate_name("client/../test")
     with pytest.raises(ValueError, match="Invalid name"):
         validate_name("client|test")
+    with pytest.raises(ValueError, match="Invalid name"):
+        validate_name("a" * 256)
 
 
 def test_read_client_cert_traversal():

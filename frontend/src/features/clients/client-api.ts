@@ -10,6 +10,7 @@ export type VpnClient = components['schemas']['Client']
 export type VpnClientCreate = components['schemas']['ClientBase']
 export type VpnClientDetails = components['schemas']['ClientDetails']
 export type VirtualAddress = components['schemas']['VirtualAddress']
+export type ClientImportRequest = components['schemas']['ClientImportRequest']
 export type ClientImportSummary = components['schemas']['ClientImportSummary']
 
 function requiredResponse<T>(data: T | undefined, entity: string): T {
@@ -116,12 +117,20 @@ export function useImportClients() {
   const client = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async () => {
-      const { data } = await client.POST('/clients/import')
+    mutationFn: async (request: ClientImportRequest) => {
+      const { data } = await client.POST('/clients/import', { body: request })
       return requiredResponse(data, 'VPN client import summary')
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.clients.all }),
+    onSuccess: async (_data, request) => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.clients.all,
+      })
+      if (request.create_devices) {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.devices.all,
+        })
+      }
+    },
   })
 }
 

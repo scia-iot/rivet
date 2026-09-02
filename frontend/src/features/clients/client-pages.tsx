@@ -15,6 +15,16 @@ import { ProblemAlert } from '@/components/shared/problem-alert'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
 import { Field, FieldError, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import {
@@ -125,22 +135,54 @@ export function ClientListPage() {
   const session = usePrincipalSession()
   const canWrite = hasPermission(session, 'clients:write')
   const [importResult, setImportResult] = useState<string | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [createDevices, setCreateDevices] = useState(false)
+  const [importPending, setImportPending] = useState(false)
+  const [importError, setImportError] = useState(false)
   const importRef = useRef(false)
+
+  function changeImportOpen(nextOpen: boolean) {
+    if (importRef.current && !nextOpen) {
+      return
+    }
+    setImportOpen(nextOpen)
+    if (nextOpen) {
+      setCreateDevices(false)
+      setImportError(false)
+    }
+  }
 
   async function importExisting() {
     if (importRef.current) {
       return
     }
     importRef.current = true
+    setImportPending(true)
+    setImportError(false)
     setImportResult(null)
     try {
-      const result = await importClients.mutateAsync()
-      setImportResult(`${result.added} added and ${result.updated} updated.`)
+      const result = await importClients.mutateAsync({
+        create_devices: createDevices,
+      })
+      const clientCounts =
+        `Clients: ${result.added} added, ${result.updated} updated, ` +
+        `${result.clients_skipped} skipped.`
+      const deviceCounts =
+        ` Devices: ${result.devices_created} created, ` +
+        `${result.devices_already_linked} already linked, ` +
+        `${result.device_conflicts} conflicts.`
+      setImportResult(
+        createDevices ? `${clientCounts}${deviceCounts}` : clientCounts,
+      )
       toast.success('VPN client import completed.')
+      importRef.current = false
+      setImportPending(false)
+      setImportOpen(false)
     } catch {
-      setImportResult('VPN clients could not be imported. Try again.')
+      setImportError(true)
     } finally {
       importRef.current = false
+      setImportPending(false)
     }
   }
 
@@ -152,14 +194,60 @@ export function ClientListPage() {
         description="Provision and maintain OpenVPN client identities."
         actions={
           canWrite ? (
-            <Button
-              disabled={importClients.isPending}
-              onClick={() => void importExisting()}
-              type="button"
-              variant="outline"
-            >
-              {importClients.isPending ? 'Importing…' : 'Import clients'}
-            </Button>
+            <Dialog onOpenChange={changeImportOpen} open={importOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" variant="outline">
+                  Import clients
+                </Button>
+              </DialogTrigger>
+              <DialogContent showCloseButton={!importPending}>
+                <DialogHeader>
+                  <DialogTitle>Import VPN clients</DialogTitle>
+                  <DialogDescription>
+                    This will scan all existing Easy-RSA client certificates
+                    and import every valid VPN client.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex items-center gap-2">
+                  <input
+                    checked={createDevices}
+                    disabled={importPending}
+                    id="create-import-devices"
+                    onChange={(event) =>
+                      setCreateDevices(event.target.checked)
+                    }
+                    type="checkbox"
+                  />
+                  <label htmlFor="create-import-devices">
+                    Create matching edge devices
+                  </label>
+                </div>
+                {importError ? (
+                  <p className="text-sm text-red-700" role="alert">
+                    VPN clients could not be imported. Review the certificates
+                    and try again.
+                  </p>
+                ) : null}
+                <DialogFooter>
+                  <DialogClose asChild>
+                    <Button
+                      disabled={importPending}
+                      type="button"
+                      variant="outline"
+                    >
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button
+                    disabled={importPending}
+                    onClick={() => void importExisting()}
+                    type="button"
+                  >
+                    {importPending ? 'Importing…' : 'Import clients'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           ) : undefined
         }
       />

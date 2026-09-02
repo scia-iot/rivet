@@ -14,6 +14,7 @@ from sciaiot.ovpncp.authorization import (
     RequireClientsWrite,
     RequireConnectionHookAccess,
 )
+from sciaiot.ovpncp.data.identity import Device
 from sciaiot.ovpncp.data.server import (
     Cert,
     CertBase,
@@ -55,10 +56,20 @@ class CloseConnectionRequest(BaseModel):
 
 
 class ClientImportSummary(BaseModel):
-    """Counts of client records changed during certificate import."""
+    """Counts of Client and optional Device outcomes during import."""
 
     added: int
     updated: int
+    clients_skipped: int
+    devices_created: int
+    devices_already_linked: int
+    device_conflicts: int
+
+
+class ClientImportRequest(BaseModel):
+    """Options for importing discovered Easy-RSA clients."""
+
+    create_devices: bool = False
 
 
 def _certificate_failure(operation: str) -> HTTPException:
@@ -363,16 +374,49 @@ async def close_connection(
     return connection
 
 
-def _import_clients(session: Session) -> dict[str, int]:
+def _device_import_outcome(session: Session, client: Client) -> str:
+    """Stage a matching Device or report its idempotent/conflict outcome."""
+    device_by_name = session.exec(
+        select(Device).where(Device.name == client.name)
+    ).one_or_none()
+    device_by_client = session.exec(
+        select(Device).where(Device.client_id == client.id)
+    ).one_or_none()
+
+    if device_by_name is not None:
+        if device_by_name.client_id == client.id:
+            return "already_linked"
+        return "conflict"
+    if device_by_client is not None:
+        return "conflict"
+
+    session.add(Device(name=client.name, client_id=client.id))
+    return "created"
+
+
+def _import_clients(
+    session: Session,
+    *,
+    create_devices: bool = False,
+) -> ClientImportSummary:
     """Import discovered Easy-RSA certificates in one transaction."""
     discovered_names = openvpn.list_client_certs()
 
     added_count = 0
     updated_count = 0
+    clients_skipped = 0
+    devices_created = 0
+    devices_already_linked = 0
+    device_conflicts = 0
 
     for name in discovered_names:
+        if not openvpn.is_valid_name(name):
+            clients_skipped += 1
+            continue
+
         cert_details = openvpn.read_client_cert(name)
         if not cert_details:
+            clients_skipped += 1
             continue
 
         assigned_ip = openvpn.read_client_ip(name)
@@ -409,24 +453,46 @@ def _import_clients(session: Session) -> dict[str, int]:
             session.add(cert)
             added_count += 1
 
+        if create_devices:
+            session.flush()
+            device_outcome = _device_import_outcome(session, client)
+            if device_outcome == "created":
+                devices_created += 1
+            elif device_outcome == "already_linked":
+                devices_already_linked += 1
+            else:
+                device_conflicts += 1
+
     session.commit()
-    return {"added": added_count, "updated": updated_count}
+    return ClientImportSummary(
+        added=added_count,
+        updated=updated_count,
+        clients_skipped=clients_skipped,
+        devices_created=devices_created,
+        devices_already_linked=devices_already_linked,
+        device_conflicts=device_conflicts,
+    )
 
 
 @router.post("/import", response_model=ClientImportSummary)
 async def import_clients(
     session: DBSession,
     _principal: RequireClientsWrite,
+    request: ClientImportRequest | None = None,
 ):
     """Import existing clients from Easy-RSA certificate directory."""
     logger.info("Importing existing clients from Easy-RSA...")
     try:
-        result = _import_clients(session)
+        result = _import_clients(
+            session,
+            create_devices=request.create_devices if request else False,
+        )
     except Exception as error:
         session.rollback()
         raise _certificate_failure("import") from error
     logger.info(
-        f"Import complete: {result['added']} added, {result['updated']} updated."
+        f"Import complete: {result.added} added, {result.updated} updated, "
+        f"{result.clients_skipped} skipped."
     )
     return result
 

@@ -97,7 +97,18 @@ function installApi() {
     },
   )
   apiClient.POST.mockImplementation(async (path: string, options?: unknown) => {
-    if (path === '/clients/import') return { data: { added: 1, updated: 2 } }
+    if (path === '/clients/import') {
+      return {
+        data: {
+          added: 1,
+          updated: 2,
+          clients_skipped: 3,
+          devices_created: 4,
+          devices_already_linked: 5,
+          device_conflicts: 6,
+        },
+      }
+    }
     const body = (options as { body: typeof activeClient }).body
     return { data: { ...body, id: 11 } }
   })
@@ -155,7 +166,7 @@ describe('VPN client administration pages', () => {
     )
   })
 
-  it('lists active and revoked clients ' + 'and creates or imports clients', async () => {
+  it('lists active and revoked clients and creates clients', async () => {
     const actor = userEvent.setup()
     renderRoute('/clients')
     const table = await screen.findByRole('table', { name: 'VPN clients' })
@@ -168,9 +179,136 @@ describe('VPN client administration pages', () => {
       body: { name: 'new-laptop', cidr: null, revoked: false },
     })
 
-    await actor.click(screen.getByRole('button', { name: 'Import clients' }))
-    expect(apiClient.POST).toHaveBeenCalledWith('/clients/import')
-    expect(await screen.findByText(/1 added and 2 updated/i)).toBeVisible()
+  })
+
+  it('opens an accessible import dialog with device creation unchecked', async () => {
+    const actor = userEvent.setup()
+    renderRoute('/clients')
+    const trigger = await screen.findByRole('button', {
+      name: 'Import clients',
+    })
+
+    await actor.click(trigger)
+    const dialog = screen.getByRole('dialog', { name: 'Import VPN clients' })
+    expect(dialog).toHaveAccessibleDescription(
+      /scan all existing Easy-RSA client certificates/i,
+    )
+    const checkbox = within(dialog).getByRole('checkbox', {
+      name: 'Create matching edge devices',
+    })
+    expect(checkbox).not.toBeChecked()
+    await actor.click(checkbox)
+    await actor.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(trigger).toHaveFocus()
+
+    await actor.click(trigger)
+    expect(
+      within(screen.getByRole('dialog')).getByRole('checkbox', {
+        name: 'Create matching edge devices',
+      }),
+    ).not.toBeChecked()
+  })
+
+  it('locks import confirmation and presents every requested count', async () => {
+    const actor = userEvent.setup()
+    let resolveImport:
+      | ((value: {
+          data: {
+            added: number
+            updated: number
+            clients_skipped: number
+            devices_created: number
+            devices_already_linked: number
+            device_conflicts: number
+          }
+        }) => void)
+      | undefined
+    apiClient.POST.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveImport = resolve
+        }),
+    )
+    renderRoute('/clients')
+    const trigger = await screen.findByRole('button', {
+      name: 'Import clients',
+    })
+    await actor.click(trigger)
+    const dialog = screen.getByRole('dialog')
+    await actor.click(
+      within(dialog).getByRole('checkbox', {
+        name: 'Create matching edge devices',
+      }),
+    )
+    const confirm = within(dialog).getByRole('button', {
+      name: 'Import clients',
+    })
+    await actor.dblClick(confirm)
+
+    expect(apiClient.POST).toHaveBeenCalledTimes(1)
+    expect(apiClient.POST).toHaveBeenCalledWith('/clients/import', {
+      body: { create_devices: true },
+    })
+    expect(screen.getByRole('dialog')).toBeVisible()
+    expect(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Importing…',
+      }),
+    ).toBeDisabled()
+
+    resolveImport?.({
+      data: {
+        added: 1,
+        updated: 2,
+        clients_skipped: 3,
+        devices_created: 4,
+        devices_already_linked: 5,
+        device_conflicts: 6,
+      },
+    })
+    expect(
+      await screen.findByText(
+        'Clients: 1 added, 2 updated, 3 skipped. ' +
+          'Devices: 4 created, 5 already linked, 6 conflicts.',
+      ),
+    ).toBeVisible()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
+  it('sends client-only imports and shows fixed failure guidance', async () => {
+    const actor = userEvent.setup()
+    renderRoute('/clients')
+    const trigger = await screen.findByRole('button', {
+      name: 'Import clients',
+    })
+    await actor.click(trigger)
+    await actor.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Import clients',
+      }),
+    )
+    expect(apiClient.POST).toHaveBeenCalledWith('/clients/import', {
+      body: { create_devices: false },
+    })
+    expect(
+      await screen.findByText('Clients: 1 added, 2 updated, 3 skipped.'),
+    ).toBeVisible()
+    expect(screen.queryByText(/Devices:/)).not.toBeInTheDocument()
+
+    apiClient.POST.mockRejectedValueOnce(problem(500))
+    await actor.click(trigger)
+    await actor.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Import clients',
+      }),
+    )
+    expect(
+      await within(screen.getByRole('dialog')).findByRole('alert'),
+    ).toHaveTextContent(
+      'VPN clients could not be imported. Review the certificates and try again.',
+    )
+    expect(screen.queryByText(/private\/archive/)).not.toBeInTheDocument()
   })
 
   it('shows certificate expiry, revocation, and virtual address', async () => {
