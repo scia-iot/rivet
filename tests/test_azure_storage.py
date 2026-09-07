@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 from fastapi import Request, Response
 
@@ -185,3 +185,94 @@ def test_upload_failure_is_safe_problem(caplog) -> None:
     assert json.loads(response.body)["detail"] == ("The certificate operation failed.")
     assert sensitive.encode() not in response.body
     assert sensitive not in caplog.text
+
+
+def test_delete_removes_archive_after_successful_client_deletion(caplog) -> None:
+    """Cloud archives are removed only after the route confirms deletion."""
+    request = storage_request("DELETE", "/clients/safe-client")
+    blob = MagicMock()
+    container = MagicMock()
+    container.get_blob_client.return_value = blob
+
+    with (
+        patch.object(azure_storage, "container_client", container, create=True),
+        caplog.at_level(logging.INFO),
+    ):
+        response = asyncio.run(
+            azure_storage.handle_archive_delete(
+                request,
+                returning_response(Response(status_code=204)),
+            )
+        )
+
+    assert response.status_code == 204
+    container.get_blob_client.assert_called_once_with("safe-client.zip")
+    blob.delete_blob.assert_called_once_with()
+    assert "deleted successfully" in caplog.text
+
+
+def test_delete_archive_failure_keeps_truthful_success_and_safe_guidance(
+    caplog,
+) -> None:
+    """A post-commit cloud failure does not misreport client deletion."""
+    request = storage_request("DELETE", "/clients/safe-client")
+    sensitive = "https://storage.example/blob?sig=secret-token"
+    blob = MagicMock()
+    blob.delete_blob.side_effect = RuntimeError(sensitive)
+    container = MagicMock()
+    container.get_blob_client.return_value = blob
+
+    with (
+        patch.object(azure_storage, "container_client", container, create=True),
+        caplog.at_level(logging.ERROR),
+    ):
+        response = asyncio.run(
+            azure_storage.handle_archive_delete(
+                request,
+                returning_response(Response(status_code=204)),
+            )
+        )
+
+    assert response.status_code == 204
+    assert response.body == b""
+    assert "remove the orphaned archive blob manually" in caplog.text
+    assert sensitive not in caplog.text
+
+
+def test_delete_preserves_route_failure_without_cloud_cleanup() -> None:
+    """Forbidden and conflict responses never delete cloud archives."""
+    request = storage_request("DELETE", "/clients/safe-client")
+    container = MagicMock()
+    route_response = Response(status_code=409)
+
+    with patch.object(azure_storage, "container_client", container, create=True):
+        response = asyncio.run(
+            azure_storage.handle_archive_delete(
+                request,
+                returning_response(route_response),
+            )
+        )
+
+    assert response is route_response
+    container.get_blob_client.assert_not_called()
+
+
+def test_storage_middleware_dispatches_exact_client_delete() -> None:
+    """The configured middleware recognizes only the client delete shape."""
+    request = storage_request("DELETE", "/clients/safe-client")
+    response = Response(status_code=204)
+    call_next = returning_response(response)
+
+    with (
+        patch.object(azure_storage, "STORAGE_CONNECTION_STRING", "configured"),
+        patch.object(
+            azure_storage,
+            "handle_archive_delete",
+            new_callable=AsyncMock,
+            return_value=response,
+        ) as handle_delete,
+    ):
+        result = asyncio.run(azure_storage.azure_storage_middleware(request, call_next))
+
+    assert result is response
+    handle_delete.assert_awaited_once_with(request, call_next)

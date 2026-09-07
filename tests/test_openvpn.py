@@ -8,6 +8,7 @@ from sciaiot.ovpncp.utils.openvpn import (
     add_iroute,
     assign_client_ip,
     build_client,
+    client_is_revoked,
     generate_crl,
     get_server_config,
     get_status,
@@ -20,6 +21,7 @@ from sciaiot.ovpncp.utils.openvpn import (
     remove_iroute,
     renew_client_cert,
     revoke_client,
+    stage_client_file_removal,
     unassign_client_ip,
     validate_name,
 )
@@ -192,6 +194,96 @@ def test_list_client_certs_failure_hides_sensitive_details(mock_listdir, caplog)
     with caplog.at_level("ERROR"):
         assert list_client_certs() == []
     assert sensitive not in caplog.text
+
+
+@patch(
+    "builtins.open",
+    new_callable=mock_open,
+    read_data=(
+        "V\t270101000000Z\t\t01\tunknown\t/CN=active-client\n"
+        "R\t270101000000Z\t260901000000Z\t02\tunknown\t/CN=deleted-client\n"
+    ),
+)
+def test_client_is_revoked_uses_durable_ca_index(mock_index):
+    """Revoked names are derived from the Easy-RSA CA index."""
+    assert client_is_revoked("deleted-client") is True
+    assert client_is_revoked("active-client") is False
+    mock_index.assert_called_with("/etc/openvpn/easy-rsa/pki/index.txt", "r")
+
+
+def _client_artifact_paths(openvpn_root, easy_rsa, archive_root):
+    """Return the complete operational client artifact set."""
+    return [
+        openvpn_root / "ccd" / "deleted-client",
+        easy_rsa / "pki" / "issued" / "deleted-client.crt",
+        easy_rsa / "pki" / "private" / "deleted-client.key",
+        easy_rsa / "pki" / "reqs" / "deleted-client.req",
+        easy_rsa / "pki" / "inline" / "deleted-client.inline",
+        archive_root / "deleted-client.zip",
+    ]
+
+
+def _write_client_artifacts(tmp_path, monkeypatch):
+    """Create client artifacts and durable CA evidence under a temporary root."""
+    openvpn_root = tmp_path / "openvpn"
+    easy_rsa = openvpn_root / "easy-rsa"
+    archive_root = tmp_path / "archives"
+    paths = _client_artifact_paths(openvpn_root, easy_rsa, archive_root)
+    for path in paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("sensitive", encoding="utf-8")
+    index = easy_rsa / "pki" / "index.txt"
+    crl = easy_rsa / "pki" / "crl.pem"
+    index.write_text("revocation evidence", encoding="utf-8")
+    crl.write_text("crl", encoding="utf-8")
+    monkeypatch.setattr("sciaiot.ovpncp.utils.openvpn.openvpn_dir", str(openvpn_root))
+    monkeypatch.setattr("sciaiot.ovpncp.utils.openvpn.easyrsa_dir", str(easy_rsa))
+    return paths, index, crl, archive_root
+
+
+def test_staged_client_file_removal_preserves_ca_evidence(tmp_path, monkeypatch):
+    """Successful cleanup removes artifacts but leaves CA index and CRL."""
+    paths, index, crl, archive_root = _write_client_artifacts(
+        tmp_path,
+        monkeypatch,
+    )
+
+    removal = stage_client_file_removal("deleted-client", str(archive_root))
+    removal.discard()
+
+    assert not any(path.exists() for path in paths)
+    assert index.read_text(encoding="utf-8") == "revocation evidence"
+    assert crl.read_text(encoding="utf-8") == "crl"
+
+
+def test_staged_client_file_removal_restores_partial_failure(
+    tmp_path,
+    monkeypatch,
+):
+    """A partial staging error puts every client artifact back in service."""
+    paths, index, crl, archive_root = _write_client_artifacts(
+        tmp_path,
+        monkeypatch,
+    )
+    real_replace = __import__("os").replace
+    calls = 0
+
+    def fail_third_replace(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            raise OSError("staging failed")
+        real_replace(source, destination)
+
+    with (
+        patch("os.replace", side_effect=fail_third_replace),
+        pytest.raises(OSError, match="staging failed"),
+    ):
+        stage_client_file_removal("deleted-client", str(archive_root))
+
+    assert all(path.exists() for path in paths)
+    assert index.read_text(encoding="utf-8") == "revocation evidence"
+    assert crl.read_text(encoding="utf-8") == "crl"
 
 
 @patch("os.remove")

@@ -34,7 +34,6 @@ describe('authorization metadata', () => {
 
   it('declares required permissions for every administration route', () => {
     expect(routePermissions).toEqual({
-      overview: 'server:read',
       devices: 'devices:read',
       createDevice: 'devices:write',
       deviceDetail: 'devices:read',
@@ -49,7 +48,6 @@ describe('authorization metadata', () => {
       serverRoutes: 'server:read',
       networks: 'server:read',
       networkDetail: 'server:read',
-      access: 'access:read',
     })
   })
 })

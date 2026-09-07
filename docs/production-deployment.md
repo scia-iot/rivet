@@ -107,6 +107,58 @@ closed. Set it to `false` to require administrators to create local User
 records before sign-in; unknown identities then retain the fixed `403`
 response.
 
+### Install the shared OpenVPN client profile
+
+The API serves one deployment-managed profile to every authenticated
+`device_user`, `sysadmin`, and app-only `ServiceAdmin` through
+`GET /me/client-config`. Interactive administrators can discover the same
+action under **Portal > My VPN clients**; app-only callers use the API directly.
+It does not derive a public endpoint from the OpenVPN server configuration.
+Copy the reviewed template and replace its remote
+placeholder with the public VPN hostname or address used by clients:
+
+~~~shell
+sudo install -m 0640 deploy/client.ovpn.example /opt/ovpncp/client.ovpn
+sudoedit /opt/ovpncp/client.ovpn
+~~~
+
+The default path is `/opt/ovpncp/client.ovpn`. Set
+`OVPNCP_CLIENT_CONFIG_PATH` only when deployment policy requires another
+absolute path readable by the service. The file is returned as
+`ovpncp-client.ovpn` with `Cache-Control: no-store`; missing, empty, oversized,
+or unreadable files fail with fixed path-safe errors.
+
+This shared file must not contain any client certificate or private key, SAS
+URL, password, token, or other per-client credential. The API validates strict
+UTF-8 text, requires active `client` and configured `remote` directives, and
+rejects binary controls, the unresolved remote placeholder, credential file
+directives or inline blocks, and PEM private keys before returning any bytes.
+
+Keep `ca.crt`, the named client certificate, and the named private key in each
+client-specific credential archive. Place the downloaded shared profile beside
+the extracted archive, substitute the assigned client name, and connect with
+the exact credential flags:
+
+~~~shell
+OVPNCP_CLIENT_NAME=assigned-client-name
+sudo openvpn \
+  --config ovpncp-client.ovpn \
+  --ca ca.crt \
+  --cert "${OVPNCP_CLIENT_NAME}.crt" \
+  --key "${OVPNCP_CLIENT_NAME}.key"
+~~~
+
+Graphical OpenVPN clients must be configured equivalently: import the shared
+transport profile, then select the extracted `ca.crt`, named client certificate,
+and named private key in their separate credential fields. Never upload one
+client's credentials into the shared profile path.
+
+The supplied transport template matches
+the inspected OpenVPN 2.6 server's UDP port 1194, tun device, persistence,
+server-certificate verification, and AES-256-CBC fallback. It deliberately
+omits compression and `tls-auth`/`tls-crypt`, which are not enabled on that
+server. Review the template whenever server transport or TLS settings change.
+
 ## Build the environment-specific frontend
 
 Vite identifiers and the API scope are compiled into the bundle. Each deployed

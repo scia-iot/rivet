@@ -1,0 +1,16 @@
+# Shared transport profile for the sciaiot OpenVPN 2.6 server.
+# Replace the placeholder with the public hostname or IP used by VPN clients.
+# Do not embed a CA, client certificate, client private key, or static key here.
+client
+dev tun
+proto udp
+remote <vpn-public-host-or-ip> 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+remote-cert-tls server
+data-ciphers AES-256-GCM:AES-128-GCM:AES-256-CBC
+data-ciphers-fallback AES-256-CBC
+verb 3
+explicit-exit-notify 1

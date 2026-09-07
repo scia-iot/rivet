@@ -34,7 +34,6 @@ export const roleDescriptions: Record<string, string> = {
 }
 
 export const routePermissions = {
-  overview: 'server:read',
   devices: 'devices:read',
   createDevice: 'devices:write',
   deviceDetail: 'devices:read',
@@ -49,5 +48,4 @@ export const routePermissions = {
   serverRoutes: 'server:read',
   networks: 'server:read',
   networkDetail: 'server:read',
-  access: 'access:read',
 } as const satisfies Record<string, Permission>

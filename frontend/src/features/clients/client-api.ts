@@ -173,6 +173,37 @@ export function useUnassignVirtualAddress() {
   })
 }
 
+export function useDeleteClient() {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (clientName: string) => {
+      await client.DELETE('/clients/{client_name}', {
+        params: { path: { client_name: clientName } },
+      })
+    },
+    onSuccess: async (_data, clientName) => {
+      queryClient.removeQueries({
+        exact: true,
+        queryKey: queryKeys.clients.detail(clientName),
+      })
+      await Promise.all([
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: queryKeys.clients.all,
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: queryKeys.clients.addresses,
+        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.devices.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.users.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.portal.all }),
+      ])
+    },
+  })
+}
+
 export function useRenewCertificate() {
   const client = useApiClient()
   const queryClient = useQueryClient()

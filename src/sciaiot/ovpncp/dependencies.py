@@ -12,6 +12,10 @@ logger = logging.getLogger(__name__)
 app_directory = "/opt/ovpncp"
 certs_directory = f"{app_directory}/certs"
 scripts_directory = f"{app_directory}/scripts"
+client_config_path = os.environ.get(
+    "OVPNCP_CLIENT_CONFIG_PATH",
+    f"{app_directory}/client.ovpn",
+)
 sqlite_uri = f"sqlite:///{app_directory}/ovpncp.db"
 
 

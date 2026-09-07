@@ -221,11 +221,35 @@ curl -X PUT http://127.0.0.1:8000/clients/client_1/assign-ip \
     EOF
 ```
 
+Only active clients can receive a virtual address. The API returns an
+actionable `409 Conflict` for revoked clients; an address already held by a
+revoked client can still be unassigned and returned to the pool.
+
 Unassign IP from the client:
 
 ```shell
 curl -X DELETE http://127.0.0.1:8000/clients/client_1/unassign-ip
 ```
+
+Delete a client only after revoking its certificate:
+
+```shell
+curl -X PUT http://127.0.0.1:8000/clients/client_1/revoke
+curl -X DELETE http://127.0.0.1:8000/clients/client_1
+```
+
+Deletion requires `clients:write` and returns `409 Conflict` with an actionable
+RFC 7807 response while the client is active. A successful deletion releases
+the virtual address; removes ownership links, connection and certificate
+records, the client configuration, local package, and Easy-RSA client files;
+and detaches linked edge Devices without deleting them or their AccessGrant
+records. The CA index and CRL remain intact, and bulk import skips names marked
+revoked in the CA index so the deleted credential cannot reappear.
+
+When Azure Blob Storage is enabled, the archive blob is deleted best-effort
+after the local and database deletion commits. A cloud deletion failure does
+not misreport the completed client deletion; operators receive a redacted log
+message to remove the orphaned archive blob manually.
 
 ### Restricted Network Setup
 
@@ -388,6 +412,22 @@ Migration: remove `AZURE_ENTRAID_APP_ROLE` and define all three explicit role
 variables before restarting the service. There is deliberately no legacy
 fallback; an existing `ServiceAdmin` value is never interpreted as an
 interactive administrator role.
+
+Install one shared, credential-free OpenVPN profile at
+`/opt/ovpncp/client.ovpn`, or set `OVPNCP_CLIENT_CONFIG_PATH` to another
+absolute service-readable path. Start from `deploy/client.ovpn.example`, replace
+the remote placeholder with the public VPN endpoint, and never embed a client
+certificate or private key. Every recognized authenticated role can download
+the same no-store profile from `GET /me/client-config`; the portal exposes this
+once in Connection setup. Missing or unreadable deployments return fixed,
+path-safe errors. The file must be strict text with active `client` and
+configured `remote` directives and no embedded or referenced per-client,
+static-key, or password credentials. To connect, place the profile beside the
+extracted ZIP and run `openvpn --config ovpncp-client.ovpn --ca ca.crt --cert
+<client-name>.crt --key <client-name>.key`, replacing `<client-name>` with the
+assigned name, or set those same four inputs in a graphical client. See the
+production runbook for the reviewed server-compatible directives and complete
+installation procedure.
 
 Current-user portal APIs derive the local user only from verified token
 `issuer` and `subject` claims. `GET /me/clients` returns only client `id`,

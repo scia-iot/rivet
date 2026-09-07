@@ -4,12 +4,12 @@ import { Navigate, Route, Routes, useLocation } from 'react-router'
 import { RouteErrorBoundary } from '@/app/error-boundary'
 import { routePermissions } from '@/auth/permissions'
 import { RequirePermission } from '@/auth/principal-session'
-import { usePrincipalSession } from '@/auth/use-principal-session'
+import {
+  hasPermission,
+  usePrincipalSession,
+} from '@/auth/use-principal-session'
 import { AppShell } from '@/components/app-shell'
 import { PlaceholderPage } from '@/pages/placeholder-page'
-
-const OVERVIEW_DESCRIPTION =
-  'Monitor and administer this OpenVPN control plane.'
 
 const loadDevicePages = () => import('@/features/devices/device-pages')
 const loadUserPages = () => import('@/features/users/user-pages')
@@ -82,20 +82,10 @@ function RouteLoading() {
 
 function LandingPage() {
   const session = usePrincipalSession()
-  if (
-    session.authenticationDisabled === false &&
-    session.principal?.roles.includes('device_user') === true
-  ) {
-    return <Navigate replace to="/portal" />
-  }
-  return (
-    <RequirePermission permission={routePermissions.overview}>
-      <PlaceholderPage
-        title="Overview"
-        description={OVERVIEW_DESCRIPTION}
-      />
-    </RequirePermission>
-  )
+  const destination = hasPermission(session, routePermissions.clients)
+    ? '/clients'
+    : '/portal'
+  return <Navigate replace to={destination} />
 }
 
 export default function App() {
@@ -223,17 +213,6 @@ export default function App() {
               element={
                 <RequirePermission permission={routePermissions.networkDetail}>
                   <NetworkDetailPage />
-                </RequirePermission>
-              }
-            />
-            <Route
-              path="access"
-              element={
-                <RequirePermission permission={routePermissions.access}>
-                  <PlaceholderPage
-                    title="Access"
-                    description="Review individual user-to-device access grants."
-                  />
                 </RequirePermission>
               }
             />

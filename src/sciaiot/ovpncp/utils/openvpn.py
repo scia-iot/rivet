@@ -4,6 +4,8 @@ import os
 import re
 import subprocess
 import zipfile
+from dataclasses import dataclass
+from uuid import uuid4
 
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
@@ -334,6 +336,106 @@ def pull_client_routes(name: str):
         file.writelines(updated_lines)
 
     logger.info(f"Pulled all routes from OpenVPN client {name}.")
+
+
+def client_is_revoked(name: str) -> bool:
+    """Return whether the durable Easy-RSA CA index revokes a client name.
+
+    Args:
+        name: Validated OpenVPN client name.
+
+    Returns:
+        True when an exact revoked common name exists in the CA index. Missing
+        or unreadable index data returns False because certificate discovery
+        still excludes deleted issued files.
+    """
+    validate_name(name)
+    index_path = os.path.join(easyrsa_dir, "pki", "index.txt")
+    try:
+        with open(index_path, "r") as index:
+            for line in index:
+                fields = line.rstrip("\n").split("\t")
+                if not fields or fields[0] != "R":
+                    continue
+                common_name = re.search(r"(?:^|/)CN=([^/]+)", fields[-1])
+                if common_name is not None and common_name.group(1) == name:
+                    return True
+    except OSError:
+        logger.error("Failed to read the Easy-RSA certificate index.")
+    return False
+
+
+@dataclass
+class StagedClientFileRemoval:
+    """Reversible set of client files moved out of operational locations."""
+
+    paths: list[tuple[str, str]]
+
+    def restore(self) -> None:
+        """Restore staged files after a database or staging failure."""
+        for original, staged in reversed(self.paths):
+            if os.path.exists(staged):
+                os.replace(staged, original)
+
+    def discard(self) -> None:
+        """Permanently remove staged files after the database commit."""
+        first_error: OSError | None = None
+        for _original, staged in self.paths:
+            try:
+                os.remove(staged)
+            except FileNotFoundError:
+                continue
+            except OSError as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise first_error
+
+
+def stage_client_file_removal(
+    name: str,
+    archive_directory: str,
+) -> StagedClientFileRemoval:
+    """Move client artifacts aside without altering CA revocation evidence.
+
+    The Easy-RSA index, serial records, CA material, and CRL are deliberately
+    absent from the target set. A partial failure restores every file already
+    moved before re-raising the system error.
+
+    Args:
+        name: Validated OpenVPN client name.
+        archive_directory: Trusted local package directory.
+
+    Returns:
+        A staged removal that can be restored or permanently discarded.
+
+    Raises:
+        OSError: If an existing client file cannot be staged or restored.
+        ValueError: If the client name is unsafe.
+    """
+    validate_name(name)
+    pki_directory = os.path.join(easyrsa_dir, "pki")
+    targets = [
+        os.path.join(openvpn_dir, "ccd", name),
+        os.path.join(pki_directory, "issued", f"{name}.crt"),
+        os.path.join(pki_directory, "private", f"{name}.key"),
+        os.path.join(pki_directory, "reqs", f"{name}.req"),
+        os.path.join(pki_directory, "inline", f"{name}.inline"),
+        os.path.join(archive_directory, f"{name}.zip"),
+    ]
+    token = uuid4().hex
+    removal = StagedClientFileRemoval(paths=[])
+    try:
+        for original in targets:
+            if not os.path.exists(original):
+                continue
+            staged = f"{original}.ovpncp-delete-{token}"
+            os.replace(original, staged)
+            removal.paths.append((original, staged))
+    except OSError:
+        removal.restore()
+        raise
+    return removal
 
 
 def list_client_certs() -> list[str]:

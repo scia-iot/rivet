@@ -88,6 +88,15 @@ def test_openapi_documents_current_user_resource_contracts() -> None:
     assert set(client_model["required"]) == {"id", "name", "revoked"}
     assert set(client_model["properties"]) == {"id", "name", "revoked"}
 
+    shared_config = schema["paths"]["/me/client-config"]["get"]
+    assert shared_config["x-authenticated-principal"] is True
+    assert "x-required-permission" not in shared_config
+    config_response = shared_config["responses"]["200"]["content"]
+    assert config_response["application/x-openvpn-profile"]["schema"] == {
+        "format": "binary",
+        "type": "string",
+    }
+
 
 def test_openapi_documents_optional_bulk_client_import_contract() -> None:
     """Bulk import publishes an optional request and every outcome count."""
@@ -197,6 +206,7 @@ def test_openapi_documents_every_management_permission() -> None:
         ("get", "/clients"): "clients:read",
         ("post", "/clients"): "clients:write",
         ("post", "/clients/import"): "clients:write",
+        ("delete", "/clients/{client_name}"): "clients:write",
         ("get", "/clients/{client_name}"): "clients:read",
         (
             "put",

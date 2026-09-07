@@ -32,6 +32,12 @@ async def azure_storage_middleware(request: Request, call_next):
             request.state.certificate_download_from_azure = True
             response = await handle_download(request, call_next)
             return response
+        elif (
+            request.method == "DELETE"
+            and url_path.rstrip("/").count("/") == 2
+            and "/clients/" in url_path
+        ):
+            return await handle_archive_delete(request, call_next)
 
     response = await call_next(request)
     return response
@@ -46,6 +52,32 @@ def _upload_archive(blob_client: Any, file_path: str) -> None:
 def _download_archive(blob_client: Any) -> bytes:
     """Read one packaged archive from Blob Storage."""
     return blob_client.download_blob().readall()
+
+
+def _delete_archive(blob_client: Any) -> None:
+    """Delete one packaged archive from Blob Storage."""
+    blob_client.delete_blob()
+
+
+async def handle_archive_delete(request: Request, call_next):
+    """Best-effort delete a blob after durable local client deletion."""
+    response = await call_next(request)
+    if response.status_code != status.HTTP_204_NO_CONTENT:
+        return response
+
+    client_name = request.path_params["client_name"]
+    try:
+        openvpn.validate_name(client_name)
+        blob_client = container_client.get_blob_client(f"{client_name}.zip")
+        await run_in_threadpool(_delete_archive, blob_client)
+    except Exception:  # noqa: BLE001 -- third-party storage boundary
+        logger.error(
+            "Azure VPN client archive cleanup failed; remove the orphaned "
+            "archive blob manually."
+        )
+    else:
+        logger.info("Azure VPN client archive deleted successfully.")
+    return response
 
 
 async def handle_upload(request: Request, call_next):

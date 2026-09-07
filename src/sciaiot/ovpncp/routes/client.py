@@ -14,7 +14,7 @@ from sciaiot.ovpncp.authorization import (
     RequireClientsWrite,
     RequireConnectionHookAccess,
 )
-from sciaiot.ovpncp.data.identity import Device
+from sciaiot.ovpncp.data.identity import Device, UserClient
 from sciaiot.ovpncp.data.server import (
     Cert,
     CertBase,
@@ -244,6 +244,82 @@ async def revoke_client(
     return client
 
 
+@router.delete("/{client_name}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_client(
+    client_name: str,
+    session: DBSession,
+    _principal: RequireClientsWrite,
+) -> None:
+    """Delete a revoked VPN client while preserving CA revocation evidence.
+
+    Args:
+        client_name: Exact persisted VPN client name.
+        session: Application database session.
+
+    Raises:
+        HTTPException: If the client is active or cleanup cannot complete.
+    """
+    logger.info(f"Deleting revoked client {client_name}...")
+    client = get_client_by_name(client_name, session)
+    if not client.revoked:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=("Revoke the client certificate before deleting this VPN client."),
+        )
+
+    try:
+        removal = openvpn.stage_client_file_removal(
+            client.name,
+            dependencies.certs_directory,
+        )
+    except Exception as error:
+        logger.error("VPN client file cleanup could not be staged.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "The VPN client could not be deleted. Check host certificate "
+                "files and retry."
+            ),
+        ) from error
+
+    try:
+        for device in session.exec(
+            select(Device).where(Device.client_id == client.id)
+        ).all():
+            device.client_id = None
+            session.add(device)
+        for assignment in session.exec(
+            select(UserClient).where(UserClient.client_id == client.id)
+        ).all():
+            session.delete(assignment)
+        client.virtual_address = None
+        session.delete(client)
+        session.commit()
+    except Exception as error:
+        session.rollback()
+        try:
+            removal.restore()
+        except OSError:
+            logger.error("VPN client file cleanup rollback failed.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "The VPN client could not be deleted. Check database and host "
+                "certificate files before retrying."
+            ),
+        ) from error
+
+    try:
+        removal.discard()
+    except OSError:
+        logger.error(
+            "Staged VPN client cleanup failed after deletion; remove "
+            ".ovpncp-delete-* artifacts from configured client directories "
+            "manually."
+        )
+    logger.info("Revoked VPN client deleted successfully.")
+
+
 @router.put("/{client_name}/assign-ip", response_model=ClientWithVirtualAddress)
 async def assign_virtual_address(
     client_name: str,
@@ -252,6 +328,13 @@ async def assign_virtual_address(
     _principal: RequireClientsWrite,
 ):
     logger.info(f"Assigning a virtual address to client {client_name}...")
+    client = get_client_by_name(client_name, session)
+    if client.revoked:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Revoked VPN clients cannot be assigned virtual addresses.",
+        )
+
     statement = select(VirtualAddress).where(VirtualAddress.ip == address.ip)
     virtual_address = session.exec(statement).one_or_none()
 
@@ -261,7 +344,6 @@ async def assign_virtual_address(
             detail="The virtual address was not found.",
         )
 
-    client = get_client_by_name(client_name, session)
     owner = session.exec(
         select(Client).where(
             Client.virtual_address_id == virtual_address.id,
@@ -411,6 +493,9 @@ def _import_clients(
 
     for name in discovered_names:
         if not openvpn.is_valid_name(name):
+            clients_skipped += 1
+            continue
+        if openvpn.client_is_revoked(name):
             clients_skipped += 1
             continue
 

@@ -19,7 +19,12 @@ const server = {
   network_address: '10.8.0.0',
   subnet_mask: '255.255.255.0',
   ccd_exclusive: true,
-  virtual_addresses: [{ ip: '10.8.0.2' }, { ip: '10.8.0.3' }],
+  virtual_addresses: [
+    { ip: '10.8.0.2' },
+    { ip: '10.8.0.3' },
+    { ip: '10.8.0.4' },
+    { ip: '10.8.0.5' },
+  ],
   key: '/secret/server.key',
 }
 const activeNetwork = {
@@ -69,7 +74,12 @@ function installSuccessfulApi() {
       return { data: { status: healthStatus, period: '15s' } }
     }
     if (path === '/server/assignable-virtual-addresses') {
-      return { data: [{ id: 2, ip: '10.8.0.4', server_id: 1 }] }
+      return {
+        data: [
+          { id: 2, ip: '10.8.0.4', server_id: 1 },
+          { id: 3, ip: '10.8.0.5', server_id: 1 },
+        ],
+      }
     }
     if (path === '/server/routes') return { data: routes }
     if (path === '/clients') {
@@ -185,10 +195,54 @@ describe('server and network administration pages', () => {
     expect(await screen.findByText('active (running)')).toBeVisible()
     expect(screen.getByText('UDP')).toBeVisible()
     expect(screen.getByText('10.8.0.0 / 255.255.255.0')).toBeVisible()
+    const summary = screen.getByLabelText('Virtual address summary')
+    expect(summary).toHaveTextContent('Total4')
+    expect(summary).toHaveTextContent('Assigned2')
+    expect(summary).toHaveTextContent('Available2')
     expect(
-      screen.getByRole('table', { name: 'Assignable virtual addresses' }),
-    ).toHaveTextContent('10.8.0.4')
+      screen.getByLabelText('Assignable virtual addresses'),
+    ).toHaveTextContent('10.8.0.4, 10.8.0.5')
+    expect(
+      screen.queryByRole('table', { name: 'Assignable virtual addresses' }),
+    ).not.toBeInTheDocument()
     expect(screen.queryByText('/secret/server.key')).not.toBeInTheDocument()
+  })
+
+  it('shows an explicit empty assignable-address state', async () => {
+    const successfulGet = apiClient.GET.getMockImplementation()
+    if (successfulGet === undefined) throw new Error('GET fixture unavailable.')
+    apiClient.GET.mockImplementation(async (path: string, options?: unknown) => {
+      if (path === '/server/assignable-virtual-addresses') return { data: [] }
+      return successfulGet(path, options)
+    })
+    renderRoute('/server')
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'No assignable virtual addresses',
+      }),
+    ).toBeVisible()
+    const summary = screen.getByLabelText('Virtual address summary')
+    expect(summary).toHaveTextContent('Total4')
+    expect(summary).toHaveTextContent('Assigned4')
+    expect(summary).toHaveTextContent('Available0')
+    expect(screen.getByText('Every address is assigned or the pool is empty.'))
+      .toBeVisible()
+  })
+
+  it('shows a retryable address-list error without partial content', async () => {
+    const successfulGet = apiClient.GET.getMockImplementation()
+    if (successfulGet === undefined) throw new Error('GET fixture unavailable.')
+    apiClient.GET.mockImplementation(async (path: string, options?: unknown) => {
+      if (path === '/server/assignable-virtual-addresses') throw problem(500)
+      return successfulGet(path, options)
+    })
+    renderRoute('/server')
+
+    expect(await screen.findByText('Server data unavailable')).toBeVisible()
+    expect(
+      screen.queryByLabelText('Assignable virtual addresses'),
+    ).not.toBeInTheDocument()
   })
 
   it('presents inactive health as a negative state', async () => {

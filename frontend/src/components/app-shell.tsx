@@ -1,8 +1,6 @@
 import {
   House,
-  KeyRound,
   Laptop,
-  Network,
   ServerCog,
   ShieldCheck,
   Users,
@@ -36,13 +34,6 @@ const navigation = [
     icon: ShieldCheck,
   },
   {
-    to: '/',
-    label: 'Overview',
-    icon: Network,
-    permission: routePermissions.overview,
-    end: true,
-  },
-  {
     to: '/devices',
     label: 'Devices',
     icon: ShieldCheck,
@@ -71,12 +62,6 @@ const navigation = [
     label: 'Networks',
     icon: Workflow,
     permission: routePermissions.networks,
-  },
-  {
-    to: '/access',
-    label: 'Access',
-    icon: KeyRound,
-    permission: routePermissions.access,
   },
 ]
 

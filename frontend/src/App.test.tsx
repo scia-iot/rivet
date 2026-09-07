@@ -1,12 +1,16 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import App from '@/App'
 import { PrincipalSessionProvider } from '@/auth/principal-session'
+vi.mock('@/features/clients/client-pages', () => ({
+  ClientListPage: () => <h1>VPN clients</h1>,
+  ClientDetailPage: () => null,
+}))
 
 describe('application shell', () => {
-  it('renders the overview and primary navigation', () => {
+  it('lands local admins on VPN clients without empty navigation', async () => {
     render(
       <MemoryRouter>
         <PrincipalSessionProvider authenticationDisabled principal={null}>
@@ -16,16 +20,22 @@ describe('application shell', () => {
     )
 
     expect(
-      screen.getByRole('heading', { name: 'Overview' }),
-    ).toBeInTheDocument()
+      await screen.findByRole('heading', { name: 'VPN clients' }),
+    ).toBeVisible()
     expect(screen.getByRole('link', { name: 'Devices' })).toHaveAttribute(
       'href',
       '/devices',
     )
     expect(screen.getByText('Authentication disabled locally')).toBeVisible()
+    expect(
+      screen.queryByRole('link', { name: 'Overview' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Access' }),
+    ).not.toBeInTheDocument()
   })
 
-  it('renders a feature placeholder route', () => {
+  it('treats the removed Access route as not found', () => {
     render(
       <MemoryRouter initialEntries={['/access']}>
         <PrincipalSessionProvider authenticationDisabled principal={null}>
@@ -34,6 +44,14 @@ describe('application shell', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByRole('heading', { name: 'Access' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Page not found' }),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('link', { name: 'Overview' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Access' }),
+    ).not.toBeInTheDocument()
   })
 })

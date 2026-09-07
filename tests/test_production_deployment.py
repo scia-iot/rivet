@@ -12,6 +12,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 NGINX_TEMPLATE = REPOSITORY_ROOT / "deploy/nginx/ovpncp.conf.template"
 PRODUCTION_RUNBOOK = REPOSITORY_ROOT / "docs/production-deployment.md"
 SYSTEMD_SERVICE = REPOSITORY_ROOT / "deploy/systemd/ovpncp.service"
+CLIENT_PROFILE_TEMPLATE = REPOSITORY_ROOT / "deploy/client.ovpn.example"
 
 
 @pytest.fixture
@@ -171,6 +172,42 @@ def test_static_release_is_outside_the_api_writable_tree() -> None:
     assert "ReadWritePaths=/etc/openvpn /opt/ovpncp" in service
     assert "ProtectSystem=strict" in service
     assert "/srv/ovpncp" not in service
+
+
+def test_shared_client_profile_template_matches_deployed_server() -> None:
+    """The operator template is compatible and never contains credentials."""
+    profile = CLIENT_PROFILE_TEMPLATE.read_text(encoding="utf-8")
+
+    assert "remote <vpn-public-host-or-ip> 1194" in profile
+    assert "proto udp" in profile
+    assert "dev tun" in profile
+    assert "remote-cert-tls server" in profile
+    assert "data-ciphers-fallback AES-256-CBC" in profile
+    assert "persist-key" in profile
+    assert "persist-tun" in profile
+    assert "explicit-exit-notify 1" in profile
+    assert "compress" not in profile
+    assert "tls-auth" not in profile
+    assert "tls-crypt" not in profile
+    assert "<ca>" not in profile
+    assert "<cert>" not in profile
+    assert "<key>" not in profile
+
+
+def test_runbook_documents_shared_client_profile_installation() -> None:
+    """Operators receive an explicit safe profile installation procedure."""
+    runbook = PRODUCTION_RUNBOOK.read_text(encoding="utf-8")
+
+    assert "OVPNCP_CLIENT_CONFIG_PATH" in runbook
+    assert "/opt/ovpncp/client.ovpn" in runbook
+    assert "deploy/client.ovpn.example" in runbook
+    assert "public VPN hostname or address" in runbook
+    assert "must not contain any client certificate or private key" in runbook
+    assert "strict UTF-8" in " ".join(runbook.split())
+    assert "--config ovpncp-client.ovpn" in runbook
+    assert "--ca ca.crt" in runbook
+    assert '--cert "${OVPNCP_CLIENT_NAME}.crt"' in runbook
+    assert '--key "${OVPNCP_CLIENT_NAME}.key"' in runbook
 
 
 def test_application_runner_trusts_only_the_loopback_proxy(

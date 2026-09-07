@@ -30,6 +30,7 @@ import {
   usePortalCredentialDownload,
   usePortalDevice,
   usePortalDevices,
+  useSharedClientConfigDownload,
 } from '@/features/portal/portal-api'
 
 const CLIENTS_PROBLEM = {
@@ -105,9 +106,31 @@ export function PortalLandingPage() {
 export function PortalClientsPage() {
   const clients = usePortalClients()
   const download = usePortalCredentialDownload()
+  const downloadSharedConfig = useSharedClientConfigDownload()
   const pendingRef = useRef(false)
+  const configPendingRef = useRef(false)
   const [pendingClient, setPendingClient] = useState<string | null>(null)
   const [downloadError, setDownloadError] = useState(false)
+  const [configPending, setConfigPending] = useState(false)
+  const [configError, setConfigError] = useState(false)
+
+  async function downloadConfig() {
+    if (configPendingRef.current) {
+      return
+    }
+    configPendingRef.current = true
+    setConfigPending(true)
+    setConfigError(false)
+    try {
+      await downloadSharedConfig()
+      toast.success('Shared OpenVPN profile downloaded.')
+    } catch {
+      setConfigError(true)
+    } finally {
+      configPendingRef.current = false
+      setConfigPending(false)
+    }
+  }
 
   async function downloadCredentials(clientName: string) {
     if (pendingRef.current) {
@@ -142,12 +165,43 @@ export function PortalClientsPage() {
         <CardHeader>
           <CardTitle>Connection setup</CardTitle>
           <CardDescription>
-            Keep the credential archive private. Extract the included CA,
-            client certificate, and private key on your laptop. Add them to the
-            OpenVPN profile supplied by your administrator, then connect before
-            attempting to reach an authorized device.
+            Download the shared OpenVPN profile once. Keep the credential
+            archive private, extract its CA, client certificate, and private
+            key, and configure those credentials with the shared profile before
+            connecting to an authorized device.
           </CardDescription>
         </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1 text-sm">
+            <p>
+              Put the profile beside the extracted ZIP files. Replace the
+              {'<client-name>'} value in the command below, then run it:
+            </p>
+            <code className="block overflow-x-auto rounded-md bg-muted p-3">
+              {'openvpn --config ovpncp-client.ovpn --ca ca.crt ' +
+                '--cert <client-name>.crt --key <client-name>.key'}
+            </code>
+            <p className="text-muted-foreground">
+              In a graphical OpenVPN client, import the shared profile and set
+              the same CA, client certificate, and private-key fields.
+            </p>
+          </div>
+          <Button
+            aria-label="Download shared OpenVPN profile"
+            disabled={configPending}
+            onClick={() => void downloadConfig()}
+            type="button"
+            variant="outline"
+          >
+            {configPending ? 'Downloading profile…' : 'Download shared profile'}
+          </Button>
+          {configError ? (
+            <p className="text-sm text-red-700" role="alert">
+              The shared OpenVPN profile could not be downloaded. Ask an
+              administrator to verify the deployment configuration.
+            </p>
+          ) : null}
+        </CardContent>
       </Card>
       {downloadError ? (
         <ProblemAlert

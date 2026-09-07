@@ -112,7 +112,6 @@ function ServerConfigurationSummary({
       `${server.network_address} / ${server.subnet_mask}`,
     ],
     ['Exclusive client config', server.ccd_exclusive ? 'Enabled' : 'Disabled'],
-    ['Address capacity', String(server.virtual_addresses.length)],
   ]
   return (
     <Card>
@@ -131,6 +130,64 @@ function ServerConfigurationSummary({
             </div>
           ))}
         </dl>
+      </CardContent>
+    </Card>
+  )
+}
+
+function VirtualAddressSummary({
+  addresses,
+  total,
+}: {
+  addresses: ReadonlyArray<{ ip: string }>
+  total: number
+}) {
+  const available = addresses.length
+  const assigned = Math.max(total - available, 0)
+  const summary = [
+    ['Total', total],
+    ['Assigned', assigned],
+    ['Available', available],
+  ] as const
+
+  return (
+    <Card>
+      <CardHeader>
+        <h2 className="text-lg font-semibold">Virtual addresses</h2>
+        <p className="text-sm text-muted-foreground">
+          Current allocation across the configured address pool.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <dl
+          aria-label="Virtual address summary"
+          className="grid grid-cols-3 gap-3"
+        >
+          {summary.map(([label, value]) => (
+            <div className="rounded-md border p-4" key={label}>
+              <dt className="text-sm text-muted-foreground">{label}</dt>
+              <dd className="text-2xl font-semibold">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        {available === 0 ? (
+          <EmptyState
+            title="No assignable virtual addresses"
+            description="Every address is assigned or the pool is empty."
+          />
+        ) : (
+          <div className="space-y-2">
+            <h3 className="text-sm font-medium">
+              Assignable virtual addresses
+            </h3>
+            <p
+              aria-label="Assignable virtual addresses"
+              className="break-words text-sm"
+            >
+              {addresses.map((address) => address.ip).join(', ')}
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -224,31 +281,10 @@ export function ServerPage() {
       ) : (
         <>
           <ServerConfigurationSummary server={server.data} />
-          {addresses.data.length === 0 ? (
-            <EmptyState
-              title="No assignable virtual addresses"
-              description="Every address is assigned or the pool is empty."
-            />
-          ) : (
-            <div className="rounded-md border">
-              <Table aria-label="Assignable virtual addresses">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Virtual address</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {addresses.data.map((address, index) => (
-                    <TableRow key={address.id ?? `address-${index}`}>
-                      <TableCell className="font-medium">
-                        {address.ip}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          <VirtualAddressSummary
+            addresses={addresses.data}
+            total={server.data.virtual_addresses.length}
+          />
         </>
       )}
     </div>

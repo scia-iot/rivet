@@ -59,6 +59,8 @@ coverage.
 | 10 | Production integration and E2E hardening | completed | Phases 4-9 |
 | 11 | Automatic Entra user registration | completed | Phase 2 |
 | 12 | Bulk Easy-RSA client and Device import | completed | Phase 5 |
+| 13 | Client lifecycle and server UX hardening | completed | Phases 5 and 7 |
+| 14 | Shared OpenVPN client profile | completed | Phase 9 |
 
 ## Target architecture
 
@@ -530,10 +532,11 @@ client operations.
 ### VPN-client work
 
 - List, retrieve, create, and import clients.
-- Assign and unassign virtual addresses.
+- Assign and unassign virtual addresses with mutually exclusive controls.
 - Show certificate expiry and revocation state.
 - Renew, package, download, and revoke certificates.
 - Treat certificate revocation as destructive and require typed confirmation.
+- Delete only revoked clients with exact-name typed confirmation.
 - Do not persist certificate archives, SAS URLs, or sensitive download URLs in
   local storage, query caches, logs, or analytics.
 
@@ -544,7 +547,7 @@ client operations.
 - client ownership conflict
 - virtual-address conflict
 - certificate operation failure
-- revoked-client presentation
+- revoked-client presentation and revoked-only deletion cleanup
 - download cleanup and absence from persistent browser storage
 
 ### Exit criteria
@@ -1134,6 +1137,39 @@ assignment relationships.
   frontend workflow documentation describe the client-only default, explicit
   Device option, outcome counts, and conflict behavior.
 
+## Phase 14: Shared OpenVPN client profile
+
+### Objective
+
+Provide one credential-free, deployment-managed OpenVPN transport profile that
+every recognized authenticated principal can download once, while keeping
+per-client certificates and private keys in their existing owned archives.
+
+### Backend and deployment contract
+
+- Read only the exact `OVPNCP_CLIENT_CONFIG_PATH`, defaulting to
+  `/opt/ovpncp/client.ovpn`; never accept a request-controlled path.
+- Expose `GET /me/client-config` to valid `device_user`, `sysadmin`, and
+  app-only `ServiceAdmin` principals without requiring a local User record.
+- Return `ovpncp-client.ovpn` with a fixed media type, attachment name, and
+  `Cache-Control: no-store`. Missing and unreadable files use fixed actionable
+  RFC 7807 errors without path disclosure.
+- Supply an operator template that matches the inspected OpenVPN 2.6 UDP/tun
+  server and AES-256-CBC fallback, contains an explicit public-remote
+  placeholder, and omits credentials, compression, and inactive static-key
+  directives.
+
+### Frontend and tests
+
+- Surface one shared-profile action in portal Connection setup, not once per
+  client. Keep credential ZIP downloads client-specific.
+- Release browser Blob URLs immediately and present a fixed safe deployment
+  error when download fails.
+- Cover device-user, sysadmin, and service-admin access, no-local-user service
+  access, missing/unreadable paths, response headers, OpenAPI metadata,
+  template safety, and the single portal action.
+- Regenerate checked-in OpenAPI artifacts and document exact operator setup.
+
 ## Cross-phase security rules
 
 Every phase must preserve these rules:
@@ -1682,3 +1718,109 @@ Deferred:
   `src/sciaiot/__init__.py`. The build-excluded source-tree gate passed.
 - Frontend coverage instrumentation remains unavailable; full and focused
   Vitest behavior suites provide the recorded frontend verification.
+
+
+2026-09-07 - Phase 13 completed
+Implementation:
+- Removed the empty Overview and Access pages, routes, menu entries, and route
+  permission metadata. The root route sends management users to VPN clients
+  and device users to their portal; access grants remain on User details.
+- Prevented revoked VPN clients from loading or showing address-assignment
+  controls and enforced the same rule in FastAPI before address or host work.
+  Existing assignments can still be unassigned and returned to the pool.
+- Made VPN client address actions mutually exclusive. The Server page now
+  summarizes Total, Assigned, and Available virtual addresses and renders the
+  assignable pool as one accessible comma-separated list with explicit loading,
+  retry, and empty states.
+- Added `DELETE /clients/{client_name}` under `clients:write`, with an
+  actionable RFC 7807 conflict until certificate revocation, reversible local
+  artifact staging, database rollback, virtual-address release, ownership,
+  certificate, and connection cleanup, and Device detachment without Device or
+  AccessGrant deletion.
+- Preserved Easy-RSA CA index and CRL evidence, blocked bulk re-import of exact
+  revoked index names, removed local CCD, issued certificate, private key,
+  request, inline, and ZIP files, and added best-effort post-commit Azure archive
+  deletion with redacted orphan-cleanup guidance.
+- Added exact-name frontend deletion confirmation, revoked/write-only action
+  visibility, safe failure presentation, related Client/address/Device/User/
+  portal cache invalidation, stale-detail removal, and clean list navigation.
+- Regenerated the checked-in OpenAPI JSON and TypeScript declarations and
+  updated the root and frontend documentation for lifecycle and cleanup rules.
+Verification:
+- Focused backend cleanup, deletion, import, authorization, Azure storage, and
+  OpenAPI tests passed (80 tests before final authorization additions); the
+  complete backend suite passed 225 tests with 92% total coverage.
+- Focused client/server/app UI tests passed 23 tests, and the expanded client
+  API/page/server focused suite passed 26 tests. The complete Vitest suite
+  passed 32 files and 144 tests.
+- `ruff format --check .` and `ruff check .` passed for 52 Python files.
+  `mypy --exclude '^build/' .` passed for 46 source files.
+- `npm audit`, `npm run api:check`, `npm run lint`, `npm run typecheck`, and
+  `npm run build` passed; the audit found zero vulnerabilities and Vite
+  transformed 2,301 modules.
+- Privileged filesystem and Azure operations were covered with temporary files
+  or mocks. No real VPN, certificate, cloud, firewall, or route state changed.
+
+Deferred:
+- Plain `mypy .` remains blocked by the pre-existing duplicate generated
+  package under `build/lib/sciaiot`; it reports that duplicate alongside
+  `src/sciaiot/__init__.py`. The build-excluded source-tree gate passed.
+- Final staged-file unlinking and Azure Blob deletion cannot share the local
+  filesystem/database transaction. If either post-commit cleanup fails, the
+  client remains truthfully deleted and a redacted operator log requests
+  manual removal of `.ovpncp-delete-*` remnants or the orphaned cloud archive.
+- Privileged OpenVPN, Easy-RSA, filesystem, and Azure verification remains an
+  isolated-deployment manual check; automated tests use temporary files and
+  mocks only.
+
+
+2026-09-07 - Phase 14 completed
+Implementation:
+- Added one bounded reader for the exact absolute
+  `OVPNCP_CLIENT_CONFIG_PATH`, defaulting to the live deployment's existing
+  `/opt/ovpncp/client.ovpn`, with a 1 MiB limit, strict credential-free profile
+  validation, no-store attachment response, and distinct fixed path-safe
+  missing and unreadable RFC 7807 failures. Validation rejects non-text/control
+  content, incomplete or unresolved profiles, credential directives, all inline
+  blocks, and PEM private keys before any bytes are returned.
+- Added authenticated `GET /me/client-config` for recognized `device_user`,
+  `sysadmin`, and app-only `ServiceAdmin` principals without requiring a local
+  User or exposing a request-controlled file path.
+- Added a reviewed credential-free OpenVPN 2.6 profile template matching the
+  inspected UDP/tun server, port 1194, persistence, server-certificate check,
+  and AES-256-CBC fallback. Its public remote remains an explicit operator
+  placeholder; compression and inactive `tls-auth`/`tls-crypt` are omitted.
+- Added one short-lived Blob download to portal Connection setup instead of a
+  redundant action on every client row. Interactive administrators retain the
+  same Portal navigation; app-only service administrators use the shared API.
+- Regenerated OpenAPI JSON and TypeScript declarations and documented local and
+  production installation, override, credential-separation, failure, and
+  server-compatibility rules, including exact CLI flags and equivalent GUI
+  fields for combining the shared profile with each ZIP's credentials.
+Verification:
+- TDD red runs produced the expected missing-route OpenAPI failure, missing UI
+  action failure, and two absent deployment-template/documentation failures.
+- Focused authorization, OpenAPI, and deployment tests passed 63 tests; focused
+  portal tests passed 12 tests; final shared-reader edge tests passed 8 tests.
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: passed all 263
+  tests with 92% total coverage.
+- `ruff format --check .` and `ruff check .`: passed for all 54 Python files.
+  `mypy --exclude '^build/' .`: passed for 48 source files.
+- `npm run api:check`, `npm run lint`, and `npm run typecheck`: passed. Full
+  `npm run test` passed 32 files and 147 tests; `npm run build` transformed
+  2,301 modules and emitted the production bundle.
+- `git diff --check` passed. Remote inspection was read-only; no local or remote
+  OpenVPN, certificate, firewall, route, cloud, or service state was changed.
+- Follow-up security TDD first produced 23 expected content-leak/validation
+  failures, then one expected inline-block active-directive bypass failure.
+  The hardened focused backend selection passed 36 tests, including strict
+  decoding, controls, required active directives, unresolved placeholder,
+  forbidden file/inline credentials, PEM keys, route-level non-disclosure, and
+  the configured deployment template. The concrete portal instructions test
+  first failed and then passed with all 12 portal tests.
+Deferred:
+- Plain `mypy .` remains blocked by the pre-existing duplicate generated
+  `sciaiot` package under `build/lib`; the build-excluded source gate passed.
+- Operators must replace the public remote placeholder and install the reviewed
+  profile before the endpoint can succeed. Real-client import and connectivity
+  remain deployment checks because this workspace has no OpenVPN installation.

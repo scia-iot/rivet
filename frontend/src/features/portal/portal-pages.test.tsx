@@ -78,6 +78,13 @@ function installApi({ empty = false }: { empty?: boolean } = {}) {
     if (path === '/me/clients/{client_name}/download-cert') {
       return { data: new Blob(['archive'], { type: 'application/zip' }) }
     }
+    if (path === '/me/client-config') {
+      return {
+        data: new Blob(['client\nremote vpn.example.test'], {
+          type: 'application/x-openvpn-profile',
+        }),
+      }
+    }
     throw new Error(`Unexpected GET path: ${path}`)
   })
   apiClient.PUT.mockResolvedValue({ data: undefined })
@@ -153,6 +160,12 @@ describe('device-user portal', () => {
     expect(screen.queryByText('another-user-client')).not.toBeInTheDocument()
     expect(
       screen.getByText(/keep the credential archive private/i),
+    ).toBeVisible()
+    expect(
+      screen.getByText(/openvpn --config ovpncp-client\.ovpn --ca ca\.crt/),
+    ).toBeVisible()
+    expect(
+      screen.getByText(/--cert <client-name>\.crt --key <client-name>\.key/),
     ).toBeVisible()
     expect(
       screen.queryByRole('button', {
@@ -262,6 +275,66 @@ describe('device-user portal', () => {
         .getAll()
         .some((query) => query.state.data instanceof Blob),
     ).toBe(false)
+  })
+
+  it('downloads the shared profile once from connection setup', async () => {
+    const actor = userEvent.setup()
+    const createObjectURL = vi.fn(() => 'blob:shared-profile')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL })
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined)
+    renderRoute('/portal/clients')
+
+    await actor.click(
+      await screen.findByRole('button', {
+        name: 'Download shared OpenVPN profile',
+      }),
+    )
+
+    expect(apiClient.GET).toHaveBeenCalledWith('/me/client-config', {
+      cache: 'no-store',
+      parseAs: 'blob',
+    })
+    expect(apiClient.PUT).not.toHaveBeenCalled()
+    expect(createObjectURL).toHaveBeenCalledOnce()
+    expect(click).toHaveBeenCalledOnce()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:shared-profile')
+    expect(
+      document.querySelector('a[download="ovpncp-client.ovpn"]'),
+    ).toBeNull()
+    expect(
+      screen.getAllByRole('button', {
+        name: 'Download shared OpenVPN profile',
+      }),
+    ).toHaveLength(1)
+  })
+
+  it('hides shared-profile failure details behind fixed guidance', async () => {
+    const actor = userEvent.setup()
+    const successfulGet = apiClient.GET.getMockImplementation()
+    if (successfulGet === undefined) throw new Error('GET fixture unavailable.')
+    apiClient.GET.mockImplementation(async (path: string, options?: object) => {
+      if (path === '/me/client-config') {
+        throw new Error('/private/profile.ovpn?token=sensitive')
+      }
+      return successfulGet(path, options)
+    })
+    renderRoute('/portal/clients')
+
+    await actor.click(
+      await screen.findByRole('button', {
+        name: 'Download shared OpenVPN profile',
+      }),
+    )
+
+    expect(
+      await screen.findByText(
+        /ask an administrator to verify the deployment configuration/i,
+      ),
+    ).toBeVisible()
+    expect(screen.queryByText(/private\/profile/)).not.toBeInTheDocument()
   })
 
   it('renders empty states without assignments or grants', async () => {

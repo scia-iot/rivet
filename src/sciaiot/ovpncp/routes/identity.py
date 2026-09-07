@@ -40,6 +40,12 @@ from sciaiot.ovpncp.services.certificates import (
     CertificateArchiveError,
     CertificateArchiveService,
 )
+from sciaiot.ovpncp.services.client_config import (
+    CLIENT_CONFIG_MEDIA_TYPE,
+    ClientConfigNotFoundError,
+    ClientConfigReadError,
+    client_config_response,
+)
 from sciaiot.ovpncp.services.identity import (
     AccessService,
     DeviceService,
@@ -127,6 +133,51 @@ def _require_active_credentials(client: Client) -> None:
             status.HTTP_409_CONFLICT,
             "Credentials are unavailable for this client.",
         )
+
+
+@principal_router.get(
+    "/me/client-config",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                CLIENT_CONFIG_MEDIA_TYPE: {
+                    "schema": {
+                        "type": "string",
+                        "format": "binary",
+                    }
+                }
+            },
+            "description": "Deployment-managed shared OpenVPN client profile.",
+        }
+    },
+    openapi_extra={"x-authenticated-principal": True},
+)
+def download_shared_client_config(
+    _principal: PrincipalDependency,
+) -> Response:
+    """Download the same deployment-managed profile for any valid principal.
+
+    Returns:
+        A no-store OpenVPN profile attachment.
+
+    Raises:
+        HTTPException: If the configured profile is missing or unreadable.
+    """
+    try:
+        return client_config_response(dependencies.client_config_path)
+    except ClientConfigNotFoundError as error:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "The shared OpenVPN client configuration is not available. "
+            "Ask an administrator to configure it.",
+        ) from error
+    except ClientConfigReadError as error:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "The shared OpenVPN client configuration could not be read. "
+            "Check the deployment configuration and file permissions.",
+        ) from error
 
 
 @principal_router.get(

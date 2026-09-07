@@ -78,12 +78,31 @@ function installApi() {
       }
       if (path === '/clients/{client_name}') {
         if (clientName(options) === 'missing') throw problem(404)
+        if (clientName(options) === 'revoked-unassigned') {
+          return {
+            data: {
+              ...clientDetails,
+              name: 'revoked-unassigned',
+              revoked: true,
+              virtual_address: null,
+            },
+          }
+        }
         if (clientName(options) === revokedClient.name) {
           return {
             data: {
               ...clientDetails,
               name: revokedClient.name,
               revoked: true,
+            },
+          }
+        }
+        if (clientName(options) === 'unassigned-laptop') {
+          return {
+            data: {
+              ...clientDetails,
+              name: 'unassigned-laptop',
+              virtual_address: null,
             },
           }
         }
@@ -319,15 +338,21 @@ describe('VPN client administration pages', () => {
     expect(screen.getByText('Active')).toBeVisible()
     expect(screen.getByText(/Current address: 10.8.0.2/)).toBeVisible()
     expect(screen.getByText(/2027/)).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: 'Delete VPN client' }),
+    ).not.toBeInTheDocument()
 
     active.unmount()
     renderRoute('/clients/revoked-laptop')
     expect(await screen.findByText('Revoked')).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Delete VPN client' }),
+    ).toBeVisible()
   })
   it('keeps address selection after a virtual-address conflict', async () => {
     const actor = userEvent.setup()
     apiClient.PUT.mockRejectedValueOnce(problem(409))
-    renderRoute('/clients/laptop-one')
+    renderRoute('/clients/unassigned-laptop')
     await actor.click(
       await screen.findByRole('combobox', { name: 'Virtual address' }),
     )
@@ -446,22 +471,109 @@ describe('VPN client administration pages', () => {
     ).toBeVisible()
   })
 
-  it('clears a successful address selection ' + 'and unassigns explicitly', async () => {
+  it('shows only assign controls when no address is assigned', async () => {
     const actor = userEvent.setup()
-    renderRoute('/clients/laptop-one')
+    renderRoute('/clients/unassigned-laptop')
     const selector = await screen.findByRole('combobox', {
       name: 'Virtual address',
     })
+    expect(
+      screen.queryByRole('button', { name: 'Unassign address' }),
+    ).not.toBeInTheDocument()
     await actor.click(selector)
     await actor.click(screen.getByText('10.8.0.3'))
     await actor.click(screen.getByRole('button', { name: 'Assign address' }))
     expect(selector).toHaveTextContent('Select an address')
+  })
 
-    await actor.click(screen.getByRole('button', { name: 'Unassign address' }))
+  it('does not offer assignment for a revoked unassigned client', async () => {
+    renderRoute('/clients/revoked-unassigned')
+
+    expect(
+      await screen.findByRole('heading', { name: 'revoked-unassigned' }),
+    ).toBeVisible()
+    expect(
+      screen.getByText(
+        'Revoked VPN clients cannot be assigned virtual addresses.',
+      ),
+    ).toBeVisible()
+    expect(screen.queryByLabelText('Virtual address')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Assign address' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Unassign address' }),
+    ).not.toBeInTheDocument()
+    expect(apiClient.GET).not.toHaveBeenCalledWith(
+      '/server/assignable-virtual-addresses',
+    )
+  })
+
+  it('shows only unassign when an address is assigned', async () => {
+    const actor = userEvent.setup()
+    renderRoute('/clients/laptop-one')
+    const unassign = await screen.findByRole('button', {
+      name: 'Unassign address',
+    })
+    expect(screen.queryByLabelText('Virtual address')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Assign address' }),
+    ).not.toBeInTheDocument()
+    await actor.click(unassign)
     expect(apiClient.DELETE).toHaveBeenCalledWith(
       '/clients/{client_name}/unassign-ip',
       { params: { path: { client_name: 'laptop-one' } } },
     )
+  })
+
+  it('requires the exact revoked client name before deletion', async () => {
+    const actor = userEvent.setup()
+    renderRoute('/clients/revoked-laptop')
+    const trigger = await screen.findByRole('button', {
+      name: 'Delete VPN client',
+    })
+    await actor.click(trigger)
+    const dialog = screen.getByRole('dialog', {
+      name: 'Delete revoked-laptop?',
+    })
+    const confirmation = within(dialog).getByLabelText('Client name')
+    const remove = within(dialog).getByRole('button', {
+      name: 'Delete VPN client',
+    })
+    expect(remove).toBeDisabled()
+    await actor.type(confirmation, 'Revoked-laptop')
+    expect(remove).toBeDisabled()
+    await actor.clear(confirmation)
+    await actor.type(confirmation, 'revoked-laptop')
+    await actor.click(remove)
+    expect(apiClient.DELETE).toHaveBeenCalledWith(
+      '/clients/{client_name}',
+      { params: { path: { client_name: 'revoked-laptop' } } },
+    )
+    expect(
+      await screen.findByRole('heading', { name: 'VPN clients' }),
+    ).toBeVisible()
+  })
+
+  it('keeps deletion failure safe and available for retry', async () => {
+    const actor = userEvent.setup()
+    apiClient.DELETE.mockRejectedValueOnce(problem(500))
+    renderRoute('/clients/revoked-laptop')
+    await actor.click(
+      await screen.findByRole('button', { name: 'Delete VPN client' }),
+    )
+    const dialog = screen.getByRole('dialog')
+    await actor.type(
+      within(dialog).getByLabelText('Client name'),
+      'revoked-laptop',
+    )
+    await actor.click(
+      within(dialog).getByRole('button', { name: 'Delete VPN client' }),
+    )
+    expect(
+      await within(dialog).findByRole('alert'),
+    ).toHaveTextContent('The VPN client could not be deleted. Try again.')
+    expect(dialog).not.toHaveTextContent('/server/private')
   })
 
   it('shows read-only client data without mutation controls', async () => {
@@ -494,5 +606,15 @@ describe('VPN client administration pages', () => {
     expect(
       screen.queryByRole('button', { name: 'Revoke certificate' }),
     ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Delete VPN client' }),
+    ).not.toBeInTheDocument()
+
+    const revoked = renderRoute('/clients/revoked-laptop', readOnlyPrincipal)
+    expect(await screen.findByText('Revoked')).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: 'Delete VPN client' }),
+    ).not.toBeInTheDocument()
+    revoked.unmount()
   })
 })

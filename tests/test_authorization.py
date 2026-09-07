@@ -1,6 +1,7 @@
 """Authorization policy tests for trusted principals and management routes."""
 
 from collections.abc import Generator
+from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
@@ -22,6 +23,11 @@ from sciaiot.ovpncp.data.server import Client
 from sciaiot.ovpncp.dependencies import get_session
 from sciaiot.ovpncp.main import app
 from sciaiot.ovpncp.middlewares.azure_security import validate_token
+from sciaiot.ovpncp.services.client_config import (
+    MAX_CLIENT_CONFIG_BYTES,
+    ClientConfigReadError,
+    client_config_response,
+)
 
 
 @pytest.fixture(name="authorization_context")
@@ -154,6 +160,7 @@ def test_registered_non_admin_resolves_device_user_principal(
         ),
         ("GET", "/clients", None),
         ("POST", "/clients", {"name": "blocked-client"}),
+        ("DELETE", "/clients/owned-laptop", None),
         ("GET", "/server", None),
         ("POST", "/server", None),
         ("GET", "/server/routes", None),
@@ -232,6 +239,22 @@ def test_sysadmin_role_receives_authoritative_permissions(
         permission.value for permission in Permission
     ]
     assert devices_response.status_code == 200
+
+
+def test_sysadmin_reaches_revoked_only_client_delete_policy(
+    authorization_context: tuple[TestClient, dict[str, object], Session],
+) -> None:
+    """A sysadmin is authorized and reaches the active-client conflict."""
+    test_client, claims, _ = authorization_context
+    claims["sub"] = "admin-subject"
+    claims["roles"] = ["admin"]
+
+    response = test_client.delete("/clients/other-laptop")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Revoke the client certificate before deleting this VPN client."
+    )
 
 
 def test_service_admin_receives_authoritative_permissions(
@@ -600,6 +623,139 @@ def test_current_user_can_package_and_download_only_owned_credentials(
         assert denial.json()["detail"] == (
             "The current principal is not authorized for this resource."
         )
+
+
+@pytest.mark.parametrize(
+    ("role", "subject", "object_id", "scope"),
+    [
+        ("user", "device-user-subject", "device-user-object-id", "access_as_user"),
+        ("admin", "admin-subject", "admin-object-id", "access_as_user"),
+        (
+            "ServiceAdmin",
+            "service-principal-object-id",
+            "service-principal-object-id",
+            None,
+        ),
+    ],
+)
+def test_authenticated_roles_download_the_same_shared_client_config(
+    authorization_context: tuple[TestClient, dict[str, object], Session],
+    tmp_path: Path,
+    role: str,
+    subject: str,
+    object_id: str,
+    scope: str | None,
+) -> None:
+    """Every recognized role receives one deployment-managed profile."""
+    test_client, claims, _ = authorization_context
+    profile = b"client\nremote vpn.example.test 1194\n"
+    profile_path = tmp_path / "shared.ovpn"
+    profile_path.write_bytes(profile)
+    claims.update({"roles": [role], "sub": subject, "oid": object_id})
+    if scope is None:
+        claims.pop("scp", None)
+    else:
+        claims["scp"] = scope
+
+    with patch.object(dependencies, "client_config_path", str(profile_path)):
+        response = test_client.get("/me/client-config")
+
+    assert response.status_code == 200
+    assert response.content == profile
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="ovpncp-client.ovpn"'
+    )
+
+
+@pytest.mark.parametrize(
+    ("target_kind", "expected_status", "expected_detail"),
+    [
+        (
+            "missing",
+            404,
+            (
+                "The shared OpenVPN client configuration is not available. "
+                "Ask an administrator to configure it."
+            ),
+        ),
+        (
+            "unreadable",
+            500,
+            (
+                "The shared OpenVPN client configuration could not be read. "
+                "Check the deployment configuration and file permissions."
+            ),
+        ),
+    ],
+)
+def test_shared_client_config_failures_are_fixed_and_path_safe(
+    authorization_context: tuple[TestClient, dict[str, object], Session],
+    tmp_path: Path,
+    target_kind: str,
+    expected_status: int,
+    expected_detail: str,
+) -> None:
+    """Missing and unreadable profiles disclose no deployment paths."""
+    test_client, _, _ = authorization_context
+    target = tmp_path / "private-profile.ovpn"
+    if target_kind == "unreadable":
+        target.mkdir()
+
+    with patch.object(dependencies, "client_config_path", str(target)):
+        response = test_client.get("/me/client-config")
+
+    assert response.status_code == expected_status
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["detail"] == expected_detail
+    assert str(target) not in response.text
+
+
+@pytest.mark.parametrize(
+    "content",
+    [b"", b"x" * (MAX_CLIENT_CONFIG_BYTES + 1)],
+)
+def test_shared_client_config_rejects_empty_and_oversized_files(
+    tmp_path: Path,
+    content: bytes,
+) -> None:
+    """Invalid deployment artifacts fail before building a response."""
+    target = tmp_path / "invalid.ovpn"
+    target.write_bytes(content)
+
+    with pytest.raises(ClientConfigReadError):
+        client_config_response(str(target))
+
+
+def test_shared_client_config_rejects_relative_deployment_path() -> None:
+    """The deployment path cannot depend on the service working directory."""
+    with pytest.raises(ClientConfigReadError):
+        client_config_response("relative/client.ovpn")
+
+
+def test_shared_client_config_route_never_returns_private_key_content(
+    authorization_context: tuple[TestClient, dict[str, object], Session],
+    tmp_path: Path,
+) -> None:
+    """A mistaken credential path fails closed instead of leaking its bytes."""
+    test_client, _, _ = authorization_context
+    target = tmp_path / "server-private.key"
+    private_content = (
+        b"client\nremote vpn.example.test 1194\n"
+        b"-----BEGIN PRIVATE KEY-----\nsecret-material\n"
+    )
+    target.write_bytes(private_content)
+
+    with patch.object(dependencies, "client_config_path", str(target)):
+        response = test_client.get("/me/client-config")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == (
+        "The shared OpenVPN client configuration could not be read. "
+        "Check the deployment configuration and file permissions."
+    )
+    assert b"secret-material" not in response.content
+    assert str(target) not in response.text
 
 
 def test_revoked_current_user_credentials_fail_before_archive_work(

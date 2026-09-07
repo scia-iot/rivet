@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 
 import { ApiProblemError } from '@/api/problem-details'
@@ -44,12 +44,14 @@ import {
   useClientDetails,
   useClients,
   useCreateClient,
+  useDeleteClient,
   useImportClients,
   usePackageCertificate,
   useRenewCertificate,
   useRevokeCertificate,
   useUnassignVirtualAddress,
 } from '@/features/clients/client-api'
+import { DeleteClientDialog } from '@/features/clients/delete-client-dialog'
 import {
   RevokeCertificateDialog,
 } from '@/features/clients/revoke-certificate-dialog'
@@ -333,7 +335,9 @@ function ClientAddressCard({
   client: VpnClientDetails
   canWrite: boolean
 }) {
-  const addresses = useAssignableAddresses(canWrite)
+  const addresses = useAssignableAddresses(
+    canWrite && !client.revoked && client.virtual_address === null,
+  )
   const assign = useAssignVirtualAddress()
   const unassign = useUnassignVirtualAddress()
   const [selected, setSelected] = useState('')
@@ -392,8 +396,23 @@ function ClientAddressCard({
       </CardHeader>
       {canWrite ? (
         <CardContent className="space-y-3">
-          {addresses.isPending ? (
-            <p>Loading assignable addresses…</p>
+          {client.virtual_address ? (
+            <Button
+              disabled={addressPending}
+              onClick={() => void unassignAddress()}
+              type="button"
+              variant="outline"
+            >
+              {addressPending ? 'Updating address…' : 'Unassign address'}
+            </Button>
+          ) : client.revoked ? (
+            <p className="text-sm text-muted-foreground">
+              Revoked VPN clients cannot be assigned virtual addresses.
+            </p>
+          ) : addresses.isPending ? (
+            <p aria-live="polite" role="status">
+              Loading assignable addresses…
+            </p>
           ) : addresses.data === undefined ? (
             <LoadFailure onRetry={() => void addresses.refetch()} />
           ) : (
@@ -418,16 +437,6 @@ function ClientAddressCard({
               >
                 {addressPending ? 'Updating address…' : 'Assign address'}
               </Button>
-              {client.virtual_address ? (
-                <Button
-                  disabled={addressPending}
-                  onClick={() => void unassignAddress()}
-                  type="button"
-                  variant="outline"
-                >
-                  {addressPending ? 'Updating address…' : 'Unassign address'}
-                </Button>
-              ) : null}
             </div>
           )}
           {error ? (
@@ -445,6 +454,8 @@ function ClientDetails({ client }: { client: VpnClientDetails }) {
   const renew = useRenewCertificate()
   const packageCertificate = usePackageCertificate()
   const revoke = useRevokeCertificate()
+  const deleteClient = useDeleteClient()
+  const navigate = useNavigate()
   const download = useCertificateDownload()
   const session = usePrincipalSession()
   const canWrite = hasPermission(session, 'clients:write')
@@ -473,6 +484,12 @@ function ClientDetails({ client }: { client: VpnClientDetails }) {
       operationRef.current = false
       setOperationPending(false)
     }
+  }
+
+  async function deleteVpnClient() {
+    await deleteClient.mutateAsync(client.name)
+    toast.success('VPN client deleted.')
+    navigate('/clients', { replace: true })
   }
 
   async function revokeCertificate() {
@@ -588,6 +605,23 @@ function ClientDetails({ client }: { client: VpnClientDetails }) {
                   'Try again.'}
             </p>
           ) : null}
+        </Card>
+      ) : null}
+      {canWrite && client.revoked ? (
+        <Card>
+          <CardHeader>
+            <h2 className="text-lg font-semibold">Delete VPN client</h2>
+            <p className="text-sm text-muted-foreground">
+              Delete this revoked client and its credentials. Linked edge
+              devices are retained and detached.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <DeleteClientDialog
+              clientName={client.name}
+              onDelete={deleteVpnClient}
+            />
+          </CardContent>
         </Card>
       ) : null}
     </div>

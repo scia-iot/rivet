@@ -52,6 +52,20 @@ export function usePortalDevice(deviceId: number, enabled = true) {
   })
 }
 
+export function useSharedClientConfigDownload() {
+  const client = useApiClient()
+  return useCallback(async () => {
+    const { data } = await client.GET('/me/client-config', {
+      cache: 'no-store',
+      parseAs: 'blob',
+    })
+    if (!(data instanceof Blob)) {
+      throw new Error('The shared OpenVPN profile response was invalid.')
+    }
+    triggerArchiveDownload(data, 'ovpncp-client.ovpn')
+  }, [client])
+}
+
 export function usePortalCredentialDownload() {
   const client = useApiClient()
   return useCallback(

@@ -65,13 +65,28 @@ VPN client. The user-detail Device access tab lists application-level
 AccessGrant records and lets administrators grant or revoke those records.
 `/clients` supports creation and deliberate bulk Easy-RSA import,
 virtual-address assignment, certificate renewal and packaging,
-typed-confirmation revocation, and ZIP download. Bulk import always scans all
-existing Easy-RSA client certificates. It defaults to importing VPN Clients
+typed-confirmation revocation and revoked-client deletion, and ZIP download.
+Client details show Assign controls only when no address exists and Unassign
+only when one is assigned. Deletion requires typing the exact revoked client
+name, waits for backend confirmation, then returns to the refreshed client
+list; active and read-only views do not expose the action. Bulk import always
+scans all existing Easy-RSA client certificates except exact names revoked in
+the durable CA index. It defaults to importing VPN Clients
 only; creating matching edge Devices requires selecting an unchecked option in
 the confirmation dialog. The completion summary reports Clients added,
 updated, and skipped, plus Devices created, already linked, and in conflict
 when Device creation was selected. Existing Device names and Client links are
 never reassigned to resolve a conflict.
+
+The Server page summarizes the virtual-address pool with Total, Assigned, and
+Available counts. It presents currently assignable addresses as one
+comma-separated, accessible list and keeps the summary visible when none are
+available, with explicit loading, retry, and empty states. Revoked clients do
+not load or show assignment controls, while an existing assignment can still
+be released.
+
+The empty Overview and Access pages and menu entries are removed. The root
+route sends administrators to VPN clients and device users to their portal.
 
 Certificate downloads are fetched directly as `application/zip` with
 `Cache-Control: no-store`. Azure Blob Storage deployments proxy the archive
@@ -100,9 +115,16 @@ Registered non-admin users land on `/portal`. The portal lists only the
 identity, plus devices with an explicit AccessGrant. It never accepts or places
 a user ID in a portal URL or API request. Device users can download credentials
 for an active owned client; the backend rejects revoked credentials before
-packaging, file access, or cloud storage. The same short-lived, no-store Blob
-download behavior used by administrators removes temporary anchors and object
-URLs immediately.
+packaging, file access, or cloud storage. Connection setup also downloads the
+single deployment-managed, credential-free OpenVPN profile once through
+`GET /me/client-config`; it is not duplicated per client. Portal navigation is
+also available to interactive administrators, so they can discover and verify
+the same shared setup download. Both download flows use short-lived, no-store
+Blobs and remove temporary anchors and object URLs immediately. Users place the
+profile beside the extracted credential ZIP and supply `ca.crt`, the named
+certificate, and named private key with `openvpn --config ovpncp-client.ovpn
+--ca ca.crt --cert <client-name>.crt --key <client-name>.key`, or select those
+same inputs in a graphical OpenVPN client's separate credential fields.
 
 Device detail URLs require a canonical positive decimal ID. A fixed forbidden
 state does not reveal whether an ungranted device exists; transient failures
