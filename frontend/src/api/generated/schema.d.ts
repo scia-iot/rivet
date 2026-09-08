@@ -440,7 +440,10 @@ export interface paths {
          */
         get: operations["get_server_server_get"];
         put?: never;
-        /** Init Server */
+        /**
+         * Init Server
+         * @description Initialize server records and the downloadable shared profile.
+         */
         post: operations["init_server_server_post"];
         delete?: never;
         options?: never;
@@ -458,6 +461,26 @@ export interface paths {
         /** Get Assignable Virtual Addresses */
         get: operations["get_assignable_virtual_addresses_server_assignable_virtual_addresses_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/server/client-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Regenerate Client Config
+         * @description Regenerate the shared profile for an initialized deployment.
+         */
+        put: operations["regenerate_client_config_server_client_config_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -914,6 +937,14 @@ export interface components {
         RouteRequest: {
             /** Network */
             network: string;
+        };
+        /**
+         * ServerInitializationRequest
+         * @description Explicit reachable endpoint required for client profile generation.
+         */
+        ServerInitializationRequest: {
+            /** Remote Host */
+            remote_host: string;
         };
         /** ServerWithVirtualAddresses */
         ServerWithVirtualAddresses: {
@@ -4138,7 +4169,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerInitializationRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -4248,6 +4283,108 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["VirtualAddress"][];
                 };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Precondition Failed */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    regenerate_client_config_server_client_config_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerInitializationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Bad Request */
             400: {

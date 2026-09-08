@@ -1235,6 +1235,7 @@ Implementation:
 - ...
 Verification:
 - command: result
+
 Deferred:
 - ...
 ```
@@ -1818,9 +1819,30 @@ Verification:
   forbidden file/inline credentials, PEM keys, route-level non-disclosure, and
   the configured deployment template. The concrete portal instructions test
   first failed and then passed with all 12 portal tests.
+2026-09-08 - Phase 14 initialization refinement completed
+Implementation:
+- Server initialization now requires an explicit reachable VPN hostname or IP,
+  parses the authoritative `server.conf` once, and derives the generated
+  profile's validated port, protocol, tun/tap family, persistence, ciphers,
+  verbosity, and UDP exit notification from those raw settings.
+- Profile installation uses a same-directory atomic replacement. A failed
+  database transaction restores the previous profile, and a failed profile
+  generation persists neither the Server nor its virtual-address rows.
+- Added authenticated `PUT /server/client-config` and the Server-page shared
+  profile card so existing deployments can migrate a manual profile or
+  regenerate after endpoint or `server.conf` changes.
+- Regenerated OpenAPI artifacts and updated local, production, environment, and
+  client-combination instructions.
+Verification:
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 297 passed
+  with 92% total coverage.
+- `ruff format --check .`, `ruff check .`, and
+  `mypy --exclude '^build/' .`: passed.
+- `npm run api:check`, `npm run lint`, `npm run typecheck`, and
+  `npm run build`: passed. `npm run test` passed 33 files and 162 tests.
+
 Deferred:
 - Plain `mypy .` remains blocked by the pre-existing duplicate generated
   `sciaiot` package under `build/lib`; the build-excluded source gate passed.
-- Operators must replace the public remote placeholder and install the reviewed
-  profile before the endpoint can succeed. Real-client import and connectivity
-  remain deployment checks because this workspace has no OpenVPN installation.
+- Real-client import and connectivity remain deployment checks because this
+  workspace has no OpenVPN installation.

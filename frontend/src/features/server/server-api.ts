@@ -8,6 +8,8 @@ import { useApiClient } from '@/api/use-api-client'
 export type ServerConfiguration =
   components['schemas']['ServerWithVirtualAddresses']
 export type ServiceHealth = components['schemas']['ServiceHealth']
+export type ServerInitializationRequest =
+  components['schemas']['ServerInitializationRequest']
 export type VirtualAddress = components['schemas']['VirtualAddress']
 
 export const SERVER_HEALTH_POLL_INTERVAL_MS = 15_000
@@ -92,8 +94,8 @@ export function useInitializeServer() {
   const client = useApiClient()
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async () => {
-      const { data } = await client.POST('/server')
+    mutationFn: async (request: ServerInitializationRequest) => {
+      const { data } = await client.POST('/server', { body: request })
       return requiredResponse(data, 'initialized server')
     },
     onSuccess: async () => {
@@ -107,6 +109,15 @@ export function useInitializeServer() {
           queryKey: queryKeys.clients.addresses,
         }),
       ])
+    },
+  })
+}
+
+export function useRegenerateClientConfig() {
+  const client = useApiClient()
+  return useMutation({
+    mutationFn: async (request: ServerInitializationRequest) => {
+      await client.PUT('/server/client-config', { body: request })
     },
   })
 }

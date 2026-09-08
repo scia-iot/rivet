@@ -1,11 +1,13 @@
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
+from sciaiot.ovpncp import dependencies
 from sciaiot.ovpncp.data.server import Client
 from sciaiot.ovpncp.dependencies import get_session
 from sciaiot.ovpncp.main import app
@@ -61,13 +63,30 @@ def _assert_problem_detail(response: Response, detail: str) -> None:
 @patch(
     "builtins.open", new_callable=mock_open, read_data=test_openvpn.server_config_lines
 )
-def test_init_server(mock_open, client: TestClient):
+def test_init_server(mock_open, client: TestClient, tmp_path: Path):
     response = client.get("/server")
     assert response.status_code == 404
     _assert_problem_detail(response, "Server not found!")
 
-    response = client.post("/server")
+    profile_path = tmp_path / "client.ovpn"
+    with patch.object(
+        dependencies,
+        "client_config_path",
+        str(profile_path),
+    ):
+        response = client.post(
+            "/server",
+            json={"remote_host": "VPN.Example.Test."},
+        )
     assert response.status_code == 200
+
+    profile = profile_path.read_text(encoding="utf-8")
+    assert "dev tun\n" in profile
+    assert "proto udp\n" in profile
+    assert "remote vpn.example.test 1194\n" in profile
+    assert "data-ciphers-fallback AES-256-CBC\n" in profile
+    assert "tls-auth" not in profile
+    assert "tls-crypt" not in profile
 
     server = response.json()
     assert server is not None
@@ -86,6 +105,58 @@ def test_get_server(client: TestClient):
 
     server = response.json()
     assert server["ip"] == "10.8.0.1"
+
+
+@patch(
+    "builtins.open", new_callable=mock_open, read_data=test_openvpn.server_config_lines
+)
+def test_regenerate_shared_client_profile(
+    mock_open,
+    client: TestClient,
+    tmp_path: Path,
+):
+    profile_path = tmp_path / "client.ovpn"
+    profile_path.write_text(
+        "client\nremote old.example.test 1194\n",
+        encoding="utf-8",
+    )
+
+    with patch.object(
+        dependencies,
+        "client_config_path",
+        str(profile_path),
+    ):
+        response = client.put(
+            "/server/client-config",
+            json={"remote_host": "new.example.test"},
+        )
+
+    assert response.status_code == 204
+    assert "remote new.example.test 1194\n" in profile_path.read_text()
+    mock_open.assert_called_once_with("/etc/openvpn/server.conf", "r")
+
+
+def test_initialize_rejects_invalid_remote_without_path_leak(
+    client: TestClient,
+    tmp_path: Path,
+):
+    profile_path = tmp_path / "should-not-exist.ovpn"
+    with patch.object(
+        dependencies,
+        "client_config_path",
+        str(profile_path),
+    ):
+        response = client.post(
+            "/server",
+            json={"remote_host": "vpn host.example"},
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "The request did not satisfy the API contract."
+    )
+    assert str(profile_path) not in response.text
+    assert not profile_path.exists()
 
 
 @patch(

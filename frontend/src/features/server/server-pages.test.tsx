@@ -50,6 +50,7 @@ const apiClient = {
   DELETE: vi.fn(),
   GET: vi.fn(),
   POST: vi.fn(),
+  PUT: vi.fn(),
 }
 
 function problem(status: number) {
@@ -185,6 +186,64 @@ describe('server and network administration pages', () => {
     vi.mocked(useApiClient).mockReturnValue(
       apiClient as unknown as ReturnType<typeof useApiClient>,
     )
+  })
+
+  it('requires a valid reachable endpoint when initializing', async () => {
+    const user = userEvent.setup()
+    const successfulGet = apiClient.GET.getMockImplementation()
+    if (successfulGet === undefined) throw new Error('GET fixture unavailable.')
+    apiClient.GET.mockImplementation(async (path: string, options?: unknown) => {
+      if (path === '/server') throw problem(404)
+      return successfulGet(path, options)
+    })
+    renderRoute('/server')
+
+    const input = await screen.findByLabelText('Reachable VPN hostname or IP')
+    const initialize = screen.getByRole('button', {
+      name: 'Initialize server',
+    })
+    expect(initialize).toBeDisabled()
+
+    await user.type(input, '::::')
+    expect(screen.getByText('Enter a reachable VPN hostname or IP address.'))
+      .toBeVisible()
+    expect(initialize).toBeDisabled()
+
+    await user.clear(input)
+    await user.type(input, 'vpn.example.test')
+    await user.click(initialize)
+    const dialog = screen.getByRole('dialog')
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Confirm initialize' }),
+    )
+
+    await waitFor(() => {
+      expect(apiClient.POST).toHaveBeenCalledWith('/server', {
+        body: { remote_host: 'vpn.example.test' },
+      })
+    })
+  })
+
+  it('regenerates the shared profile for an initialized server', async () => {
+    const user = userEvent.setup()
+    apiClient.PUT.mockResolvedValue({ data: undefined })
+    renderRoute('/server')
+
+    const input = await screen.findByLabelText('Reachable VPN hostname or IP')
+    await user.type(input, 'vpn.example.test')
+    await user.click(
+      screen.getByRole('button', { name: 'Generate shared profile' }),
+    )
+    const dialog = screen.getByRole('dialog')
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Confirm generate' }),
+    )
+
+    await waitFor(() => {
+      expect(apiClient.PUT).toHaveBeenCalledWith('/server/client-config', {
+        body: { remote_host: 'vpn.example.test' },
+      })
+    })
   })
 
   it(

@@ -33,10 +33,12 @@ import {
   useAssignableVirtualAddresses,
   useDeleteServerRoute,
   useInitializeServer,
+  useRegenerateClientConfig,
   useServer,
   useServerHealth,
   useServerRoutes,
 } from '@/features/server/server-api'
+import { remoteHostError } from '@/features/server/remote-host-validation'
 
 const SERVER_LOAD_PROBLEM = {
   type: '/errors/server-unavailable',
@@ -198,9 +200,13 @@ export function ServerPage() {
   const server = useServer()
   const addresses = useAssignableVirtualAddresses()
   const initialize = useInitializeServer()
+  const regenerateProfile = useRegenerateClientConfig()
+  const [remoteHost, setRemoteHost] = useState('')
   const session = usePrincipalSession()
   const canWrite = hasPermission(session, 'server:write')
   const missing = isMissingServer(server.error)
+  const hostError = remoteHost ? remoteHostError(remoteHost) : null
+  const hostInvalid = remoteHost.trim().length === 0 || hostError !== null
 
   return (
     <div className="space-y-6">
@@ -249,21 +255,51 @@ export function ServerPage() {
             </p>
           </CardHeader>
           {canWrite ? (
-            <CardContent>
+            <CardContent className="max-w-2xl space-y-3">
+              <Field data-invalid={hostError ? true : undefined}>
+                <FieldLabel htmlFor="initial-vpn-host">
+                  Reachable VPN hostname or IP
+                </FieldLabel>
+                <Input
+                  aria-describedby={
+                    hostError ? 'initial-vpn-host-error' : undefined
+                  }
+                  aria-invalid={hostError ? true : undefined}
+                  id="initial-vpn-host"
+                  onChange={(event) => setRemoteHost(event.target.value)}
+                  placeholder="vpn.example.com"
+                  value={remoteHost}
+                />
+                {hostError ? (
+                  <FieldError id="initial-vpn-host-error">
+                    {hostError}
+                  </FieldError>
+                ) : null}
+              </Field>
+              <p className="text-sm text-muted-foreground">
+                This reachable endpoint is written into the shared client profile.
+                Port and transport settings come from the host server.conf.
+              </p>
               <ConfirmActionDialog
                 confirmLabel="Confirm initialize"
                 description={
-                  'Read the host OpenVPN configuration and create the server ' +
-                  'address pool. Wait for backend confirmation before use.'
+                  'Read the host OpenVPN configuration, generate the shared ' +
+                  'client profile, and create the server address pool.'
                 }
                 onConfirm={async () => {
-                  await initialize.mutateAsync()
-                  toast.success('Server initialized.')
+                  await initialize.mutateAsync({
+                    remote_host: remoteHost.trim(),
+                  })
+                  toast.success('Server and shared profile initialized.')
                 }}
                 onError={() => toast.error('Server could not be initialized.')}
                 pendingLabel="Initializing…"
                 title="Initialize server?"
-                trigger={<Button type="button">Initialize server</Button>}
+                trigger={
+                  <Button disabled={hostInvalid} type="button">
+                    Initialize server
+                  </Button>
+                }
               />
             </CardContent>
           ) : null}
@@ -280,6 +316,64 @@ export function ServerPage() {
         />
       ) : (
         <>
+          {canWrite ? (
+            <Card>
+              <CardHeader>
+                <h2 className="text-lg font-semibold">
+                  Shared client profile
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Generate or replace the downloadable profile from the active
+                  server.conf. Supply the reachable endpoint clients can reach.
+                </p>
+              </CardHeader>
+              <CardContent className="max-w-2xl space-y-3">
+                <Field data-invalid={hostError ? true : undefined}>
+                  <FieldLabel htmlFor="profile-vpn-host">
+                    Reachable VPN hostname or IP
+                  </FieldLabel>
+                  <Input
+                    aria-describedby={
+                      hostError ? 'profile-vpn-host-error' : undefined
+                    }
+                    aria-invalid={hostError ? true : undefined}
+                    id="profile-vpn-host"
+                    onChange={(event) => setRemoteHost(event.target.value)}
+                    placeholder="vpn.example.com"
+                    value={remoteHost}
+                  />
+                  {hostError ? (
+                    <FieldError id="profile-vpn-host-error">
+                      {hostError}
+                    </FieldError>
+                  ) : null}
+                </Field>
+                <ConfirmActionDialog
+                  confirmLabel="Confirm generate"
+                  description={
+                    'Replace the shared profile with transport settings read ' +
+                    'from the active host OpenVPN configuration.'
+                  }
+                  onConfirm={async () => {
+                    await regenerateProfile.mutateAsync({
+                      remote_host: remoteHost.trim(),
+                    })
+                    toast.success('Shared client profile generated.')
+                  }}
+                  onError={() =>
+                    toast.error('Shared profile could not be generated.')
+                  }
+                  pendingLabel="Generating…"
+                  title="Generate shared client profile?"
+                  trigger={
+                    <Button disabled={hostInvalid} type="button">
+                      Generate shared profile
+                    </Button>
+                  }
+                />
+              </CardContent>
+            </Card>
+          ) : null}
           <ServerConfigurationSummary server={server.data} />
           <VirtualAddressSummary
             addresses={addresses.data}

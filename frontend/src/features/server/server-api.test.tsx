@@ -19,6 +19,7 @@ const apiClient = {
   DELETE: vi.fn(),
   GET: vi.fn(),
   POST: vi.fn(),
+  PUT: vi.fn(),
 }
 
 function createWrapper(queryClient: QueryClient) {
@@ -111,7 +112,9 @@ describe('server API hooks', () => {
       wrapper: createWrapper(queryClient),
     })
     await act(async () => {
-      await initialized.result.current.mutateAsync()
+      await initialized.result.current.mutateAsync({
+        remote_host: 'vpn.example.test',
+      })
     })
 
     const added = renderHook(() => useAddServerRoute(), {
@@ -128,7 +131,9 @@ describe('server API hooks', () => {
       await deleted.result.current.mutateAsync('192.168.40.0/24')
     })
 
-    expect(apiClient.POST).toHaveBeenNthCalledWith(1, '/server')
+    expect(apiClient.POST).toHaveBeenNthCalledWith(1, '/server', {
+      body: { remote_host: 'vpn.example.test' },
+    })
     expect(apiClient.POST).toHaveBeenNthCalledWith(2, '/server/routes', {
       body: { network: '192.168.40.0/24' },
     })

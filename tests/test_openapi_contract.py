@@ -233,6 +233,7 @@ def test_openapi_documents_every_management_permission() -> None:
         ): "clients:write",
         ("get", "/server"): "server:read",
         ("post", "/server"): "server:write",
+        ("put", "/server/client-config"): "server:write",
         ("get", "/server/health"): "server:read",
         (
             "get",

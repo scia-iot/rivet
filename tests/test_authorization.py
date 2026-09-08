@@ -163,6 +163,11 @@ def test_registered_non_admin_resolves_device_user_principal(
         ("DELETE", "/clients/owned-laptop", None),
         ("GET", "/server", None),
         ("POST", "/server", None),
+        (
+            "PUT",
+            "/server/client-config",
+            {"remote_host": "vpn.example.test"},
+        ),
         ("GET", "/server/routes", None),
         ("POST", "/server/routes", {"network": "10.42.0.0/24"}),
         ("GET", "/networks", None),
@@ -200,6 +205,42 @@ def test_device_user_cannot_call_management_routes(
     assert response.json()["detail"] == (
         "The current principal lacks the required permission."
     )
+
+
+@pytest.mark.parametrize(
+    ("role", "subject", "object_id", "scope"),
+    [
+        ("admin", "admin-subject", "admin-object-id", "access_as_user"),
+        (
+            "ServiceAdmin",
+            "service-object-id",
+            "service-object-id",
+            None,
+        ),
+    ],
+)
+def test_administrators_can_reach_client_profile_regeneration(
+    authorization_context: tuple[TestClient, dict[str, object], Session],
+    role: str,
+    subject: str,
+    object_id: str,
+    scope: str | None,
+) -> None:
+    """Both administrator types pass permission checks for regeneration."""
+    test_client, claims, _ = authorization_context
+    claims.update({"roles": [role], "sub": subject, "oid": object_id})
+    if scope is None:
+        claims.pop("scp", None)
+    else:
+        claims["scp"] = scope
+
+    response = test_client.put(
+        "/server/client-config",
+        json={"remote_host": "vpn.example.test"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Server not found!"
 
 
 def test_exact_loopback_connection_hook_remains_available(

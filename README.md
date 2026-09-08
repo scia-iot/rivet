@@ -142,7 +142,9 @@ Complete the remaining production steps in the
 Init server by calling API with cURL:
 
 ```shell
-curl -X POST http://127.0.0.1:8000/server
+curl -X POST http://127.0.0.1:8000/server \
+  -H 'Content-Type: application/json' \
+  --data '{"remote_host":"vpn.example.com"}'
 ```
 
 Check the health of OpenVPN server:
@@ -413,21 +415,26 @@ variables before restarting the service. There is deliberately no legacy
 fallback; an existing `ServiceAdmin` value is never interpreted as an
 interactive administrator role.
 
-Install one shared, credential-free OpenVPN profile at
-`/opt/ovpncp/client.ovpn`, or set `OVPNCP_CLIENT_CONFIG_PATH` to another
-absolute service-readable path. Start from `deploy/client.ovpn.example`, replace
-the remote placeholder with the public VPN endpoint, and never embed a client
-certificate or private key. Every recognized authenticated role can download
-the same no-store profile from `GET /me/client-config`; the portal exposes this
-once in Connection setup. Missing or unreadable deployments return fixed,
-path-safe errors. The file must be strict text with active `client` and
-configured `remote` directives and no embedded or referenced per-client,
-static-key, or password credentials. To connect, place the profile beside the
-extracted ZIP and run `openvpn --config ovpncp-client.ovpn --ca ca.crt --cert
-<client-name>.crt --key <client-name>.key`, replacing `<client-name>` with the
-assigned name, or set those same four inputs in a graphical client. See the
-production runbook for the reviewed server-compatible directives and complete
-installation procedure.
+Initialize the server from the Server page with an explicit reachable VPN
+hostname or IP address. The backend derives the shared credential-free profile
+from the active `server.conf` and atomically writes it to
+`/opt/ovpncp/client.ovpn`; `OVPNCP_CLIENT_CONFIG_PATH` can override that
+absolute service-writable path. Existing deployments can generate or refresh
+the profile from **Server > Shared client profile** or
+`PUT /server/client-config`. The endpoint is never inferred from an HTTP or
+tunnel address.
+
+Every recognized authenticated role can download the same no-store profile
+from `GET /me/client-config`; the portal exposes this once in Connection setup.
+To connect, place it beside the extracted client ZIP, replace
+`<client-name>` in the command, and run:
+
+~~~shell
+openvpn --config ovpncp-client.ovpn --ca ca.crt \
+  --cert <client-name>.crt --key <client-name>.key
+~~~
+
+See the production runbook for validation, migration, and rollback details.
 
 Current-user portal APIs derive the local user only from verified token
 `issuer` and `subject` claims. `GET /me/clients` returns only client `id`,

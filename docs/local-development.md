@@ -106,6 +106,23 @@ can finish signing in. Provision it through an authenticated administrator
 workflow or use an existing development database. Possessing the configured
 Entra app role does not by itself create the local record.
 
+## Prepare profile generation
+
+The initialization API writes a generated shared client profile. For an
+isolated local environment, keep the default `/opt/ovpncp/client.ovpn` or set
+an absolute writable override before starting the backend:
+
+```shell
+export OVPNCP_CLIENT_CONFIG_PATH=/opt/ovpncp/client.ovpn
+```
+
+The host must have a reviewed `/etc/openvpn/server.conf`; initialization reads
+its transport settings directly. In **Server**, supply a reachable test VPN
+hostname or IP address explicitly. Do not use `localhost`, a loopback address,
+the HTTP development host, or the VPN tunnel address. Existing development
+databases use **Server > Shared client profile** to generate or refresh the
+artifact without reinitializing server records.
+
 ## Start both applications
 
 Start the backend in the first terminal from the repository root:

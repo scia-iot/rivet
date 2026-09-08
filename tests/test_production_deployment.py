@@ -194,14 +194,18 @@ def test_shared_client_profile_template_matches_deployed_server() -> None:
     assert "<key>" not in profile
 
 
-def test_runbook_documents_shared_client_profile_installation() -> None:
-    """Operators receive an explicit safe profile installation procedure."""
+def test_runbook_documents_shared_client_profile_generation() -> None:
+    """Operators receive an explicit safe generation and migration procedure."""
     runbook = PRODUCTION_RUNBOOK.read_text(encoding="utf-8")
+    normalized = " ".join(runbook.split())
 
     assert "OVPNCP_CLIENT_CONFIG_PATH" in runbook
     assert "/opt/ovpncp/client.ovpn" in runbook
     assert "deploy/client.ovpn.example" in runbook
-    assert "public VPN hostname or address" in runbook
+    assert "reachable VPN hostname or IP address" in normalized
+    assert "active OpenVPN" in normalized
+    assert "PUT /server/client-config" in runbook
+    assert "never derives the endpoint" in normalized
     assert "must not contain any client certificate or private key" in runbook
     assert "strict UTF-8" in " ".join(runbook.split())
     assert "--config ovpncp-client.ovpn" in runbook
