@@ -4,6 +4,12 @@
 [![CodeQL Advanced](https://github.com/scia-iot/ovpncp/actions/workflows/codeql.yml/badge.svg)](https://github.com/scia-iot/ovpncp/actions/workflows/codeql.yml)
 [![Package](https://github.com/scia-iot/ovpncp/actions/workflows/package.yml/badge.svg)](https://github.com/scia-iot/ovpncp/actions/workflows/package.yml)
 
+## User guide
+
+Follow the [web user guide](docs/user-guide.md) to register VPN clients and
+devices, manage certificates, and configure restricted network access using
+the existing system administrator and device user accounts.
+
 ## Development
 
 Contributor and coding-agent guidance is maintained in
@@ -38,6 +44,9 @@ Playwright coverage. The phased implementation source of truth is
 [`docs/frontend-implementation-plan.md`](docs/frontend-implementation-plan.md).
 Use the [production deployment runbook](docs/production-deployment.md) for the
 reviewed Nginx, systemd, security-header, build, smoke, and rollback workflow.
+The proposed privileged VPN-agent boundary and phased container migration are
+tracked in the
+[container architecture upgrade plan](docs/container-architecture-upgrade-plan.md).
 
 ```shell
 cd frontend
