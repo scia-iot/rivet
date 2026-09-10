@@ -1,7 +1,7 @@
 # Container Architecture Upgrade Plan
 
-Status: proposed; implementation has not started
-Last updated: 2026-09-08
+Status: Phase M0 complete for the documented stopped-target profile; Phase 0 planned
+Last updated: 2026-09-10
 
 This document is the source of truth for introducing a container-first
 production architecture for ovpncp and OpenVPN. The current UAT topology is not
@@ -330,7 +330,7 @@ cross-node filesystem socket.
 
 | Phase | Outcome | Status | Depends on |
 | --- | --- | --- | --- |
-| M0 | Portable OpenVPN migration toolkit | planned | none |
+| M0 | Portable OpenVPN migration toolkit | complete (documented stopped-target profile) | none |
 | 0 | Decisions, threat model, and measurable requirements | planned | M0 |
 | 1 | Privileged-operation interfaces and agent contract | planned | Phase 0 |
 | 2 | Agent client, fake agent, and legacy host adapter | planned | Phase 1 |
@@ -433,6 +433,47 @@ Exit criteria:
 
 Rollback: export never mutates source state; import restores its mandatory
 pre-activation target snapshot.
+
+### M0 completion evidence — 2026-09-10
+
+Phase M0 is **complete for the documented stopped-target migration profile**.
+The implemented CLI, encryption/schema contract, compatibility policy and
+operator/recovery procedure are in [OpenVPN migration](openvpn-migration.md).
+
+Implemented: typed six-command CLI; authenticated AES-256-GCM logical bundles;
+bounded no-follow source/archive handling; complete current Easy-RSA PKI and
+configuration capture; encrypted-key support; independent hash, certificate,
+index, serial and CRL checks; observed option/cipher compatibility policy;
+redacted output; dry-run default; migration-owned staged activation, mandatory
+journal/snapshot and exact rollback; and opt-in offline/isolated network
+rehearsal code with resource limits and optional private failure evidence.
+
+An independent Easy-RSA 3.2.1 source-commit integration with OpenSSL 3.5.4
+passed encrypted migration, real target issuance/revocation/CRL generation,
+preservation of earlier credentials/revocations, rollback and source hashes.
+Its OpenVPN metadata was explicitly a declared offline assumption.
+
+The real namespace-isolated rehearsal then passed at
+`2026-09-10T07:11:20.779121+00:00` on an approved remote Linux server using
+OpenVPN 2.6.19, packaged Easy-RSA 3.1.7, OpenSSL 3.0.13 and Python 3.14.3.
+It observed actual OpenVPN capabilities, connected an existing client over UDP
+with unchanged credentials, observed its migrated CCD address on TUN, issued
+and revoked a new target certificate, retained old revocations, restored exact
+nonempty pre-import target state and its initially stopped process state, and
+left source hashes unchanged. Every proof returned true. Before/after checks
+also matched live host links, addresses, routes, policy rules, normalized
+IPv4/IPv6 firewall configuration and the existing OpenVPN process identity and
+start time. The live-host marker stayed absent. No live PKI/configuration was
+read or migrated, and no Azure or live service/network changes were made.
+
+Compatibility limits remain explicit and fail closed: the current target is
+initially stopped and owned by the migration operator. Separately owned runtime
+mount layouts and previously running service control require another reviewed
+adapter. `cd`, inline OpenVPN blocks, TLS-crypt-v2, CRL directories, plugins,
+intermediate/external CAs and complex transformations require reviewed support
+before those profiles can be migrated. These limits do not authorize a live
+source migration or production cutover. Phase 0 can now consume this toolkit's
+sanitized inventory and bundle contract; later phases retain their own gates.
 
 ### Phase 0: decisions and threat model
 
@@ -788,6 +829,36 @@ Operational changes:
 Deferred:
 - ...
 ~~~
+
+### 2026-09-10 — Phase M0 completed
+
+Implementation:
+- Portable typed OpenVPN migration CLI and authenticated logical bundle.
+- Strict PKI/configuration validation and documented compatibility boundary.
+- Default dry-run, staged offline activation and exact mandatory rollback.
+- Private mount/network/PID namespace rehearsal with bounded resources.
+
+Verification:
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 392 tests passed,
+  91% overall coverage; migration package 88%, every migration module above 80%.
+- `ruff format --check .`: 71 files pass; `ruff check .`: passes.
+- `mypy --exclude '^build/' .`: 62 files pass. The exclusion avoids the existing
+  ignored duplicate build package; all source and test modules are checked.
+- `sh -n tests/integration/run_migration_namespace.sh` and `git diff --check`:
+  pass.
+- Independent real Easy-RSA offline migration and PKI mutation passed.
+- Real OpenVPN UDP/TUN/CCD, unchanged-client credentials, target PKI mutations,
+  preservation of existing revocations and exact nonempty rollback passed at
+  2026-09-10T07:11:20.779121+00:00.
+- Live host network/firewall and pre-existing OpenVPN process remained unchanged.
+
+Operational changes:
+- Only explicitly approved verification staging and synthetic isolated state.
+- No live OpenVPN PKI/configuration, service, host network or Azure changes.
+
+Supported boundary:
+- Initially stopped migration-owned targets and documented compatible profiles;
+  no live-source migration or production cutover approval is implied.
 
 ## Reference material
 

@@ -55,6 +55,15 @@ cp .env.example .env.local
 npm run dev
 ```
 
+## OpenVPN migration
+
+The `ovpncp-migrate` CLI provides inventory, authenticated encrypted export,
+validation, offline import, verification, and rollback for reviewed OpenVPN
+and Easy-RSA state. See the [migration guide](docs/openvpn-migration.md) for
+supported configurations, mutation-freeze requirements, and recovery commands.
+Phase M0 passed its isolated real-server migration and rollback rehearsal;
+the CLI does not migrate the backend or UI.
+
 ## Installation
 
 Python 3.14 or newer is required. The service needs root privileges because it
