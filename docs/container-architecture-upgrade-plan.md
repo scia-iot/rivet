@@ -1,7 +1,7 @@
 # Container Architecture Upgrade Plan
 
-Status: Phase M0 complete for the documented stopped-target profile; Phase 0 planned
-Last updated: 2026-09-10
+Status: Phase M0 complete for the documented stopped-target profile; Phase 0 complete
+Last updated: 2026-09-14
 
 This document is the source of truth for introducing a container-first
 production architecture for ovpncp and OpenVPN. The current UAT topology is not
@@ -100,7 +100,8 @@ flowchart LR
         namespace[(Shared network namespace<br/>TUN, routes, firewall)]
         agent_runtime[(API-agent socket volume)]
         openvpn_runtime[(OpenVPN management socket volume)]
-        vpnstate[(Encrypted persistent VPN state<br/>config, PKI, CCD, CRL)]
+        vpnstate[(Agent-private encrypted state<br/>config, PKI, CCD, CRL)]
+        projection[(Minimal runtime projection)]
     end
 
     database[(Application database)]
@@ -117,11 +118,13 @@ flowchart LR
     vpn_clients --> udplb --> openvpn
     agent -->|management UDS| openvpn_runtime
     openvpn_runtime --> openvpn
-    agent -. connection event stream .-> api
+    api -->|cursor-based event polling over UDS| agent_runtime
+    agent -. event IDs and snapshots .-> api
     agent --> namespace
     openvpn --> namespace
     agent --> vpnstate
-    openvpn --> vpnstate
+    agent --> projection
+    projection -->|read-only| openvpn
 ~~~
 
 Application Gateway remains the HTTP/HTTPS edge for the UI and API. It must not
@@ -139,7 +142,8 @@ health probes and network rules specific to OpenVPN.
 - **VPN agent:** Has no public ingress or container-runtime socket. It receives
   NET_ADMIN only where proven necessary and owns server configuration, CCD,
   CRL, PKI operations, routes, and firewall rules.
-- **OpenVPN:** Accepts only the UDP VPN frontend. It receives /dev/net/tun and
+- **OpenVPN:** Reads only the minimal runtime projection, never full PKI.
+  Accepts only the UDP VPN frontend. It receives /dev/net/tun and
   only the capabilities required for tunnel initialization. It owns bounded
   runtime/status files and daemon state.
 - **Database:** Accepts only the API workload identity and stores application
@@ -167,7 +171,8 @@ The agent owns:
   a protected Unix-domain management socket;
 - safe Easy-RSA client discovery, creation, renewal, revocation, deletion, and
   bounded credential archive streaming;
-- atomic CCD, CRL, generated-profile, and configuration file operations;
+- atomic CCD, CRL and configuration file operations; shared-profile generation
+  remains API-owned using the sanitized configuration projection (Phase 0 D6);
 - TUN-scoped routes and firewall rules;
 - normalized connection events and actual-state snapshots;
 - redacted audit events and stable machine-readable error codes.
@@ -197,9 +202,8 @@ The exact schema is finalized in Phase 1. The initial operation groups are:
   route.
 - **Access rules:** List rules owned by ovpncp; ensure or remove one validated
   rule.
-- **Shared profile:** Return sanitized client-compatible server settings. If
-  agent-owned storage is selected, atomically install the generated
-  credential-free profile.
+- **Shared profile:** Return sanitized client-compatible server settings; API
+  owns atomic credential-free profile storage (Phase 0 D6).
 
 Contract requirements:
 
@@ -218,12 +222,22 @@ Contract requirements:
   TUN device, and configured rule backend are usable.
 
 The Unix socket should live at /run/ovpn-agent/agent.sock on an ephemeral
-shared runtime volume. Only the API identity and agent group may access it. A
-future remote-agent transport must use mutually authenticated encryption and
+shared runtime volume. Agent owns the setgid directory (02750), group
+`ovpn-control`; the socket is explicitly 0660 and API mounts the directory RO.
+Agent checks the configured API peer UID. A future remote-agent transport must use mutually authenticated encryption and
 the same application-level contract.
 
 The OpenVPN management socket uses a different runtime volume shared only by
-OpenVPN and the agent. The API must never mount or reach that socket directly.
+OpenVPN (RW) and the agent (RO). The API must never mount or reach it directly.
+OpenVPN uses primary GID `ovpn-runtime` before and after its UID/group drop;
+deployment precreates runtime directories `ovpn-openvpn:ovpn-runtime` 02770.
+The management socket is 0777 because OpenVPN overrides umask for bind; private
+parent traversal, mount isolation and agent UID/runtime primary-GID peer checks
+protect it. Deployment precreates status/pool files 0660 and startup validates them;
+OpenVPN requests 0600 on creation, so umask 0007 alone is insufficient. PID files
+may remain root-owned ephemeral state without agent access.
+The [Phase 0 identity and mount policy](container-architecture-decisions.md)
+defines exact grants and later image/runtime verification gates.
 
 ## State and consistency model
 
@@ -254,11 +268,17 @@ Use separate mounts so compromise of one component does not expose unrelated
 state:
 
 - vpn-config: server configuration and agent-owned generated fragments;
-- vpn-pki: CA material, issued certificates, private keys, and CRL;
-- vpn-ccd: per-client fixed-address configuration;
+- vpn-pki: agent-private CA material, issued certificates, private keys and CRL;
+- vpn-runtime-projection: agent-written, OpenVPN-read-only minimum server/CA
+  certificate, server key, CRL, approved config/CCD and required transport files;
+  never the full PKI, CA key, client keys, index or serial state;
+- vpn-ccd: agent-private canonical per-client fixed-address configuration;
 - agent-runtime: ephemeral API-agent socket shared only by those containers;
-- openvpn-runtime: management socket, PID, and status data shared only by the
-  agent and OpenVPN;
+- openvpn-runtime: bounded ephemeral management socket, PID, and status data;
+  OpenVPN RW and agent RO, never API;
+- vpn-pool-state: OpenVPN RW pool persistence, agent RO for coordinated backup;
+- agent-journal: agent-private durable operations and bounded event spool;
+- api-profile: API-owned credential-free shared profile, never Blob storage;
 - api-data: only when a single API instance still uses SQLite;
 - external database: required for multiple API replicas;
 - archive storage: encrypted client ZIP packages with existing authorization.
@@ -331,7 +351,7 @@ cross-node filesystem socket.
 | Phase | Outcome | Status | Depends on |
 | --- | --- | --- | --- |
 | M0 | Portable OpenVPN migration toolkit | complete (documented stopped-target profile) | none |
-| 0 | Decisions, threat model, and measurable requirements | planned | M0 |
+| 0 | Decisions, threat model, and measurable requirements | complete | M0 |
 | 1 | Privileged-operation interfaces and agent contract | planned | Phase 0 |
 | 2 | Agent client, fake agent, and legacy host adapter | planned | Phase 1 |
 | 3 | Read-only VPN agent in shadow mode | planned | Phase 2 |
@@ -477,6 +497,12 @@ sanitized inventory and bundle contract; later phases retain their own gates.
 
 ### Phase 0: decisions and threat model
 
+Artifact: [architecture decisions and threat model](container-architecture-decisions.md).
+All deliverables are complete. Independent engineering/security review accepted
+the decisions, non-goals and precise capabilities/mounts on 2026-09-14. No
+production, business or operator approval is implied. Phase 1 remains planned;
+image inspection and runtime proof remain required in Phases 5–6.
+
 Deliverables:
 
 - Record the runtime, database, firewall backend, state ownership, service
@@ -565,7 +591,8 @@ Rollback: stop the agent and retain the host adapter.
 Move one operation family at a time, with a feature flag and rollback after
 each family:
 
-1. Atomic shared profile and CCD address assignment.
+1. API-owned atomic shared profile via sanitized agent settings, and agent-owned
+   CCD address assignment.
 2. Managed routes.
 3. Firewall/access rules.
 4. Client import and certificate creation, renewal, revocation, and deletion.
@@ -859,6 +886,34 @@ Operational changes:
 Supported boundary:
 - Initially stopped migration-owned targets and documented compatible profiles;
   no live-source migration or production cutover approval is implied.
+
+### 2026-09-14 — Phase 0 completed
+
+Implementation:
+- Recorded concrete reference architecture, measurable acceptance targets,
+  state/identity/capability/mount decisions and a threat model.
+- Inventoried all 48 API routes, current privileged operations, dependencies,
+  secrets, hooks, files and every M0 source directive allowlist.
+- Selected API-owned shared profile, minimal OpenVPN projection, durable event
+  polling and owned CCD/network intent while preserving current contracts.
+
+Verification:
+- Route AST and documented owner rows cover all 48 routes.
+- Exact M0 directive sets match: files 10, hooks 9, runtime 10, logical 88, CCD 8.
+- All five local documentation links resolve; `git diff --check` passes.
+- Independent engineering/security review accepted the implementation baseline,
+  including primary groups, precreated status/pool files, socket confinement,
+  minimal projection and enforcement in both TUN directions.
+- Documentation-only changes; application/runtime checks were not rerun.
+
+Operational changes:
+- Documentation only; no application, host network, PKI or Azure changes.
+
+Deferred:
+- Phase 1 protocol work remains planned. Exact image/runtime grant verification
+  remains required in Phases 5–6; Phase 0 does not claim that proof has run.
+- Production SLAs, actual resource choices and operator/cutover approval remain
+  later gates.
 
 ## Reference material
 
