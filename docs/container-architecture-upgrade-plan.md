@@ -1,7 +1,7 @@
 # Container Architecture Upgrade Plan
 
-Status: Phase M0 complete for the documented stopped-target profile; Phase 0 complete
-Last updated: 2026-09-14
+Status: Phase M0, Phase 0 and Phase 1 complete; Phase 2 planned
+Last updated: 2026-09-16
 
 This document is the source of truth for introducing a container-first
 production architecture for ovpncp and OpenVPN. The current UAT topology is not
@@ -352,7 +352,7 @@ cross-node filesystem socket.
 | --- | --- | --- | --- |
 | M0 | Portable OpenVPN migration toolkit | complete (documented stopped-target profile) | none |
 | 0 | Decisions, threat model, and measurable requirements | complete | M0 |
-| 1 | Privileged-operation interfaces and agent contract | planned | Phase 0 |
+| 1 | Privileged-operation interfaces and agent contract | complete | Phase 0 |
 | 2 | Agent client, fake agent, and legacy host adapter | planned | Phase 1 |
 | 3 | Read-only VPN agent in shadow mode | planned | Phase 2 |
 | 4 | All privileged mutations moved behind the agent | planned | Phase 3 |
@@ -500,8 +500,7 @@ sanitized inventory and bundle contract; later phases retain their own gates.
 Artifact: [architecture decisions and threat model](container-architecture-decisions.md).
 All deliverables are complete. Independent engineering/security review accepted
 the decisions, non-goals and precise capabilities/mounts on 2026-09-14. No
-production, business or operator approval is implied. Phase 1 remains planned;
-image inspection and runtime proof remain required in Phases 5–6.
+production, business or operator approval is implied. Phase 1 is complete; image inspection and runtime proof remain required in Phases 5–6.
 
 Deliverables:
 
@@ -525,6 +524,13 @@ Exit criteria:
 Rollback: documentation only.
 
 ### Phase 1: interfaces and protocol
+
+Status: complete; independent engineering review accepted 2026-09-16.
+Runtime integration remains Phase 2.
+Artifacts: [protocol](vpn-control-protocol.md),
+[48-route matrix](vpn-control-route-matrix.md), unused
+`application/vpn_control` port/schemas/helpers and reusable tests-only adapter
+conformance assertions.
 
 Deliverables:
 
@@ -914,6 +920,45 @@ Deferred:
   remains required in Phases 5–6; Phase 0 does not claim that proof has run.
 - Production SLAs, actual resource choices and operator/cutover approval remain
   later gates.
+
+### 2026-09-16 — Phase 1 completed
+
+Implementation:
+- Unused typed VpnControl application port and immutable version 1.0 command/
+  result schemas, independent of FastAPI, files, subprocesses and runtime.
+- Bounded strict JSON decoding, correlation, redacted fixed errors, canonical
+  idempotency binding, conservative retry and synchronous-success checks.
+- Explicit archive source ownership, deadline/size/digest verification and
+  cancellation/cleanup, including cancellation before the first read.
+- Complete 48-route permission/domain/intent/agent/compensation/audit matrix.
+- Reusable tests-only conformance harness and independent security review tests.
+
+Verification:
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 491 tests passed
+  (including 99 new protocol/review tests), 92% overall application coverage;
+  every new application module has 100% statement coverage.
+- `ruff format --check .`: 84 files pass; `ruff check .`: passes.
+- `mypy --exclude '^build/' .`: 72 files pass. Existing ignored duplicate
+  build/lib package still prevents plain `mypy .`; no source exclusion added.
+- `mypy --no-incremental --exclude '^build/' .`: 72 files pass during review.
+- `git diff --check`: passes. Independent AST audit exactly matches all 48
+  mounted route method/path pairs; new local documentation links resolve.
+- Initial tests failed because the application port package was absent.
+  Behavior tests exposed missing conformance support and forged-model
+  serialization; independent review reproduced unsafe corrupt-write retry.
+  All were fixed and the final complete suite passed.
+- Independent engineering review accepted schema compatibility, ownership,
+  correlation, retry, archive lifetime, route matrix and scope.
+
+Operational changes:
+- None. No runtime wiring, privileged operations, real PKI/host/network/Azure
+  changes, new dependency, branch, commit or pull request.
+
+Deferred:
+- Phase 2 application seam and fake/host/agent adapters remain unstarted.
+- OS peer checks, durable actual journals, real PKI/ZIP generation, bounded
+  blocking transport/queue enforcement and host/network effects require later
+  adapter/runtime proofs; pure contract tests do not claim those proofs.
 
 ## Reference material
 
