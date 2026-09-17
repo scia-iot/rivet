@@ -1,7 +1,7 @@
 # VPN control route matrix
 
 Status: Phase 1 complete; independent engineering review accepted 2026-09-16.
-No runtime routes changed. Exactly 48 current
+Phase 2 routes use the application seam while preserving exactly 48 current
 method/path pairs are mapped below. Internal paths omit the reverse proxy's
 single `/api` prefix. Existing response schemas/statuses remain the public
 contract; the [protocol](vpn-control-protocol.md) describes internal operations.

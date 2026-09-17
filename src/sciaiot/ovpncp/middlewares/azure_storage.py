@@ -7,8 +7,9 @@ from fastapi import Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 
 from sciaiot.ovpncp import dependencies
+from sciaiot.ovpncp.adapters.vpn.host import HostVpnControl
 from sciaiot.ovpncp.problems import problem_response
-from sciaiot.ovpncp.utils import openvpn
+from sciaiot.ovpncp.services import vpn as openvpn
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,8 @@ async def azure_storage_middleware(request: Request, call_next):
             response = await handle_upload(request, call_next)
             return response
         elif url_path.endswith("download-cert"):
+            if not isinstance(dependencies.get_vpn_control(), HostVpnControl):
+                return await call_next(request)
             request.state.certificate_download_from_azure = True
             response = await handle_download(request, call_next)
             return response

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 from sqlmodel import Session, select
 
+from sciaiot.ovpncp.application.validation import is_rfc1918_ipv4_network
 from sciaiot.ovpncp.authorization import (
     PermissionRoute,
     RequireServerRead,
@@ -14,8 +15,8 @@ from sciaiot.ovpncp.authorization import (
 from sciaiot.ovpncp.data.network import RestrictedNetwork
 from sciaiot.ovpncp.dependencies import get_session
 from sciaiot.ovpncp.routes.client import get_client_by_name
-from sciaiot.ovpncp.utils import iptables, openvpn
-from sciaiot.ovpncp.utils.network import is_rfc1918_ipv4_network
+from sciaiot.ovpncp.services.dispatch import threaded
+from sciaiot.ovpncp.services.vpn import VpnService
 
 logger = logging.getLogger(__name__)
 DBSession = Annotated[Session, Depends(get_session)]
@@ -58,7 +59,8 @@ def _network_operation_failure(action: str) -> HTTPException:
 
 
 @router.post("", response_model=RestrictedNetwork)
-async def create_restricted_network(
+@threaded
+def create_restricted_network(
     request: RestrictedNetworkRequest,
     session: DBSession,
     _principal: RequireServerWrite,
@@ -90,21 +92,12 @@ async def create_restricted_network(
         start_time=datetime.now(timezone.utc),
     )
 
-    # Add these rules before the final FORWARD-chain rule.
-    chain = "FORWARD"
     try:
-        size = len(iptables.list_rules(chain))
-        if network.private_network_addresses:
-            rules = network.iptable_rules() + network.private_iptable_rules()
-            iptables.apply_rules(chain, size, rules)
-            openvpn.push_client_routes(
-                source.name,
-                network.push_routes(destination.virtual_address.ip),
-            )
-        else:
-            iptables.apply_rules(chain, size, network.iptable_rules())
-
+        control = VpnService(session)
+        control.network(network, True)
         session.add(network)
+        session.flush()
+        control.finish(resource_id=str(network.id))
         session.commit()
         session.refresh(network)
     except Exception as error:
@@ -116,7 +109,8 @@ async def create_restricted_network(
 
 
 @router.get("", response_model=list[RestrictedNetwork])
-async def retrieve_restricted_networks(
+@threaded
+def retrieve_restricted_networks(
     session: DBSession,
     _principal: RequireServerRead,
     source_name: str | None = None,
@@ -151,7 +145,8 @@ def get_restricted_network_record(
 
 
 @router.get("/{network_id}", response_model=RestrictedNetwork)
-async def retrieve_restricted_network(
+@threaded
+def retrieve_restricted_network(
     network_id: int,
     session: DBSession,
     _principal: RequireServerRead,
@@ -161,7 +156,8 @@ async def retrieve_restricted_network(
 
 
 @router.delete("/{network_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def drop_restricted_network(
+@threaded
+def drop_restricted_network(
     network_id: int,
     session: DBSession,
     _principal: RequireServerWrite,
@@ -172,18 +168,14 @@ async def drop_restricted_network(
         logger.info("Restricted network was already closed.")
         return
 
-    chain = "FORWARD"
     try:
-        if network.private_network_addresses:
-            source = get_client_by_name(network.source_name, session)
-            openvpn.pull_client_routes(source.name)
-            rules = network.iptable_rules() + network.private_iptable_rules()
-            iptables.drop_rules(chain, rules)
-        else:
-            iptables.drop_rules(chain, network.iptable_rules())
+        control = VpnService(session)
+        control.network(network, False)
 
         network.end_time = datetime.now(timezone.utc)
         session.add(network)
+        session.flush()
+        control.finish(resource_id=str(network.id))
         session.commit()
         session.refresh(network)
     except Exception as error:

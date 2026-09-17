@@ -1,4 +1,3 @@
-import ipaddress
 import logging
 from datetime import datetime
 from typing import Annotated
@@ -8,6 +7,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select
 
 from sciaiot.ovpncp import dependencies
+from sciaiot.ovpncp.application.validation import mask_sensitive
 from sciaiot.ovpncp.authorization import (
     PermissionRoute,
     RequireClientsRead,
@@ -32,8 +32,8 @@ from sciaiot.ovpncp.services.certificates import (
     CertificateArchiveError,
     CertificateArchiveService,
 )
-from sciaiot.ovpncp.utils import openvpn
-from sciaiot.ovpncp.utils.logging import mask_sensitive
+from sciaiot.ovpncp.services.dispatch import threaded
+from sciaiot.ovpncp.services.vpn import VpnService
 
 logger = logging.getLogger(__name__)
 DBSession = Annotated[Session, Depends(get_session)]
@@ -82,7 +82,8 @@ def _certificate_failure(operation: str) -> HTTPException:
 
 
 @router.post("", response_model=Client)
-async def create_client(
+@threaded
+def create_client(
     request: ClientBase,
     session: DBSession,
     _principal: RequireClientsWrite,
@@ -90,16 +91,20 @@ async def create_client(
     logger.info(f"Creating client {request.name}...")
     try:
         client = Client.model_validate(request)
-        if not openvpn.build_client(client.name):
-            raise RuntimeError("Client certificate creation failed.")
-
-        cert_details = openvpn.read_client_cert(client.name)
+        control = VpnService(session)
+        control.change_client(
+            client.name,
+            "issue",
+            desired={"action": "issue", **request.model_dump(mode="json")},
+        )
+        cert_details = control.certificate(client.name)
         cert = Cert(**cert_details)
         cert.client = client
         logger.info("Loaded client certificate details.")
 
         session.add(client)
         session.add(cert)
+        control.finish()
         session.commit()
         session.refresh(client)
     except Exception as error:
@@ -111,7 +116,8 @@ async def create_client(
 
 
 @router.get("", response_model=list[Client])
-async def retrieve_clients(
+@threaded
+def retrieve_clients(
     session: DBSession,
     _principal: RequireClientsRead,
 ):
@@ -122,7 +128,8 @@ async def retrieve_clients(
 
 
 @router.get("/{client_name}", response_model=ClientDetails)
-async def retrieve_client(
+@threaded
+def retrieve_client(
     client_name: str,
     session: DBSession,
     _principal: RequireClientsRead,
@@ -137,7 +144,8 @@ async def retrieve_client(
     "/{client_name}/package-cert",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def package_client_cert(
+@threaded
+def package_client_cert(
     client_name: str,
     session: DBSession,
     _principal: RequireClientsWrite,
@@ -189,7 +197,8 @@ def download_client_cert(
 
 
 @router.put("/{client_name}/renew-cert", response_model=CertBase)
-async def renew_client_cert(
+@threaded
+def renew_client_cert(
     client_name: str,
     session: DBSession,
     _principal: RequireClientsWrite,
@@ -204,12 +213,15 @@ async def renew_client_cert(
             detail="The client certificate record was not found.",
         )
     try:
-        cert_details = openvpn.renew_client_cert(client.name)
+        control = VpnService(session)
+        control.change_client(client.name, "renew")
+        cert_details = control.certificate(client.name)
         if not cert_details:
             raise RuntimeError("Renewed certificate details were unavailable.")
         for key, value in cert_details.items():
             setattr(cert, key, value)
         session.add(cert)
+        control.finish()
         session.commit()
         session.refresh(cert)
     except Exception as error:
@@ -220,7 +232,8 @@ async def renew_client_cert(
 
 
 @router.put("/{client_name}/revoke", response_model=ClientBase)
-async def revoke_client(
+@threaded
+def revoke_client(
     client_name: str,
     session: DBSession,
     _principal: RequireClientsWrite,
@@ -228,12 +241,11 @@ async def revoke_client(
     logger.info(f"Revoking client certificate for {client_name}...")
     client = get_client_by_name(client_name, session)
     try:
-        if not openvpn.revoke_client(client.name):
-            raise RuntimeError("Client certificate revocation failed.")
-        if not openvpn.generate_crl():
-            raise RuntimeError("Certificate revocation list generation failed.")
+        control = VpnService(session)
+        control.change_client(client.name, "revoke")
         client.revoked = True
         session.add(client)
+        control.finish()
         session.commit()
         session.refresh(client)
     except Exception as error:
@@ -245,7 +257,8 @@ async def revoke_client(
 
 
 @router.delete("/{client_name}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_client(
+@threaded
+def delete_client(
     client_name: str,
     session: DBSession,
     _principal: RequireClientsWrite,
@@ -268,10 +281,8 @@ async def delete_client(
         )
 
     try:
-        removal = openvpn.stage_client_file_removal(
-            client.name,
-            dependencies.certs_directory,
-        )
+        control = VpnService(session)
+        removal = control.removal(client.name)
     except Exception as error:
         logger.error("VPN client file cleanup could not be staged.")
         raise HTTPException(
@@ -294,6 +305,7 @@ async def delete_client(
             session.delete(assignment)
         client.virtual_address = None
         session.delete(client)
+        control.finish()
         session.commit()
     except Exception as error:
         session.rollback()
@@ -321,7 +333,8 @@ async def delete_client(
 
 
 @router.put("/{client_name}/assign-ip", response_model=ClientWithVirtualAddress)
-async def assign_virtual_address(
+@threaded
+def assign_virtual_address(
     client_name: str,
     address: VirtualAddressBase,
     session: DBSession,
@@ -356,13 +369,10 @@ async def assign_virtual_address(
         )
 
     server = get_server_record(session)
+    control = VpnService(session, server)
+    control.assignment(client.name, virtual_address.ip, client.cidr)
     client.virtual_address = virtual_address
-    openvpn.assign_client_ip(client.name, virtual_address.ip, server.subnet_mask)
-
-    if client.cidr:
-        network = ipaddress.ip_network(client.cidr, strict=False)
-        openvpn.add_iroute(client.name, f"{network.network_address} {network.netmask}")
-        logger.info("Added client iroute successfully.")
+    control.finish()
 
     session.add(client)
     session.commit()
@@ -373,7 +383,8 @@ async def assign_virtual_address(
 
 
 @router.delete("/{client_name}/unassign-ip", status_code=status.HTTP_204_NO_CONTENT)
-async def unassign_virtual_address(
+@threaded
+def unassign_virtual_address(
     client_name: str,
     session: DBSession,
     _principal: RequireClientsWrite,
@@ -387,7 +398,9 @@ async def unassign_virtual_address(
             detail=f'Client "{client_name}" has no virtual address assigned!',
         )
 
-    openvpn.unassign_client_ip(client.name)
+    control = VpnService(session)
+    control.assignment(client.name, None)
+    control.finish()
     client.virtual_address = None
 
     session.add(client)
@@ -398,7 +411,8 @@ async def unassign_virtual_address(
 
 
 @router.post("/{client_name}/connections", response_model=Connection)
-async def start_connection(
+@threaded
+def start_connection(
     client_name: str,
     request: StartConnectionRequest,
     session: DBSession,
@@ -421,7 +435,8 @@ async def start_connection(
 
 
 @router.put("/{client_name}/connections", response_model=Connection)
-async def close_connection(
+@threaded
+def close_connection(
     client_name: str,
     request: CloseConnectionRequest,
     session: DBSession,
@@ -482,7 +497,7 @@ def _import_clients(
     create_devices: bool = False,
 ) -> ClientImportSummary:
     """Import discovered Easy-RSA certificates in one transaction."""
-    discovered_names = openvpn.list_client_certs()
+    discovered = VpnService(session).discoveries()
 
     added_count = 0
     updated_count = 0
@@ -491,20 +506,11 @@ def _import_clients(
     devices_already_linked = 0
     device_conflicts = 0
 
-    for name in discovered_names:
-        if not openvpn.is_valid_name(name):
+    for candidate in discovered:
+        if candidate is None:
             clients_skipped += 1
             continue
-        if openvpn.client_is_revoked(name):
-            clients_skipped += 1
-            continue
-
-        cert_details = openvpn.read_client_cert(name)
-        if not cert_details:
-            clients_skipped += 1
-            continue
-
-        assigned_ip = openvpn.read_client_ip(name)
+        name, cert_details, assigned_ip = candidate
         virtual_address = None
         if assigned_ip:
             virtual_address = session.exec(
@@ -560,7 +566,8 @@ def _import_clients(
 
 
 @router.post("/import", response_model=ClientImportSummary)
-async def import_clients(
+@threaded
+def import_clients(
     session: DBSession,
     _principal: RequireClientsWrite,
     request: ClientImportRequest | None = None,

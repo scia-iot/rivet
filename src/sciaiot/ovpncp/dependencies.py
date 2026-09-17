@@ -3,6 +3,11 @@ import logging
 import os
 import shutil
 import stat
+from functools import lru_cache
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sciaiot.ovpncp.application.vpn_control.port import VpnControl
 from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine
@@ -55,3 +60,26 @@ def init_scripts():
         for path in target_folder.rglob("*.sh"):
             path.chmod(path.stat().st_mode | stat.S_IEXEC)
             logger.info(f"Made script {path} executable.")
+
+
+vpn_control: "VpnControl | None" = None
+
+
+@lru_cache(maxsize=1)
+def _configured_vpn_control() -> "VpnControl":
+    """Build only the explicitly configured local VPN implementation."""
+    from sciaiot.ovpncp.adapters.vpn.settings import BackendSettings
+
+    settings = BackendSettings.from_environment()
+    if settings.backend == "agent":
+        from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
+
+        return AgentVpnControl(settings.socket_path, peer_uid=settings.peer_uid)
+    from sciaiot.ovpncp.adapters.vpn.host import HostVpnControl
+
+    return HostVpnControl(archive_directory=certs_directory)
+
+
+def get_vpn_control() -> "VpnControl":
+    """Return the configured backend or an explicitly injected test port."""
+    return vpn_control if vpn_control is not None else _configured_vpn_control()

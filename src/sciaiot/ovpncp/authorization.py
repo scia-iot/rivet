@@ -1,5 +1,6 @@
 """Authentication principal normalization and authorization policies."""
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
@@ -278,7 +279,10 @@ def require_connection_hook_access(
     Raises:
         HTTPException: If a remote caller lacks client-write permission.
     """
-    if getattr(request.state, "local_connection_hook", False) is True:
+    if (
+        os.environ.get("OVPNCP_VPN_BACKEND", "host") == "host"
+        and getattr(request.state, "local_connection_hook", False) is True
+    ):
         return None
 
     principal = get_authenticated_principal(request)

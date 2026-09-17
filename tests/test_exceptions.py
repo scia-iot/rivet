@@ -84,11 +84,12 @@ def test_global_exception_handler_no_stack_trace(client: TestClient):
 
 def test_global_exception_handler_logs_error(client: TestClient, caplog):
     """
-    Test that the exception is logged.
+    Test that a fixed failure is logged without exception payloads.
     """
     caplog.clear()
     with caplog.at_level(logging.ERROR):
         client.get("/test-exception")
 
-    assert "Unhandled exception: Test exception" in caplog.text
-    assert "RuntimeError" in caplog.text
+    assert "Unhandled request failure." in caplog.text
+    assert "Test exception" not in caplog.text
+    assert "RuntimeError" not in caplog.text

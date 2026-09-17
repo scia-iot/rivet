@@ -1,9 +1,10 @@
 # VPN control protocol 1.0
 
-Status: Phase 1 complete; independent engineering review accepted 2026-09-16. This contract is
-unused by runtime routes. It adds no listener, adapter, command execution,
-filesystem access or privileged action. Phase 2 implements the application
-seam and adapters; Phases 3–4 implement/verify the actual agent. The accepted
+Status: Phase 1 and Phase 2 complete; independent engineering/security review
+accepted 2026-09-17.
+Runtime routes now use the application seam; no actual agent listener is
+installed. See [backend configuration and limitations](vpn-backends.md).
+Phases 3–4 implement/verify the actual agent. The accepted
 [Phase 0 decisions](container-architecture-decisions.md) remain authoritative.
 The complete public mapping is [the route matrix](vpn-control-route-matrix.md).
 
@@ -12,10 +13,10 @@ The complete public mapping is [the route matrix](vpn-control-route-matrix.md).
 `application.vpn_control.port.VpnControl` is a synchronous typed Protocol with
 `execute(Request) -> Response` and `open_archive(Request) -> ArchiveStream`.
 The package depends only on the standard library and existing Pydantic. It
-imports no routes, FastAPI, database, file or process implementation. It is
-not wired into existing API startup or dependency injection.
+imports no routes, FastAPI, database, file or process implementation. Phase 2
+wires adapters through API startup and dependency injection.
 
-Future HTTP transport uses POST `/v1/control` with `application/json` request
+The agent client uses POST `/v1/control` with `application/json` request
 and response over `/run/ovpn-agent/agent.sock`. The version is also required in
 the JSON envelope; only exact `1.0` is supported. POST `/v1/archive` accepts the
 same envelope with an Archive command. It returns a framed binary body:
@@ -24,7 +25,8 @@ containing ArchiveManifest, then exactly `manifest.size` ZIP bytes. Length is
 checked before allocation (1 MiB maximum); trailing bytes are an integrity
 failure. HTTP errors carry bounded Response/Failure JSON, never HTML/debug
 output. No base64 credential content, external URL, redirect or server path
-is part of either endpoint. Transport framing is specified, not implemented.
+is part of either endpoint. The Phase 2 client implements this framing; the
+production server remains a later phase. Framed successful replies use application/octet-stream.
 
 API performs verified Entra authentication, route permissions and local
 ownership before using the port. Agent independently admits only the configured

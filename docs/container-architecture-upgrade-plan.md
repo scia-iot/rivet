@@ -1,7 +1,7 @@
 # Container Architecture Upgrade Plan
 
-Status: Phase M0, Phase 0 and Phase 1 complete; Phase 2 planned
-Last updated: 2026-09-16
+Status: Phase M0, Phase 0, Phase 1 and Phase 2 complete; Phase 3 planned
+Last updated: 2026-09-17
 
 This document is the source of truth for introducing a container-first
 production architecture for ovpncp and OpenVPN. The current UAT topology is not
@@ -353,7 +353,7 @@ cross-node filesystem socket.
 | M0 | Portable OpenVPN migration toolkit | complete (documented stopped-target profile) | none |
 | 0 | Decisions, threat model, and measurable requirements | complete | M0 |
 | 1 | Privileged-operation interfaces and agent contract | complete | Phase 0 |
-| 2 | Agent client, fake agent, and legacy host adapter | planned | Phase 1 |
+| 2 | Agent client, fake agent, and legacy host adapter | complete | Phase 1 |
 | 3 | Read-only VPN agent in shadow mode | planned | Phase 2 |
 | 4 | All privileged mutations moved behind the agent | planned | Phase 3 |
 | 5 | Reproducible OpenVPN, agent, API, and UI images | planned | Phase 4 |
@@ -552,6 +552,9 @@ Rollback: remove the unused interfaces and schemas.
 
 ### Phase 2: application seam and legacy adapter
 
+Status: complete; independent engineering/security review accepted 2026-09-17.
+See [backend configuration, recovery and compatibility limits](vpn-backends.md).
+
 Deliverables:
 
 - Route all existing business services through VpnControl.
@@ -569,7 +572,9 @@ Exit criteria:
   host operations.
 - Static checks identify direct privileged calls outside approved adapters.
 
-Rollback: select the host adapter.
+Rollback: freeze control writes, reconcile pending agent workflows, preserve
+operation tables, and verify legacy host configuration/permissions before
+selecting the host adapter. A backend change must not bypass uncertain effects.
 
 ### Phase 3: read-only agent and shadow comparison
 
@@ -959,6 +964,86 @@ Deferred:
 - OS peer checks, durable actual journals, real PKI/ZIP generation, bounded
   blocking transport/queue enforcement and host/network effects require later
   adapter/runtime proofs; pure contract tests do not claim those proofs.
+
+### 2026-09-17 — Phase 2 completed
+
+Delivered:
+- Application VPN service routes lifecycle, address, route and restricted-network
+  operations through typed VpnControl adapters. Route handlers have no direct
+  utility imports; a static AST test rejects privileged imports/calls outside
+  approved adapters and the existing utility/migration boundaries.
+- Default HostVpnControl preserves legacy public projections, import skip
+  counts, certificate cache behavior and staged deletion rollback through
+  narrowly documented local compatibility methods. Unsupported agent-only
+  observations fail explicitly; uncertain host effects are not marked failed
+  before effects. Its finite process-local ledger is not a crash journal.
+- AgentVpnControl implements bounded HTTP/JSON and framed archive transport
+  over UDS, exact protocol handshake, kernel peer UID verification before
+  request bytes, correlation/integrity checks, total deadlines, fixed-length
+  bodies, four-stream ownership, cancellation and fixed redacted failures.
+- Deterministic fake implements typed state/ownership, bounded snapshots,
+  exact-ID replay, generation fencing and credential invalidation. Shared
+  conformance exercises actual fake/host/agent classes with disposable mocks
+  and a synthetic test-only Unix-socket peer.
+- OVPNCP_VPN_BACKEND defaults to host. Explicit agent selection requires a
+  validated canonical socket path and trusted OVPNCP_AGENT_UID; invalid
+  configuration fails closed. Agent mode skips host hook installation and
+  disables the legacy loopback authentication exemption.
+- API-owned workflow/step/cleanup tables persist complete desired intent and
+  exact per-step requests before remote dispatch. Unique active-resource and
+  step fences prevent changed or concurrent duplicate intents. Conditional
+  completion in the business transaction prevents duplicate business rows.
+  Uncertain retries query the original ID and validate retained evidence.
+- Agent profile/pool projection preserves public shapes with private path
+  markers and exact observed interface/server address. Pool allocation is
+  finite and excludes the actual server address. Discovery/route snapshots
+  reject repeated cursors, generation drift and count/deadline exhaustion.
+- Agent archive downloads consume and verify fresh active-generation bytes,
+  recheck before publication, and prevent Azure cache replacement. Local
+  invalidation cleanup remains tracked. Blocking workflows run in workers;
+  raw SQL/exception payloads are excluded from public errors and logs.
+- README, deployment environment example, protocol, route matrix and backend
+  operation/rollback documentation are synchronized.
+
+Verification:
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing -q`: 555 tests
+  passed in 23.30 seconds, including all 491 baseline tests and 64 additional
+  Phase 2 checks; overall coverage 91%.
+- New substantive modules: AgentVpnControl 86%, FakeVpnControl 84%,
+  HostVpnControl 81%, settings 89%, VpnService 90%; workflow models and worker
+  dispatch 100%. Certificate archive service coverage is 97%.
+- `ruff format --check .`: 98 files pass; `ruff check .`: passes.
+- `mypy --exclude '^build/' .`: 85 source files pass. The pre-existing ignored
+  build/lib duplicate still prevents plain `mypy .`; no source exclusion added.
+- Independent full OpenAPI comparison exactly matches the pre-Phase-2
+  baseline: 32 paths, 48 method/path operations, all component schemas and
+  permission/response metadata unchanged.
+- All 22 independent review regressions pass. Shared adapter conformance
+  covers success, validation, known failures, partial/lost replies, replay
+  fences, archives, unread cancellation and quotas. Additional synthetic UDS
+  checks cover peer denial before bytes, response correlation, redirects,
+  oversized bodies, framing failures, deadlines and fixed error handling.
+- TDD/review reproduced and fixed missing adapters, pagination cursor parsing,
+  revoked unread archives, unresolved-result retry, duplicate workflow
+  completion, server-address allocation, and invalid fake access ownership.
+  Worker responsiveness, SQL redaction, huge-pool refusal and unchanged host
+  API behavior are covered. The logging assertion now requires fixed redacted
+  failure text instead of raw exception content.
+- Independent engineering/security review accepted the completed application
+  seam, bounds, retry evidence, compatibility exceptions and phase scope.
+
+Operational limits and remaining phases:
+- No actual agent server, deployment, live VPN/PKI/firewall/route operation,
+  Azure mutation, new dependency, branch change, commit or pull request.
+- Phase 3 remains planned. Actual agent management-socket/event integration,
+  PKI packaging, durable privileged journal, crash/restart and runtime image
+  proof remain Phases 3–6. Retained fixture state is not OS crash-durability
+  evidence. Host rollback preserves its documented legacy limitations.
+- Freeze writes and reconcile pending agent operations before switching
+  backends; retain recovery records and verify the legacy host environment.
+  Background reconciliation, uncertain-operation operator resolution and Blob
+  orphan cleanup automation remain later phases. Agent downloads deliberately
+  use fresh verified bytes while host Azure behavior remains unchanged.
 
 ## Reference material
 

@@ -500,3 +500,10 @@ curl -X POST http://REMOTE_HOST/clients -H "Authorization: Bearer $ACCESS_TOKEN"
 2. Create a container named `ovpncp` on the storage account.
 
 3. Obtain the access key and set it to the `AZURE_STORAGE_CONNECTION_STRING`
+
+### VPN backend transition
+
+The API defaults to the legacy `host` backend. Phase 2 adds a typed agent
+client and isolated fake for tests; it does not start an agent service. See
+[VPN backend configuration and recovery](docs/vpn-backends.md) before setting
+`OVPNCP_VPN_BACKEND=agent`, its socket path, and trusted peer UID.

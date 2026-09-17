@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from sciaiot.ovpncp.dependencies import (
     create_app_directory,
     create_tables,
+    get_vpn_control,
     init_scripts,
 )
 from sciaiot.ovpncp.problems import PROBLEM_RESPONSES, problem_response
@@ -28,9 +29,14 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # startup
+    from sciaiot.ovpncp.adapters.vpn.settings import BackendSettings
+
+    settings = BackendSettings.from_environment()
+    get_vpn_control()
     create_app_directory()
     create_tables()
-    init_scripts()
+    if settings.backend == "host":
+        init_scripts()
     logger.info("Startup events finished.")
 
     yield
@@ -77,7 +83,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler to catch all unhandled errors."""
     # FastAPI invokes this outside the originating exception block.
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)  # noqa: LOG014
+    logger.error("Unhandled request failure.")
     return problem_response(
         request,
         500,

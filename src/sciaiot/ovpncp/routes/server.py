@@ -7,6 +7,7 @@ from pydantic import BaseModel, field_validator
 from sqlmodel import Session, select
 
 from sciaiot.ovpncp import dependencies
+from sciaiot.ovpncp.application.validation import is_rfc1918_ipv4_network
 from sciaiot.ovpncp.authorization import (
     PermissionRoute,
     RequireServerRead,
@@ -18,14 +19,15 @@ from sciaiot.ovpncp.data.server import (
     VirtualAddress,
 )
 from sciaiot.ovpncp.dependencies import get_session
+from sciaiot.ovpncp.services import vpn as openvpn
 from sciaiot.ovpncp.services.client_config import (
     ClientConfigGenerationError,
     normalize_remote_host,
     render_client_config,
     replace_client_config,
 )
-from sciaiot.ovpncp.utils import iproute, openvpn
-from sciaiot.ovpncp.utils.network import is_rfc1918_ipv4_network
+from sciaiot.ovpncp.services.dispatch import threaded
+from sciaiot.ovpncp.services.vpn import VpnService
 
 logger = logging.getLogger(__name__)
 DBSession = Annotated[Session, Depends(get_session)]
@@ -57,7 +59,8 @@ class ServiceHealth(BaseModel):
 
 
 @router.post("", response_model=ServerWithVirtualAddresses)
-async def init_server(
+@threaded
+def init_server(
     request: ServerInitializationRequest,
     session: DBSession,
     _principal: RequireServerWrite,
@@ -112,7 +115,8 @@ async def init_server(
 
 
 @router.put("/client-config", status_code=status.HTTP_204_NO_CONTENT)
-async def regenerate_client_config(
+@threaded
+def regenerate_client_config(
     request: ServerInitializationRequest,
     session: DBSession,
     _principal: RequireServerWrite,
@@ -160,7 +164,8 @@ def get_server_record(session: Session) -> Server:
 
 
 @router.get("", response_model=ServerWithVirtualAddresses)
-async def get_server(
+@threaded
+def get_server(
     session: DBSession,
     _principal: RequireServerRead,
 ):
@@ -169,7 +174,8 @@ async def get_server(
 
 
 @router.get("/health", response_model=ServiceHealth)
-async def get_service_health(_principal: RequireServerRead):
+@threaded
+def get_service_health(_principal: RequireServerRead):
     logger.info("Checking the service health...")
     try:
         service_health = openvpn.get_status()
@@ -186,7 +192,8 @@ async def get_service_health(_principal: RequireServerRead):
 
 
 @router.get("/assignable-virtual-addresses", response_model=list[VirtualAddress])
-async def get_assignable_virtual_addresses(
+@threaded
+def get_assignable_virtual_addresses(
     session: DBSession,
     _principal: RequireServerRead,
 ):
@@ -198,14 +205,15 @@ async def get_assignable_virtual_addresses(
 
 
 @router.get("/routes", response_model=list[str])
-async def get_routes(
+@threaded
+def get_routes(
     session: DBSession,
     _principal: RequireServerRead,
 ):
     logger.info("Getting the routes...")
     server = get_server_record(session)
     try:
-        routes = iproute.list(server.dev)
+        routes = VpnService(session, server).route_lines(server.dev)
     except Exception as error:
         logger.error("Server routes could not be loaded.")
         raise HTTPException(
@@ -220,7 +228,8 @@ async def get_routes(
 
 
 @router.post("/routes", status_code=status.HTTP_204_NO_CONTENT)
-async def add_route(
+@threaded
+def add_route(
     request: RouteRequest,
     session: DBSession,
     _principal: RequireServerWrite,
@@ -235,7 +244,7 @@ async def add_route(
 
     server = get_server_record(session)
     try:
-        iproute.add(request.network, server.ip, server.dev)
+        VpnService(session, server).route(request.network, server.ip, True)
     except Exception as error:
         logger.error("Server route addition failed.")
         raise HTTPException(
@@ -249,7 +258,8 @@ async def add_route(
 
 
 @router.delete("/routes", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_route(
+@threaded
+def delete_route(
     network: str,
     session: DBSession,
     _principal: RequireServerWrite,
@@ -263,8 +273,9 @@ async def delete_route(
         )
 
     server = get_server_record(session)
+    control = VpnService(session, server)
     try:
-        routes = iproute.list(server.dev)
+        routes = control.route_lines(server.dev)
     except Exception as error:
         logger.error("Server routes could not be loaded for deletion.")
         raise HTTPException(
@@ -279,7 +290,7 @@ async def delete_route(
         (route for route in routes if route.split(maxsplit=1)[0] == network),
         None,
     )
-    if target is None:
+    if target is None and not control.pending_route_removal(network):
         logger.error("Requested server route was not found.")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -287,7 +298,7 @@ async def delete_route(
         )
 
     try:
-        iproute.delete(target, server.dev)
+        control.route(network, server.ip, False)
     except Exception as error:
         logger.error("Server route removal failed.")
         raise HTTPException(
@@ -314,12 +325,27 @@ def load_from_config(
 
     network_address, subnet_mask = server_network.split()
     network = ipaddress.ip_network(f"{network_address}/{subnet_mask}", strict=False)
-    hosts = list(network.hosts())
-
+    agent_projection = config.get("ca") == "agent-managed"
+    if agent_projection:
+        if network.num_addresses > 65_536:
+            raise ValueError("The agent address pool exceeds the supported capacity.")
+        server_address = ipaddress.ip_address(str(config.get("ip")))
+        if server_address not in network or (
+            network.prefixlen < 31
+            and server_address in {network.network_address, network.broadcast_address}
+        ):
+            raise ValueError("The agent server address is outside the usable pool.")
+        hosts = [host for host in network.hosts() if host != server_address]
+        config["ip"] = str(server_address)
+        config["dev"] = device
+        for field in ("data_ciphers_fallback", "verb", "explicit_exit_notify"):
+            config.setdefault(field, "")
+    else:
+        hosts = list(network.hosts())
+        config["ip"] = hosts.pop(0).compressed
+        config["dev"] = f"{device}0"
     config["network_address"] = network_address
     config["subnet_mask"] = subnet_mask
-    config["ip"] = hosts.pop(0).compressed
-    config["dev"] = f"{device}0"
 
     server = Server(**cast(dict[str, Any], config))
     server.virtual_addresses = [
