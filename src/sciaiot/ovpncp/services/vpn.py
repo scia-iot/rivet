@@ -18,6 +18,7 @@ from sqlmodel import Session, col, select
 
 from sciaiot.ovpncp import dependencies
 from sciaiot.ovpncp.adapters.vpn.host import HostVpnControl
+from sciaiot.ovpncp.adapters.vpn.shadow import ShadowHostVpnControl
 from sciaiot.ovpncp.application.vpn_control import schemas as s
 from sciaiot.ovpncp.application.vpn_control import wire
 from sciaiot.ovpncp.application.vpn_control.errors import ControlError, ErrorCode
@@ -143,8 +144,14 @@ class VpnService:
         self.control = dependencies.get_vpn_control()
         self.host = isinstance(self.control, HostVpnControl)
         if isinstance(self.control, HostVpnControl):
-            self.control = HostVpnControl(
-                self.control.state,
+            factory: Any = HostVpnControl
+            extra = {}
+            if isinstance(self.control, ShadowHostVpnControl):
+                factory = ShadowHostVpnControl
+                extra["agent"] = self.control.agent
+            self.control = factory(
+                state=self.control.state,
+                **extra,
                 device=server.dev if server else "tun0",
                 subnet_mask=server.subnet_mask if server else "255.255.255.0",
                 archive_directory=dependencies.certs_directory,

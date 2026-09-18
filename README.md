@@ -507,3 +507,7 @@ The API defaults to the legacy `host` backend. Phase 2 adds a typed agent
 client and isolated fake for tests; it does not start an agent service. See
 [VPN backend configuration and recovery](docs/vpn-backends.md) before setting
 `OVPNCP_VPN_BACKEND=agent`, its socket path, and trusted peer UID.
+
+Read-only agent and opt-in legacy shadow comparison are documented in
+[VPN agent operation](docs/vpn-agent.md). Production defaults to the host
+backend; agent mutations remain a later phase.

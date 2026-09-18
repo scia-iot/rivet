@@ -211,10 +211,10 @@ def test_privileged_imports_are_confined_to_approved_boundaries():
     privileged = {"openvpn", "iproute", "iptables", "subprocess"}
     for path in root.rglob("*.py"):
         relative = path.relative_to(root)
-        if (
-            relative.parts[0] in {"utils", "migration"}
-            or relative.as_posix() == "adapters/vpn/host.py"
-        ):
+        if relative.parts[0] in {"utils", "migration"} or relative.as_posix() in {
+            "adapters/vpn/host.py",
+            "vpn_agent/bounded.py",
+        }:
             continue
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):

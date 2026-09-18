@@ -1,7 +1,7 @@
 # Container Architecture Upgrade Plan
 
-Status: Phase M0, Phase 0, Phase 1 and Phase 2 complete; Phase 3 planned
-Last updated: 2026-09-17
+Status: Phase M0 and Phases 0–3 complete; Phase 4 planned
+Last updated: 2026-09-18
 
 This document is the source of truth for introducing a container-first
 production architecture for ovpncp and OpenVPN. The current UAT topology is not
@@ -354,7 +354,7 @@ cross-node filesystem socket.
 | 0 | Decisions, threat model, and measurable requirements | complete | M0 |
 | 1 | Privileged-operation interfaces and agent contract | complete | Phase 0 |
 | 2 | Agent client, fake agent, and legacy host adapter | complete | Phase 1 |
-| 3 | Read-only VPN agent in shadow mode | planned | Phase 2 |
+| 3 | Read-only VPN agent in shadow mode | complete | Phase 2 |
 | 4 | All privileged mutations moved behind the agent | planned | Phase 3 |
 | 5 | Reproducible OpenVPN, agent, API, and UI images | planned | Phase 4 |
 | 6 | Compose reference and VPN integration | planned | Phase 5 |
@@ -577,6 +577,11 @@ operation tables, and verify legacy host configuration/permissions before
 selecting the host adapter. A backend change must not bypass uncertain effects.
 
 ### Phase 3: read-only agent and shadow comparison
+
+Status: complete; independent engineering/security review and disposable real
+OpenVPN shadow verification accepted 2026-09-18.
+
+Implementation and operational limits: [read-only agent](vpn-agent.md).
 
 Deliverables:
 
@@ -1035,7 +1040,8 @@ Verification:
 Operational limits and remaining phases:
 - No actual agent server, deployment, live VPN/PKI/firewall/route operation,
   Azure mutation, new dependency, branch change, commit or pull request.
-- Phase 3 remains planned. Actual agent management-socket/event integration,
+- At the Phase 2 handoff, Phase 3 remained planned. Actual agent
+  management-socket/event integration,
   PKI packaging, durable privileged journal, crash/restart and runtime image
   proof remain Phases 3–6. Retained fixture state is not OS crash-durability
   evidence. Host rollback preserves its documented legacy limitations.
@@ -1044,6 +1050,81 @@ Operational limits and remaining phases:
   Background reconciliation, uncertain-operation operator resolution and Blob
   orphan cleanup automation remain later phases. Agent downloads deliberately
   use fresh verified bytes while host Azure behavior remains unchanged.
+
+### 2026-09-18 — Phase 3 completed
+
+Implementation:
+- Separate `ovpncp-vpn-agent` and module entry points implement only seven
+  bounded read operations. Protected HTTP/JSON UDS authenticates the API UID
+  before reading headers/body; there is no TCP listener or archive endpoint.
+  Mutations, event acknowledgements, disconnect and reload are unavailable.
+- Protected OpenVPN management UDS verifies listener UID/GID before sending
+  only version, state and status 3. Readiness requires OpenVPN 2.6, connected
+  state, configured TUN link, nf_tables capability and complete declared owned
+  network realization. No management signal/client-mode fallback exists.
+- Sanitized configuration, directly verified public certificate/index/CCD
+  discovery, bounded session snapshots, protocol-200 route inspection and
+  exact paired owned-rule/push inspection. Read-only typed ownership inventory
+  never adopts foreign state. Content revisions/cursors reject observed drift;
+  no privileged mutation generation or journal is claimed.
+- Strict regular-file/no-symlink/no-hardlink reads, bounded command output
+  while consuming, deadlines, child kill/reap, socket cleanup and finite
+  connections/records/pages. API metadata, credentials and exception details
+  never enter shadow logs or agent error bodies.
+- Opt-in `shadow` preserves every host result, hook and mutation path while
+  comparing typed observations with a 500 ms budget and five-second outage
+  cooldown. Host remains the default. API OpenAPI is unchanged.
+- Minimal first-party agent Dockerfile excludes API/cloud/mutation utilities.
+  README, backend/protocol/agent operation docs and environment example are
+  synchronized. Phase 4 remains planned.
+
+Verification:
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing -q`: 605 tests
+  passed in 24.34 seconds; overall coverage 91%. New substantive modules:
+  shadow 93%, bounded readers 96%, CLI 93%, control 96%, files 96%, management
+  92%, network 91%, server 90%, settings 100%.
+- `ruff format --check .`: 114 files pass; `ruff check .`: passes.
+- `mypy --no-incremental --exclude '^build/' .`: 100 source files pass.
+  The existing ignored duplicate build/lib still prevents plain `mypy .`;
+  no application/test source exclusion was introduced.
+- `sh -n tests/integration/run_vpn_agent_namespace.sh` and `git diff --check`:
+  pass. Exact Docker COPY source subset imports in an isolated interpreter
+  without API, SQLModel, Azure or mutation utility code.
+- Independent OpenAPI comparison exactly matches the Phase 2 baseline:
+  32 paths and 48 method/path operations, schemas and metadata unchanged.
+- Independent security regressions cover incomplete management headers,
+  namespace refusal before fixture construction, and unexpected hardlinks.
+  TDD/review also reproduced and fixed failed-start socket cleanup and actual
+  iproute filtered output omitting the device field.
+- Final separate-process agent plus real OpenVPN 2.6.19 server/client passed
+  in private mount/network/PID namespaces on the authorized verification host.
+  Real active/revoked public PKI/CCD, live sessions, protocol-200 owned route
+  versus foreign route, paired rules/pushes, and all legacy/shadow comparisons
+  matched. Unsupported mutation returned unavailable. PKI/config/CCD and
+  namespace route/rule fingerprints remained unchanged during observation.
+- Terminating only the agent produced fixed unavailable results; both VPN
+  processes survived and a real client across a nested network namespace
+  retained TUN connectivity before and after agent loss. The reproducible
+  bounded `sudo timeout ... unshare ... run_vpn_agent_namespace.sh` command is
+  recorded in [agent operation](vpn-agent.md).
+- Host addresses, links, routes, rules, IPv4/IPv6 firewall and the pre-existing
+  OpenVPN process PID/start time matched the recorded pre-verification state.
+  Independent engineering/security review accepted the Phase 3 boundary.
+
+Operational changes and limits:
+- Only explicitly authorized synthetic disposable verification state and
+  private staging/evidence were created. No live VPN configuration/PKI,
+  service, host firewall/routes, Azure resources, branch, commit or PR changed.
+- The remote rehearsal proves read-only process/UDS behavior as root inside
+  isolated namespaces. It does not prove the final nonroot container identity,
+  mount, capability or confinement grants; those remain Phases 5–6.
+- No Docker/Podman/Buildah/BuildKit builder was available locally or remotely.
+  The minimal image definition and independent source import were checked,
+  but no image build/runtime test ran. Pinning, signatures, SBOM, scanning and
+  reproducible image gates remain Phase 5.
+- Durable privileged mutations, packaging, event spool/acknowledgement,
+  disconnect/reload, crash recovery and reconciliation remain Phase 4.
+  No production agent deployment or cutover is authorized by this completion.
 
 ## Reference material
 

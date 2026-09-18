@@ -159,7 +159,7 @@ def _route_path(request: Request) -> str:
 
 def _is_local_connection_hook(request: Request) -> bool:
     """Return whether the request is an exact loopback OpenVPN hook."""
-    if os.environ.get("OVPNCP_VPN_BACKEND", "host") != "host":
+    if os.environ.get("OVPNCP_VPN_BACKEND", "host") not in {"host", "shadow"}:
         return False
     path_parts = _route_path(request).strip("/").split("/")
     is_connection_hook = (

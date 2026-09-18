@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     get_vpn_control()
     create_app_directory()
     create_tables()
-    if settings.backend == "host":
+    if settings.backend in {"host", "shadow"}:
         init_scripts()
     logger.info("Startup events finished.")
 

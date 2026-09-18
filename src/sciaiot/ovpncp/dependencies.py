@@ -71,10 +71,15 @@ def _configured_vpn_control() -> "VpnControl":
     from sciaiot.ovpncp.adapters.vpn.settings import BackendSettings
 
     settings = BackendSettings.from_environment()
-    if settings.backend == "agent":
+    if settings.backend in {"agent", "shadow"}:
         from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
 
-        return AgentVpnControl(settings.socket_path, peer_uid=settings.peer_uid)
+        agent = AgentVpnControl(settings.socket_path, peer_uid=settings.peer_uid)
+        if settings.backend == "shadow":
+            from sciaiot.ovpncp.adapters.vpn.shadow import ShadowHostVpnControl
+
+            return ShadowHostVpnControl(agent, archive_directory=certs_directory)
+        return agent
     from sciaiot.ovpncp.adapters.vpn.host import HostVpnControl
 
     return HostVpnControl(archive_directory=certs_directory)

@@ -1,24 +1,26 @@
 # VPN application backends
 
-Phase 2 introduces the application seam. It does not install or start a VPN
-agent. Keep existing deployments on the default `host` backend. The actual
-agent service and privileged crash-recovery implementation belong to Phases
-3–4 of the [upgrade plan](container-architecture-upgrade-plan.md).
+Phase 2 introduced the application seam. Phase 3 adds a separate read-only
+agent and opt-in `shadow` comparison; see [agent operation](vpn-agent.md).
+Keep existing deployments on the default `host` backend. Privileged agent
+mutations and crash recovery remain Phase 4 of the
+[upgrade plan](container-architecture-upgrade-plan.md).
 
 ## Configuration
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `OVPNCP_VPN_BACKEND` | `host` | Exactly `host` or `agent`; invalid or empty values fail startup. |
+| `OVPNCP_VPN_BACKEND` | `host` | Exactly `host`, `shadow` or `agent`; invalid or empty values fail startup. |
 | `OVPNCP_AGENT_SOCKET` | `/run/ovpn-agent/agent.sock` | Canonical absolute ASCII filesystem socket path, at most 107 bytes; traversal, control characters and URLs are rejected. |
-| `OVPNCP_AGENT_UID` | unset | Numeric trusted agent UID; required with `agent`. The client checks Linux `SO_PEERCRED` before transmitting any request bytes. |
+| `OVPNCP_AGENT_UID` | unset | Numeric trusted agent UID; required with `agent` or `shadow`. The client checks Linux `SO_PEERCRED` before transmitting any request bytes. |
 
 No TCP fallback, redirects, token forwarding, privilege escalation or automatic
 mutation replay is supported. Configured settings are validated at startup;
 restart the API to change its backend. Agent mode also removes the legacy
 loopback connection-hook authentication exception and skips installing host
 hook scripts. Agent daemon event ingestion is a later phase, not an anonymous
-callback to the business API.
+callback to the business API. Shadow mode retains the host hooks and loopback
+exception because all legacy VPN behavior remains host-owned.
 
 The API uses a synchronous typed port. Blocking workflow handlers run in the
 ASGI worker pool, leaving the event loop available during agent outages. The
@@ -108,5 +110,7 @@ production environment setting. Shared core, validation, failure and archive
 conformance runs against it, the host adapter with mocked privileged helpers,
 and the agent client talking to a synthetic test-only Unix-socket peer.
 These tests never touch host firewall/routes, live PKI, VPN services or Azure.
-Real agent privilege, management socket, packaging and crash-recovery proof
-remains mandatory in subsequent phases.
+Phase 3 adds actual read-only agent and management-socket verification on a
+disposable real OpenVPN host; see [agent operation](vpn-agent.md). Exact
+container grants, credential packaging and privileged crash recovery still
+require the later phase gates.

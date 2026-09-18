@@ -275,3 +275,13 @@ The tests-only reference models durable IDs/generation and synthetic archive
 ownership; it is not the production fake or proof of OS persistence, real PKI,
 network rendering, peer credentials or socket deadlines. Those adapter/runtime
 proofs remain required in Phases 2–6. Ordinary tests perform no privileged IO.
+
+## Phase 3 runtime subset
+
+The read-only agent implements health, server_config, list_clients, get_client,
+list_routes, list_access and list_sessions only. All other commands receive
+fixed unavailable failures; no archive endpoint exists. Its content-derived
+observation revisions and agent-lifetime session IDs cannot authorize writes.
+See [agent operation](vpn-agent.md) for peer checks, limits and ownership
+inspection. Full vocabulary remains the Phase 4 contract, not an assertion
+that read-only observation implements durable mutations or events.
