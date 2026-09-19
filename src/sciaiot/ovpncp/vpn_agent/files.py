@@ -1,8 +1,11 @@
 """Bounded sanitized config, certificate and CCD observations."""
 
 import ipaddress
+import json
 import os
+import re
 import shlex
+from pathlib import Path
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
@@ -109,11 +112,17 @@ def _clients_once(settings: Settings, deadline: float) -> tuple[s.ClientMetadata
         bounded.read_file(settings.pki_path / "ca.crt", deadline)
     )
     revoked: dict[int, str] = {}
+    historical: dict[str, str] = {}
     for line in index.decode("utf-8").splitlines():
         fields = line.split("\t")
         if len(fields) != 6 or fields[0] not in {"V", "R", "E"}:
             raise ControlError(ErrorCode.INTEGRITY)
+        if re.fullmatch(r"[0-9A-Fa-f]{1,128}", fields[3]) is None:
+            raise ControlError(ErrorCode.INTEGRITY)
         serial = int(fields[3], 16)
+        common_name = re.search(r"(?:^|/)CN=([A-Za-z0-9_-]{1,255})(?:/|$)", fields[5])
+        if fields[0] == "R" and common_name is not None:
+            historical[common_name.group(1)] = fields[3]
         if serial in revoked:
             raise ControlError(ErrorCode.INTEGRITY)
         revoked[serial] = fields[0]
@@ -132,11 +141,22 @@ def _clients_once(settings: Settings, deadline: float) -> tuple[s.ClientMetadata
                 raise ControlError(ErrorCode.EXHAUSTED)
             if entry.name.endswith(".crt"):
                 names.append(entry.name[:-4])
+    sources = {name: issued / f"{name}.crt" for name in names}
+    deleted = deleted_clients(settings, deadline)
+    for name, serial_text in historical.items():
+        if name not in sources and deleted.get(name) != serial_text:
+            candidate = (
+                settings.pki_path / "revoked" / "certs_by_serial" / f"{serial_text}.crt"
+            )
+            if candidate.exists() or candidate.is_symlink():
+                sources[name] = candidate
+    if len(sources) > bounded.MAX_RECORDS:
+        raise ControlError(ErrorCode.EXHAUSTED)
     result: list[s.ClientMetadata] = []
     total = 0
-    for name in sorted(names):
+    for name in sorted(sources):
         s.GetClient(client=name)
-        raw = bounded.read_file(issued / f"{name}.crt", deadline, 65536)
+        raw = bounded.read_file(sources[name], deadline, 65536)
         total += len(raw)
         if total > 16 * bounded.MAX_BYTES:
             raise ControlError(ErrorCode.EXHAUSTED)
@@ -183,3 +203,49 @@ def _clients_once(settings: Settings, deadline: float) -> tuple[s.ClientMetadata
         )
     bounded.remaining(deadline)
     return tuple(result)
+
+
+def deleted_clients(settings: Settings, deadline: float) -> dict[str, str]:
+    """Read only serial-scoped deletion markers, preserving CA audit history."""
+    try:
+        value = json.loads(
+            bounded.read_file(settings.pki_path / "ovpncp-deleted.json", deadline)
+        )
+    except FileNotFoundError:
+        return {}
+    if not isinstance(value, dict) or len(value) > bounded.MAX_RECORDS:
+        raise ControlError(ErrorCode.INTEGRITY)
+    for name, serial in value.items():
+        s.GetClient(client=name)
+        if (
+            not isinstance(serial, str)
+            or re.fullmatch(r"[0-9A-Fa-f]{1,128}", serial) is None
+        ):
+            raise ControlError(ErrorCode.INTEGRITY)
+    return value
+
+
+def certificate_path(settings: Settings, name: str, deadline: float) -> Path:
+    """Resolve the current issued or latest revoked leaf through the CA index."""
+    s.GetClient(client=name)
+    issued = settings.pki_path / "issued" / f"{name}.crt"
+    if issued.exists() or issued.is_symlink():
+        return issued
+    found: str | None = None
+    for line in (
+        bounded.read_file(settings.pki_path / "index.txt", deadline)
+        .decode()
+        .splitlines()
+    ):
+        fields = line.split("\t")
+        if (
+            len(fields) == 6
+            and fields[0] == "R"
+            and re.search(rf"(?:^|/)CN={re.escape(name)}(?:/|$)", fields[5])
+        ):
+            if re.fullmatch(r"[0-9A-Fa-f]{1,128}", fields[3]) is None:
+                raise ControlError(ErrorCode.INTEGRITY)
+            found = fields[3]
+    if found is None:
+        raise ControlError(ErrorCode.NOT_FOUND)
+    return settings.pki_path / "revoked" / "certs_by_serial" / f"{found}.crt"

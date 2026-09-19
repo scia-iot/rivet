@@ -1,4 +1,4 @@
-"""Standalone entry point for the private read-only agent."""
+"""Standalone entry point for the private VPN agent."""
 
 import signal
 

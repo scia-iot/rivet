@@ -1,4 +1,4 @@
-"""Run the private read-only agent as a Python module."""
+"""Run the private VPN agent as a Python module."""
 
 from .cli import main
 

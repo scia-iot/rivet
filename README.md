@@ -510,4 +510,6 @@ client and isolated fake for tests; it does not start an agent service. See
 
 Read-only agent and opt-in legacy shadow comparison are documented in
 [VPN agent operation](docs/vpn-agent.md). Production defaults to the host
-backend; agent mutations remain a later phase.
+backend. Agent mutation families, durable recovery, local daemon event hooks
+and credential streaming require explicit opt-in settings documented there;
+production image, deployment and cutover gates remain later phases.

@@ -4,8 +4,10 @@ import hashlib
 import os
 import re
 import selectors
+import signal
 import stat
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
@@ -84,14 +86,42 @@ def observe(kind: str, device: str, deadline: float) -> bytes:
     }
     if kind not in commands:
         raise ControlError(ErrorCode.INVALID_INPUT)
-    process = subprocess.Popen(
-        commands[kind],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        close_fds=True,
-        env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C"},
-    )
+    return command(commands[kind], deadline)
+
+
+def command(
+    arguments: list[str], deadline: float, input_data: bytes | None = None
+) -> bytes:
+    """Run internally constructed argument arrays with bounded output/deadline.
+
+    This private helper is never exposed as a wire operation; callers must
+    construct arguments from validated domain commands and deployment settings.
+    """
+    staged = tempfile.TemporaryFile() if input_data is not None else None  # noqa: SIM115 - closed before child output handling
+    if staged is not None:
+        assert input_data is not None
+        if len(input_data) > MAX_BYTES:
+            staged.close()
+            raise ControlError(ErrorCode.EXHAUSTED)
+        staged.write(input_data)
+        staged.seek(0)
+    try:
+        process = subprocess.Popen(
+            arguments,
+            stdin=staged if staged is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+            env={
+                "PATH": "/usr/sbin:/usr/bin:/sbin:/bin",
+                "LC_ALL": "C",
+                "EASYRSA_NO_VARS": "1",
+            },
+        )
+    finally:
+        if staged is not None:
+            staged.close()
     try:
         assert process.stdout is not None
         with selectors.DefaultSelector() as selector:
@@ -110,8 +140,10 @@ def observe(kind: str, device: str, deadline: float) -> bytes:
                 raise ControlError(ErrorCode.UNAVAILABLE)
             return bytes(result)
     finally:
-        if process.poll() is None:
-            process.kill()
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         process.wait()
         if process.stdout is not None:
             process.stdout.close()

@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import importlib.resources
 import logging
@@ -10,6 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from sciaiot.ovpncp import dependencies
 from sciaiot.ovpncp.dependencies import (
     create_app_directory,
     create_tables,
@@ -18,6 +20,7 @@ from sciaiot.ovpncp.dependencies import (
 )
 from sciaiot.ovpncp.problems import PROBLEM_RESPONSES, problem_response
 from sciaiot.ovpncp.routes import client, identity, network, server
+from sciaiot.ovpncp.services.vpn_recovery import BackgroundSettings, BackgroundWorker
 
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = os.environ.get("PORT", "8000")
@@ -32,17 +35,24 @@ async def lifespan(app: FastAPI):
     from sciaiot.ovpncp.adapters.vpn.settings import BackendSettings
 
     settings = BackendSettings.from_environment()
-    get_vpn_control()
+    background = BackgroundSettings.from_environment()
+    control = get_vpn_control()
     create_app_directory()
     create_tables()
     if settings.backend in {"host", "shadow"}:
         init_scripts()
     logger.info("Startup events finished.")
 
-    yield
-
-    # shutdown
-    logger.info("Shutdown events finished.")
+    worker = None
+    if settings.backend == "agent" and (background.events or background.reconcile):
+        worker = BackgroundWorker(dependencies.engine, control, background)
+        worker.start()
+    try:
+        yield
+    finally:
+        if worker is not None:
+            await asyncio.to_thread(worker.close)
+        logger.info("Shutdown events finished.")
 
 
 app = FastAPI(lifespan=lifespan, responses=PROBLEM_RESPONSES)

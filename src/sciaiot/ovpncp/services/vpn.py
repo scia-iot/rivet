@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from sqlalchemy import update
+from sqlalchemy import delete, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import Session, col, select
 
@@ -24,7 +24,13 @@ from sciaiot.ovpncp.application.vpn_control import wire
 from sciaiot.ovpncp.application.vpn_control.errors import ControlError, ErrorCode
 from sciaiot.ovpncp.data.network import RestrictedNetwork
 from sciaiot.ovpncp.data.server import Server
-from sciaiot.ovpncp.data.vpn import VpnArchiveCleanup, VpnStep, VpnWorkflow
+from sciaiot.ovpncp.data.vpn import (
+    VpnArchiveCleanup,
+    VpnStep,
+    VpnStepAttempt,
+    VpnWorkflow,
+)
+from sciaiot.ovpncp.services.vpn_recovery import recover_response
 
 
 def validate_name(name: str) -> None:
@@ -135,7 +141,7 @@ class VpnService:
 
     Remote mutations persist complete desired intent and every immutable step
     before dispatch. An uncertain step is looked up under its original ID;
-    not_found never authorizes silent replay. Business completion is committed
+    a missing lookup can only resubmit that same journal-fenced intent. Business completion is committed
     in the caller's existing transaction via finish().
     """
 
@@ -239,6 +245,66 @@ class VpnService:
         self.position = 0
         return self.workflow_id
 
+    def _retry_rejected(
+        self, journal: Session, step: VpnStep, command: s.Command
+    ) -> tuple[VpnStep, s.Request, bool]:
+        """Retain rejection evidence before a separately authorized fresh attempt.
+
+        Called only for a validated terminal failed result with no effects. A
+        partial/unknown/expired result can never reach this replacement path.
+        """
+        health = self._read(s.Health())
+        if not isinstance(health, s.HealthResult) or not health.ready:
+            raise ControlError(ErrorCode.UNAVAILABLE)
+        assert step.response_json is not None
+        original = request(
+            command,
+            operation_id=str(uuid.uuid4()),
+            expected_generation=health.generation,
+        )
+        assert original.operation_id is not None
+        replacement = VpnStep(
+            id=original.operation_id,
+            workflow_id=step.workflow_id,
+            position=step.position,
+            request_json=wire.encode(original).decode(),
+        )
+        try:
+            journal.add(
+                VpnStepAttempt(
+                    id=step.id,
+                    workflow_id=step.workflow_id,
+                    position=step.position,
+                    request_json=step.request_json,
+                    response_json=step.response_json,
+                )
+            )
+            removed = journal.connection().execute(
+                delete(VpnStep).where(
+                    col(VpnStep.id) == step.id,
+                    col(VpnStep.response_json) == step.response_json,
+                )
+            )
+            if removed.rowcount != 1:
+                raise ControlError(ErrorCode.CONFLICT)
+            journal.expunge(step)
+            journal.add(replacement)
+            journal.commit()
+            journal.refresh(replacement)
+            return replacement, original, False
+        except IntegrityError:
+            journal.rollback()
+            active = journal.exec(
+                select(VpnStep).where(
+                    VpnStep.workflow_id == self.workflow_id,
+                    VpnStep.position == self.position,
+                )
+            ).one()
+            saved = wire.decode_request(active.request_json.encode())
+            if saved.command != command:
+                raise ControlError(ErrorCode.CONFLICT) from None
+            return active, saved, True
+
     def _mutate(self, command: s.Command) -> None:
         if self.host:
             assert isinstance(self.control, HostVpnControl)
@@ -300,6 +366,17 @@ class VpnService:
                 if step.response_json is not None
                 else None
             )
+            if (
+                cached is not None
+                and isinstance(cached.result, s.MutationResult)
+                and cached.result.state == "failed"
+            ):
+                step, original, existing = self._retry_rejected(journal, step, command)
+                cached = (
+                    wire.decode_response(step.response_json.encode(), original)
+                    if step.response_json is not None
+                    else None
+                )
             terminal = (
                 cached is not None
                 and isinstance(cached.result, s.MutationResult)
@@ -309,13 +386,9 @@ class VpnService:
                 assert cached is not None
                 response = cached
             elif existing:
-                lookup = self.control.execute(
-                    request(s.LookupOperation(operation_id=step.id))
+                response = recover_response(
+                    self.control, original, deadline_ms=original.deadline_ms
                 )
-                response = s.Response(
-                    request_id=original.request_id, result=lookup.result
-                )
-                response = wire.decode_response(wire.encode(response), original)
             else:
                 response = self.control.execute(original)
             step.response_json = wire.encode(response).decode()

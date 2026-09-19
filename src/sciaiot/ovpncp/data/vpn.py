@@ -40,3 +40,17 @@ class VpnArchiveCleanup(SQLModel, table=True):
 
     client: str = Field(primary_key=True)
     pending: bool = True
+
+
+class VpnStepAttempt(SQLModel, table=True):
+    """Retain proven rejected attempts when an authorized retry creates a new ID."""
+
+    id: str = Field(primary_key=True)
+    workflow_id: str = Field(index=True)
+    position: int
+    request_json: str = Field(
+        sa_column=Column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)
+    )
+    response_json: str = Field(
+        sa_column=Column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)
+    )

@@ -136,17 +136,17 @@ def test_atomic_replacement_restores_old_file_when_install_fails(
     real_replace = __import__("os").replace
     calls = 0
 
-    def fail_second_replace(source: object, destination: object) -> None:
+    def fail_first_install(source: object, destination: object) -> None:
         nonlocal calls
         calls += 1
-        if calls == 2:
+        if calls == 1:
             raise OSError("simulated failure")
         real_replace(source, destination)
 
     with (
         patch(
             "sciaiot.ovpncp.services.client_config.os.replace",
-            side_effect=fail_second_replace,
+            side_effect=fail_first_install,
         ),
         pytest.raises(ClientConfigGenerationError),
     ):
@@ -157,3 +157,87 @@ def test_atomic_replacement_restores_old_file_when_install_fails(
 
     assert target.read_bytes() == previous
     assert not list(tmp_path.glob(".client.ovpn.*"))
+
+
+def test_profile_remains_visible_until_atomic_publication(tmp_path, monkeypatch):
+    """Keeping a rollback copy must not first remove the published profile."""
+    import os
+
+    target = tmp_path / "client.ovpn"
+    previous = b"client\nremote old.example.test 1194\n"
+    target.write_bytes(previous)
+    replace = os.replace
+
+    def observed(source, destination):
+        assert target.exists()
+        assert Path(source) != target
+        return replace(source, destination)
+
+    monkeypatch.setattr("sciaiot.ovpncp.services.client_config.os.replace", observed)
+    installed = replace_client_config(
+        str(target), render_client_config(server_config(), "new.example.test")
+    )
+    installed.commit()
+
+
+@pytest.mark.parametrize("alias", ["symlink", "hardlink"])
+def test_profile_refuses_aliased_destination(tmp_path, alias):
+    source = tmp_path / "other"
+    source.write_bytes(b"client\nremote old.example.test 1194\n")
+    target = tmp_path / "client.ovpn"
+    if alias == "symlink":
+        target.symlink_to(source)
+    else:
+        target.hardlink_to(source)
+    with pytest.raises(ClientConfigGenerationError):
+        replace_client_config(
+            str(target), render_client_config(server_config(), "new.example.test")
+        )
+    assert source.read_bytes() == b"client\nremote old.example.test 1194\n"
+
+
+def test_profile_writer_is_fenced_until_business_completion(tmp_path):
+    target = tmp_path / "client.ovpn"
+    content = render_client_config(server_config(), "vpn.example.test")
+    first = replace_client_config(str(target), content)
+    try:
+        with pytest.raises(ClientConfigGenerationError):
+            replace_client_config(str(target), content)
+    finally:
+        first.commit()
+    next_write = replace_client_config(str(target), content)
+    next_write.rollback()
+    assert target.read_bytes() == content
+
+
+def test_profile_directory_entries_are_synced(tmp_path, monkeypatch):
+    import os
+    import stat
+
+    synced = []
+    fsync = os.fsync
+
+    def observe(descriptor):
+        synced.append(stat.S_ISDIR(os.fstat(descriptor).st_mode))
+        return fsync(descriptor)
+
+    monkeypatch.setattr("sciaiot.ovpncp.services.client_config.os.fsync", observe)
+    replacement = replace_client_config(
+        str(tmp_path / "client.ovpn"),
+        render_client_config(server_config(), "vpn.example.test"),
+    )
+    replacement.rollback()
+    assert True in synced and False in synced
+
+
+def test_profile_rejects_ancestor_symlink_before_creating_directories(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ClientConfigGenerationError):
+        replace_client_config(
+            str(alias / "new" / "client.ovpn"),
+            render_client_config(server_config(), "vpn.example.test"),
+        )
+    assert list(outside.iterdir()) == []

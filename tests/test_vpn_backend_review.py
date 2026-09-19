@@ -312,3 +312,41 @@ def test_agent_address_pool_excludes_the_observed_server_address() -> None:
     assert server.ip == "10.8.0.5"
     assert server.ip not in addresses
     assert "10.8.0.1" in addresses
+
+
+def test_agent_can_lookup_durable_operations_while_not_ready(monkeypatch):
+    """Recovery must remain reachable when unresolved effects gate new work."""
+    import uuid
+
+    from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
+    from sciaiot.ovpncp.application.vpn_control import schemas as s
+    from sciaiot.ovpncp.application.vpn_control.errors import ControlError, ErrorCode
+
+    control = AgentVpnControl("/run/ovpn-agent/agent.sock", peer_uid=0)
+    observed = []
+
+    def exchange(request, deadline):
+        observed.append(request.command)
+        result = (
+            s.HealthResult(ready=False, generation=1)
+            if isinstance(request.command, s.Health)
+            else s.Failure(code=ErrorCode.NOT_FOUND)
+        )
+        return s.Response(request_id=request.request_id, result=result)
+
+    monkeypatch.setattr(control, "_json", exchange)
+    with pytest.raises(ControlError) as caught:
+        control.execute(
+            s.Request(
+                request_id=str(uuid.uuid4()),
+                command=s.LookupOperation(operation_id=str(uuid.uuid4())),
+            )
+        )
+    assert caught.value.code == ErrorCode.NOT_FOUND
+    assert isinstance(observed[-1], s.LookupOperation)
+    with pytest.raises(ControlError) as caught:
+        control.execute(
+            s.Request(request_id=str(uuid.uuid4()), command=s.ListClients())
+        )
+    assert caught.value.code == ErrorCode.UNAVAILABLE
+    assert isinstance(observed[-1], s.Health)

@@ -25,8 +25,7 @@ containing ArchiveManifest, then exactly `manifest.size` ZIP bytes. Length is
 checked before allocation (1 MiB maximum); trailing bytes are an integrity
 failure. HTTP errors carry bounded Response/Failure JSON, never HTML/debug
 output. No base64 credential content, external URL, redirect or server path
-is part of either endpoint. The Phase 2 client implements this framing; the
-production server remains a later phase. Framed successful replies use application/octet-stream.
+is part of either endpoint. The client and feature-gated Phase 4 agent implement this framing. Framed successful replies use application/octet-stream.
 
 API performs verified Entra authentication, route permissions and local
 ownership before using the port. Agent independently admits only the configured
@@ -280,8 +279,30 @@ proofs remain required in Phases 2–6. Ordinary tests perform no privileged IO.
 
 The read-only agent implements health, server_config, list_clients, get_client,
 list_routes, list_access and list_sessions only. All other commands receive
-fixed unavailable failures; no archive endpoint exists. Its content-derived
-observation revisions and agent-lifetime session IDs cannot authorize writes.
+fixed unavailable failures when mutation families are disabled. Its
+content-derived observation revisions do not authorize writes.
 See [agent operation](vpn-agent.md) for peer checks, limits and ownership
 inspection. Full vocabulary remains the Phase 4 contract, not an assertion
 that read-only observation implements durable mutations or events.
+
+
+## Phase 4 gated runtime
+
+Explicit mutation families enable the full typed vocabulary and framed archives.
+Health/config use the durable mutation generation; client/archive metadata keeps
+content-derived generation fencing. Every accepted intent and exact per-effect
+before/after evidence is persisted before effects. Known pre-effect rejections
+remain queryable, uncertain writes remain fenced, and Lookup negotiates protocol
+without requiring readiness. No arbitrary executable, path or raw command is
+accepted over the wire.
+
+The agent implements owned CCD/projection edits, allocated-protocol routes,
+paired firewall rules with terminal denial, Easy-RSA lifecycle, bounded archives,
+local protected daemon events, exact-session disconnect and controlled reload.
+Reload uses SIGUSR1 with validated persist-tun/persist-key, then verifies daemon
+health and unchanged network state. It does not reread static configuration;
+static configuration changes and full restart remain deployment-owned.
+Read [agent operation](vpn-agent.md) for required bootstrap, compatibility limits,
+retention, privileged execution boundaries, failure recovery and family rollback.
+The upgrade plan records verification; opt-in implementation is not production
+cutover authorization.

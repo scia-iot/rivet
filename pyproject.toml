@@ -42,6 +42,7 @@ content-type = "text/markdown"
 
 [project.scripts]
 ovpncp = "sciaiot.ovpncp.main:run"
+ovpncp-vpn-event = "sciaiot.ovpncp.vpn_agent.event_hook:main"
 ovpncp-vpn-agent = "sciaiot.ovpncp.vpn_agent.cli:main"
 ovpncp-migrate = "sciaiot.ovpncp.migration.cli:main"
 

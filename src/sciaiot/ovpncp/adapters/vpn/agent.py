@@ -214,7 +214,7 @@ class AgentVpnControl:
         finally:
             body.close()
 
-    def _handshake(self, deadline: float) -> None:
+    def _handshake(self, deadline: float, *, require_ready: bool = True) -> None:
         budget = int((deadline - time.monotonic()) * 1000)
         if budget <= 0:
             raise ControlError(ErrorCode.TIMEOUT)
@@ -225,7 +225,9 @@ class AgentVpnControl:
         )
         response = self._json(request, deadline)
         wire.require_success(response)
-        if not isinstance(response.result, s.HealthResult) or not response.result.ready:
+        if not isinstance(response.result, s.HealthResult) or (
+            require_ready and not response.result.ready
+        ):
             raise ControlError(ErrorCode.UNAVAILABLE)
 
     def execute(self, request: s.Request) -> s.Response:
@@ -235,7 +237,10 @@ class AgentVpnControl:
             raise ControlError(ErrorCode.INVALID_INPUT)
         deadline = time.monotonic() + request.deadline_ms / 1000
         if not isinstance(request.command, s.Health):
-            self._handshake(deadline)
+            self._handshake(
+                deadline,
+                require_ready=not isinstance(request.command, s.LookupOperation),
+            )
         response = self._json(request, deadline)
         if isinstance(response.result, s.Failure):
             raise ControlError(response.result.code)

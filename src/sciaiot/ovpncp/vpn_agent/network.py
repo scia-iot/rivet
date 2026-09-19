@@ -60,7 +60,7 @@ def routes(
                 item.get("dst") == route.network
                 and item.get("gateway") == route.gateway
                 and item.get("dev") == config.device
-                and str(item.get("protocol")) == "200"
+                and str(item.get("protocol")) == str(settings.route_protocol or 200)
                 and item.get("type", "unicast") == "unicast"
                 and "multipath" not in item
             )
@@ -94,7 +94,11 @@ def access(
 ) -> tuple[tuple[s.AccessIntent, ...], tuple[s.OwnedPushes, ...]]:
     """Report only fully realized paired rules and declared CCD pushes."""
     declared = ownership(settings, deadline)
-    if not declared.access and not declared.pushes:
+    if (
+        not declared.access
+        and not declared.pushes
+        and "access" not in settings.mutation_families
+    ):
         return (), ()
     version = bounded.observe("backend", config.device, deadline)
     if b"(nf_tables)" not in version:
@@ -108,7 +112,7 @@ def access(
     if len(observed) > bounded.MAX_RECORDS:
         raise ControlError(ErrorCode.EXHAUSTED)
     required: list[tuple[str, ...]] = []
-    if declared.access:
+    if declared.access or "access" in settings.mutation_families:
         for direction, flag in (("ingress", "-i"), ("egress", "-o")):
             required.append(
                 (
@@ -143,6 +147,22 @@ def access(
         for source, destination, prefix in pairs:
             required.append(_rule(source, destination, f"{prefix}:forward"))
             required.append(_rule(destination, source, f"{prefix}:reverse"))
+    if "access" in settings.mutation_families:
+        required.append(
+            (
+                "-A",
+                "OVPNCP_FORWARD",
+                "-m",
+                "comment",
+                "--comment",
+                "ovpncp:terminal-deny",
+                "-j",
+                "DROP",
+            )
+        )
+        forward = [rule for rule in observed if rule[1] == "FORWARD"]
+        if forward[:2] != required[:2]:
+            raise ControlError(ErrorCode.CONFLICT)
     for rule in observed:
         if (
             (len(rule) > 1 and rule[1] == "OVPNCP_FORWARD")

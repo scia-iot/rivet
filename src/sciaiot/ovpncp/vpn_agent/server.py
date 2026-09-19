@@ -21,6 +21,7 @@ from sciaiot.ovpncp.application.vpn_control.errors import (
 from . import bounded
 from .control import ReadOnlyVpnControl
 from .settings import Settings
+from .writer import MutationVpnControl
 
 
 class UnixAgentServer:
@@ -30,7 +31,6 @@ class UnixAgentServer:
         self, settings: Settings, control: ReadOnlyVpnControl | None = None
     ) -> None:
         self.settings = settings
-        self.control = control or ReadOnlyVpnControl(settings)
         self.stopped = threading.Event()
         path = Path(settings.control_socket)
         for parent in (path.parent, *path.parent.parents):
@@ -45,16 +45,39 @@ class UnixAgentServer:
             raise ValueError(
                 "Agent socket directory must be owned by agent with mode 02750."
             )
+        self.control = control or (
+            MutationVpnControl(settings)
+            if settings.mutation_families
+            else ReadOnlyVpnControl(settings)
+        )
         self.listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.inode: int | None = None
         try:
+            if isinstance(self.control, MutationVpnControl) and path.exists():
+                old = path.lstat()
+                if not stat.S_ISSOCK(old.st_mode) or old.st_uid != os.getuid():
+                    raise ValueError("Refusing foreign control socket.")
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                    probe.settimeout(0.05)
+                    try:
+                        probe.connect(str(path))
+                    except ConnectionRefusedError:
+                        if path.lstat().st_ino != old.st_ino:
+                            raise ValueError("Control socket changed.") from None
+                        path.unlink()
+                    else:
+                        raise ValueError("An existing control listener is active.")
             self.listener.bind(str(path))
             self.inode = path.lstat().st_ino
             os.chmod(path, 0o660, follow_symlinks=False)
             self.listener.listen(16)
             self.listener.settimeout(0.1)
+            if isinstance(self.control, MutationVpnControl):
+                self.control.start()
         except Exception:
             self.shutdown()
+            if isinstance(self.control, MutationVpnControl):
+                self.control.close()
             raise
 
     def __enter__(self) -> Self:
@@ -67,6 +90,8 @@ class UnixAgentServer:
         tb: TracebackType | None,
     ) -> None:
         self.shutdown()
+        if isinstance(self.control, MutationVpnControl):
+            self.control.close()
 
     def shutdown(self) -> None:
         """Stop accepting requests and remove only this instance's socket."""
@@ -119,7 +144,8 @@ class UnixAgentServer:
                 raise ControlError(ErrorCode.EXHAUSTED)
         raw_headers, prefix = bytes(data).split(b"\r\n\r\n", 1)
         lines = raw_headers.decode("ascii").split("\r\n")
-        if lines.pop(0) != "POST /v1/control HTTP/1.1":
+        route = lines.pop(0)
+        if route not in {"POST /v1/control HTTP/1.1", "POST /v1/archive HTTP/1.1"}:
             raise ControlError(ErrorCode.UNAVAILABLE)
         headers: dict[str, str] = {}
         for line in lines:
@@ -148,10 +174,34 @@ class UnixAgentServer:
                 raise ControlError(ErrorCode.INVALID_INPUT)
             body.extend(chunk)
         request = wire.decode_request(bytes(body))
-        deadline = time.monotonic() + min(request.deadline_ms / 1000, 10)
+        deadline = time.monotonic() + request.deadline_ms / 1000
+        archive_started = False
         try:
+            if route == "POST /v1/archive HTTP/1.1":
+                with self.control.open_archive(request) as stream:
+                    manifest = wire.encode(
+                        s.Response(
+                            request_id=request.request_id, result=stream.manifest
+                        )
+                    )
+                    size = 4 + len(manifest) + stream.manifest.size
+                    connection.settimeout(bounded.remaining(deadline))
+                    archive_started = True
+                    connection.sendall(
+                        (
+                            f"HTTP/1.1 200 Result\r\nContent-Type: application/octet-stream\r\nContent-Length: {size}\r\nConnection: close\r\n\r\n"
+                        ).encode()
+                        + struct.pack("!I", len(manifest))
+                        + manifest
+                    )
+                    for chunk in stream:
+                        connection.settimeout(bounded.remaining(deadline))
+                        connection.sendall(chunk)
+                return
             response = self.control.execute(request)
         except ControlError as error:
+            if archive_started:
+                return
             response = s.Response(
                 request_id=request.request_id, result=s.Failure(code=error.code)
             )

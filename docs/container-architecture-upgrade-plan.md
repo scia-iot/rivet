@@ -1,7 +1,7 @@
 # Container Architecture Upgrade Plan
 
-Status: Phase M0 and Phases 0–3 complete; Phase 4 planned
-Last updated: 2026-09-18
+Status: Phase M0 and Phases 0–3 complete; Phase 4 in progress
+Last updated: 2026-09-19
 
 This document is the source of truth for introducing a container-first
 production architecture for ovpncp and OpenVPN. The current UAT topology is not
@@ -355,7 +355,7 @@ cross-node filesystem socket.
 | 1 | Privileged-operation interfaces and agent contract | complete | Phase 0 |
 | 2 | Agent client, fake agent, and legacy host adapter | complete | Phase 1 |
 | 3 | Read-only VPN agent in shadow mode | complete | Phase 2 |
-| 4 | All privileged mutations moved behind the agent | planned | Phase 3 |
+| 4 | All privileged mutations moved behind the agent | in progress | Phase 3 |
 | 5 | Reproducible OpenVPN, agent, API, and UI images | planned | Phase 4 |
 | 6 | Compose reference and VPN integration | planned | Phase 5 |
 | 7 | Target OpenVPN migration and recovery execution | planned | Phase 6 |
@@ -603,6 +603,10 @@ Exit criteria:
 Rollback: stop the agent and retain the host adapter.
 
 ### Phase 4: privileged mutations
+
+Status: complete; local quality gates and disposable real OpenVPN mutation
+verification accepted 2026-09-19. See the Phase 4 evidence below and
+[agent operations](vpn-agent.md#phase-4-mutation-configuration).
 
 Move one operation family at a time, with a feature flag and rollback after
 each family:
@@ -1125,6 +1129,61 @@ Operational changes and limits:
 - Durable privileged mutations, packaging, event spool/acknowledgement,
   disconnect/reload, crash recovery and reconciliation remain Phase 4.
   No production agent deployment or cutover is authorized by this completion.
+
+### Phase 4 verification evidence (2026-09-19)
+
+- Implemented each opt-in family: atomic API profile and owned CCD assignment,
+  managed routes, paired access and owned pushes, certificate lifecycle and
+  credential streaming, durable connection events, exact-session disconnect,
+  and controlled soft reload. Host mode remains the default; rollback is
+  documented in [agent operations](vpn-agent.md#family-rollback).
+- The agent retains immutable operation IDs and intent digests, serializes
+  conflicting writes, journals before effects, reconciles actual state, and
+  keeps expired-ID tombstones. Uncertain results retain their original fences.
+- The API commits deduplicated history before acknowledgement, validates
+  retained acknowledgement intent, separates same-second sessions, and bounds
+  completed acknowledgement/history retention. Background workflow recovery
+  queries existing IDs; an explicit API retry may resubmit only the same
+  unresolved intent, or replace a proven pre-effect failure with retained proof.
+- Local checks: `ruff format --check .`, `ruff check .`, and
+  `mypy --no-incremental --exclude '^build/' .` pass. The mypy exclusion avoids
+  the pre-existing duplicate source tree in ignored `build/lib`.
+- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing --tb=short`:
+  **685 passed, 90% overall coverage**. All substantive new agent modules exceed
+  80% coverage. Failure tests cover replacement and command errors, lost replies,
+  partial effects, restart recovery, duplicate operations, database failures,
+  stream invalidation, producer gaps, and same-second reconnect identity.
+- Public OpenAPI exactly matches the retained Phase 2 baseline: 32 paths,
+  48 operations. No public endpoint or response schema changed.
+- Disposable verification on `fdsadmin@sciaiot-openvpn` used OpenVPN 2.6.19,
+  Easy-RSA 3.1.7, a fresh synthetic CA, two real VPN clients, and attested mount,
+  PID and network namespaces. Host OpenVPN paths were masked before execution.
+  The runner is `tests/integration/run_vpn_mutation_namespace.sh`; its executable
+  proof is `tests/integration/vpn_mutation_rehearsal.py`.
+- Real checks passed for issuance/renewal/revocation/deletion, verified credential
+  ZIPs, CCD/CRL projection, owned route and firewall updates, preservation of
+  explicitly unrelated administrator state, packet allow/deny despite a broad
+  established-connection accept, real disconnect events, and history-before-ack.
+- Controlled reload uses SIGUSR1 with required persistence options and verifies
+  readiness plus unchanged route/firewall state. Static configuration reload and
+  full service restart remain deployment-owned. Agent SIGKILL/restart preserved
+  completed operation results; exact replay caused no duplicate effect, and
+  real VPN traffic survived agent loss.
+- `tests/integration/vpn_api_probe.py` exercised API services at UID/GID 65534
+  with zero effective/permitted/inheritable capabilities inside a chroot. Only
+  API-owned data, the control socket and read-only entropy were exposed; no
+  OpenVPN/PKI files or executable filesystem were available, and local process
+  calls were forbidden. Discovery, profile generation, certificate issue/delete,
+  and credential streaming passed.
+- Final private evidence: `/home/fdsadmin/.ovpncp-p4-pm_12vyb/last-result.log`
+  and `evidence-ourky57x/host-before.json` / `host-after.json`. All seven host
+  fingerprints matched: routes, links, addresses, policy rules, IPv4 firewall,
+  IPv6 firewall, and existing OpenVPN process identities. Every earlier
+  disposable attempt also left these host fingerprints unchanged.
+- Operational bounds remain explicit: 10,000 durable session bindings; missing
+  disconnect hooks can retain stale bindings and exhaust capacity, producing
+  loss/gap evidence rather than aliasing sessions. Image confinement, packaging
+  and production rollout verification remain in Phases 5 and 6.
 
 ## Reference material
 

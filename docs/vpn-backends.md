@@ -2,9 +2,10 @@
 
 Phase 2 introduced the application seam. Phase 3 adds a separate read-only
 agent and opt-in `shadow` comparison; see [agent operation](vpn-agent.md).
-Keep existing deployments on the default `host` backend. Privileged agent
-mutations and crash recovery remain Phase 4 of the
-[upgrade plan](container-architecture-upgrade-plan.md).
+Phase 4 adds feature-gated privileged mutations, durable intent recovery and
+local daemon event ingestion. Keep existing deployments on the default `host`
+backend until the deployment/cutover gates in the
+[upgrade plan](container-architecture-upgrade-plan.md) are accepted.
 
 ## Configuration
 
@@ -18,8 +19,8 @@ No TCP fallback, redirects, token forwarding, privilege escalation or automatic
 mutation replay is supported. Configured settings are validated at startup;
 restart the API to change its backend. Agent mode also removes the legacy
 loopback connection-hook authentication exception and skips installing host
-hook scripts. Agent daemon event ingestion is a later phase, not an anonymous
-callback to the business API. Shadow mode retains the host hooks and loopback
+hook scripts. Agent daemon events use a protected local producer and durable
+UDS polling, never an anonymous callback to the business API. Shadow mode retains the host hooks and loopback
 exception because all legacy VPN behavior remains host-owned.
 
 The API uses a synchronous typed port. Blocking workflow handlers run in the
@@ -83,13 +84,20 @@ transaction. A failed business commit leaves original intent available.
 Retrying the exact authorized request queries an uncertain step by its
 original operation ID, including pending, partial or unknown responses.
 Fingerprint, client and generation are rechecked against the stored request.
-Only a successful result advances the workflow. `not_found`, expired IDs or
-uncertain evidence do not authorize replay. A pending route deletion can be
+Only a successful result advances the workflow. On a genuine `not_found`,
+an explicit API retry may resubmit only the exact original ID, command and
+generation to the durable agent. Expired IDs and uncertain evidence never
+authorize a new ID or changed intent. Proven terminal pre-effect failures are
+retained in `VpnStepAttempt` before an explicit retry allocates a new attempt. A pending route deletion can be
 reconciled even if the route has already disappeared; an ordinary missing
 route retains its existing 404 response. Restricted-network ownership links
 to its exact creation workflow, preserving separate access/push intent IDs.
-The automatic background reconciler, operator resolution workflow, durable
-agent ledger, event ingestion and real privileged effects remain later phases.
+Opt-in `OVPNCP_VPN_RECONCILE=1` performs bounded background lookups; it does not
+dispatch missing operations with its short lookup budget. The agent independently
+reconciles accepted intents. `OVPNCP_VPN_EVENTS=1` commits durable event receipts,
+history and cursor before immutable acknowledgements. Both flags default off
+and require agent mode. Inconclusive PKI/reload outcomes remain fenced for
+operator recovery; no automatic guess or CA rollback is permitted.
 
 Agent-backed certificate downloads always obtain fresh active-generation
 metadata, consume and verify a bounded archive, then recheck generation before
@@ -112,5 +120,7 @@ and the agent client talking to a synthetic test-only Unix-socket peer.
 These tests never touch host firewall/routes, live PKI, VPN services or Azure.
 Phase 3 adds actual read-only agent and management-socket verification on a
 disposable real OpenVPN host; see [agent operation](vpn-agent.md). Exact
-container grants, credential packaging and privileged crash recovery still
-require the later phase gates.
+container grants and production deployment still require the later phase
+gates. Phase 4 adds mocked privileged failure injection, real cryptographic
+archive tests and explicitly isolated mutation rehearsals; see the plan for
+verified evidence and remaining limits.
