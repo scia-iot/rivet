@@ -1,6 +1,11 @@
 /// <reference types="vite/client" />
 
+interface Window {
+  __OVPNCP_CONFIG__?: unknown
+}
+
 interface ImportMetaEnv {
+  readonly VITE_RUNTIME_CONFIG?: string
   readonly VITE_API_BASE_URL?: string
   readonly VITE_AUTH_DISABLED?: string
   readonly VITE_ENTRA_API_SCOPE?: string

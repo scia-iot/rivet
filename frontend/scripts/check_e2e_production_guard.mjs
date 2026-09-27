@@ -1,10 +1,14 @@
 import { randomUUID } from 'node:crypto'
 
 import {
+  cpSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
+  writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -24,16 +28,48 @@ const vite = fileURLToPath(
   new URL('../node_modules/vite/bin/vite.js', import.meta.url),
 )
 const outputRoot = mkdtempSync(join(tmpdir(), 'ovpncp-e2e-guard-'))
+const sourceRoot = fileURLToPath(new URL('..', import.meta.url))
+const buildRoot = join(outputRoot, 'source')
+mkdirSync(buildRoot)
+for (const path of [
+  'src', 'public', 'index.html', 'vite.config.ts', 'package.json',
+]) {
+  cpSync(join(sourceRoot, path), join(buildRoot, path), { recursive: true })
+}
+symlinkSync(join(sourceRoot, 'node_modules'), join(buildRoot, 'node_modules'))
+const deploymentMarker = randomUUID()
 const environment = {
   ...process.env,
   VITE_AUTH_DISABLED: 'false',
+  VITE_ENTRA_TENANT_ID: '11111111-1111-1111-1111-111111111111',
+  VITE_ENTRA_CLIENT_ID: '22222222-2222-2222-2222-222222222222',
+  VITE_ENTRA_API_SCOPE: 'api://test-api/access',
+  VITE_API_BASE_URL: '/api',
   VITE_E2E_ACCESS_TOKEN: controlledToken,
   VITE_E2E_AUTH_MODE: 'true',
 }
 
 function buildAndInspect(mode) {
   const outputDirectory = join(outputRoot, mode)
-  const modeArguments = mode === 'e2e' ? ['--mode', 'e2e'] : []
+  const modeArguments = ['--mode', mode]
+  const buildEnvironment = { ...environment }
+  const forbiddenMarkers = [...markers]
+  if (mode === 'container') {
+    buildEnvironment.VITE_ENTRA_TENANT_ID = deploymentMarker
+    delete buildEnvironment.VITE_ENTRA_CLIENT_ID
+    buildEnvironment.VITE_ENTRA_API_SCOPE = `api://${deploymentMarker}/access`
+    buildEnvironment.VITE_API_BASE_URL = `https://${deploymentMarker}.example/api`
+    buildEnvironment.VITE_AUTH_DISABLED = 'true'
+    // Synthetic files prove that container mode ignores all dotenv input.
+    for (const name of [
+      '.env', '.env.local', '.env.container', '.env.container.local',
+      '.env.production', '.env.production.local',
+    ]) {
+      writeFileSync(join(buildRoot, name),
+        `VITE_ENTRA_CLIENT_ID=${deploymentMarker}\nVITE_AUTH_DISABLED=true\n`)
+    }
+    forbiddenMarkers.push(deploymentMarker)
+  }
   execFileSync(
     process.execPath,
     [
@@ -45,7 +81,8 @@ function buildAndInspect(mode) {
       outputDirectory,
     ],
     {
-      env: environment,
+      env: buildEnvironment,
+      cwd: buildRoot,
       stdio: 'inherit',
     },
   )
@@ -61,7 +98,7 @@ function buildAndInspect(mode) {
     } catch {
       continue
     }
-    for (const marker of markers) {
+    for (const marker of forbiddenMarkers) {
       if (content.includes(marker)) {
         throw new Error(`Controlled E2E marker survived ${mode} build.`)
       }
@@ -72,8 +109,13 @@ function buildAndInspect(mode) {
 try {
   buildAndInspect('production')
   buildAndInspect('e2e')
+  buildAndInspect('container')
+  if (process.argv.includes('--browser')) {
+    const { checkContainerBrowser } = await import('./check_container_browser.mjs')
+    await checkContainerBrowser(join(outputRoot, 'container'))
+  }
   process.stdout.write(
-    'Controlled E2E authentication is absent from production builds.\n',
+    'Production builds exclude controlled E2E authentication; container assets exclude deployment inputs.\n',
   )
 } finally {
   rmSync(outputRoot, { force: true, recursive: true })

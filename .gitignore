@@ -228,3 +228,7 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Operator-only container settings and local supply-chain output
+deploy/container.env
+deploy/container-evidence/

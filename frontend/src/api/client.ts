@@ -3,6 +3,8 @@ import createClient, {
   type Middleware,
 } from 'openapi-fetch'
 
+import { usesRuntimeConfiguration } from '@/runtime-config'
+
 import type { paths } from '@/api/generated/schema'
 import {
   ApiProblemError,
@@ -49,5 +51,5 @@ export function createApiClient(
 }
 
 export const apiBaseUrl = (
-  import.meta.env.VITE_API_BASE_URL ?? '/api'
+  usesRuntimeConfiguration ? '/api' : import.meta.env.VITE_API_BASE_URL ?? '/api'
 ).replace(/\/$/, '')

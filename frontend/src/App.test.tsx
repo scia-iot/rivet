@@ -4,6 +4,17 @@ import { describe, expect, it, vi } from 'vitest'
 
 import App from '@/App'
 import { PrincipalSessionProvider } from '@/auth/principal-session'
+// This navigation fixture deliberately uses local-admin mode without dotenv.
+vi.mock('@/auth/config', () => ({
+  isAuthenticationDisabled: true,
+  isAuthenticationConfigured: false,
+  isE2EAuthenticationMode: false,
+  e2eAccessToken: null,
+  apiScopes: [],
+  loginRequest: { scopes: [] },
+  msalInstance: null,
+}))
+
 vi.mock('@/features/clients/client-pages', () => ({
   ClientListPage: () => <h1>VPN clients</h1>,
   ClientDetailPage: () => null,

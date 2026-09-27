@@ -758,9 +758,11 @@ def test_image_source_subset_imports_without_api_packages(tmp_path):
     staged = tmp_path / "image"
     dockerfile = (root / "deploy/agent/Dockerfile").read_text()
     for line in dockerfile.splitlines():
-        if not line.startswith("COPY "):
+        if not line.startswith("COPY src/"):
             continue
         _, source, destination = line.split()
+        if not source.startswith("src/"):
+            continue
         original = root / source
         target = staged / Path(destination).relative_to("/opt/agent")
         target.parent.mkdir(parents=True, exist_ok=True)

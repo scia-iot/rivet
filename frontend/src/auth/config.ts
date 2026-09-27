@@ -5,21 +5,28 @@ import {
   type RedirectRequest,
 } from '@azure/msal-browser'
 
+import { runtimeConfiguration, usesRuntimeConfiguration } from '@/runtime-config'
 import { rootRedirectUri } from '@/auth/redirect-uri'
 import { allowsE2EAuthenticationMode } from '@/test/e2e-auth-mode'
 
-const tenantId = import.meta.env.VITE_ENTRA_TENANT_ID?.trim()
-const clientId = import.meta.env.VITE_ENTRA_CLIENT_ID?.trim()
-const apiScope = import.meta.env.VITE_ENTRA_API_SCOPE?.trim()
+const tenantId = usesRuntimeConfiguration
+  ? runtimeConfiguration?.tenantId
+  : import.meta.env.VITE_ENTRA_TENANT_ID?.trim()
+const clientId = usesRuntimeConfiguration
+  ? runtimeConfiguration?.clientId
+  : import.meta.env.VITE_ENTRA_CLIENT_ID?.trim()
+const apiScope = usesRuntimeConfiguration
+  ? runtimeConfiguration?.apiScope
+  : import.meta.env.VITE_ENTRA_API_SCOPE?.trim()
 
 export const isAuthenticationDisabled =
-  import.meta.env.VITE_AUTH_DISABLED === 'true'
+  !usesRuntimeConfiguration && import.meta.env.VITE_AUTH_DISABLED === 'true'
 
-const configuredE2EAccessToken = import.meta.env.DEV
+const configuredE2EAccessToken = import.meta.env.DEV && !usesRuntimeConfiguration
   ? import.meta.env.VITE_E2E_ACCESS_TOKEN?.trim() || null
   : null
 
-export const isE2EAuthenticationMode = import.meta.env.DEV
+export const isE2EAuthenticationMode = import.meta.env.DEV && !usesRuntimeConfiguration
   ? allowsE2EAuthenticationMode({
       accessToken: configuredE2EAccessToken ?? undefined,
       development: true,

@@ -12,11 +12,13 @@
     "api:generate": "npm run api:export && openapi-typescript openapi.json --output src/api/generated/schema.d.ts",
     "dev": "vite",
     "build": "tsc -b --pretty false && vite build",
+    "build:container": "tsc -b --pretty false && vite build --mode container",
     "build:production": "node scripts/check_production_env.mjs && npm run build",
     "lint": "oxlint .",
     "preview": "vite preview",
     "smoke:production": "node scripts/smoke_production.mjs",
     "test": "vitest run",
+    "test:container": "node scripts/check_e2e_production_guard.mjs --browser",
     "test:e2e": "node scripts/run_e2e.mjs",
     "test:e2e:production-guard": "node scripts/check_e2e_production_guard.mjs",
     "test:production": "node --test scripts/check_production_env.test.mjs scripts/smoke_production.test.mjs",
@@ -58,7 +60,7 @@
     "openapi-typescript": "^7.13.0",
     "oxlint": "^1.75.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "~6.0.2",
+    "typescript": "5.9.3",
     "vite": "^8.2.0",
     "vitest": "^4.1.10"
   }

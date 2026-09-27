@@ -138,7 +138,17 @@ those administrative routes remains forbidden.
 
 ## Production and E2E
 
-Copy `.env.production.example` to the gitignored
+The container image uses `npm run build:container` and carries no Entra
+settings. Container mode ignores dotenv files and all build-time `VITE_*`
+values, requires authentication, and fixes the API base to `/api`. At startup,
+set `OVPNCP_UI_ENTRA_TENANT_ID`, `OVPNCP_UI_ENTRA_CLIENT_ID`, and
+`OVPNCP_UI_ENTRA_API_SCOPE`; the container validates these public settings and
+serves `/runtime-config.js` with `Cache-Control: no-store`. The browser loads
+that script before the application. Missing or malformed runtime settings
+block the application; runtime configuration cannot enable an authentication
+bypass. See the [container runbook](../docs/container-deployment.md).
+
+For the existing non-container static deployment, copy `.env.production.example` to the gitignored
 `.env.production.local`, replace every placeholder, and build with:
 
 ```shell
@@ -165,8 +175,13 @@ npm run test:e2e
 
 The controlled identity is available only when Vite is simultaneously in
 development, `e2e` mode, and explicitly opted in by the Playwright server.
-A separate dual-build check proves the seam is absent from both ordinary
-production output and `vite build --mode e2e`.
+An isolated build check proves the seam is absent from ordinary production,
+`vite build --mode e2e`, and container output. It also verifies that container
+output excludes deployment values, even when supplied through the environment
+or synthetic dotenv files. `npm run test:container` additionally uses Chromium
+to confirm that the same compiled assets use two different runtime Entra
+configurations, and that missing or invalid runtime data blocks startup.
+Identity-provider requests are mocked; no real sign-in is performed.
 
 Use `npm run smoke:production` with `OVPNCP_BASE_URL` after deployment. The
 credential-free checker validates static fallback, asset caching, security
@@ -195,6 +210,7 @@ npm run typecheck
 npm run test
 npm run test:production
 npm run test:e2e:production-guard
+npm run test:container
 npm run test:e2e
 npm run build
 npm run build:production

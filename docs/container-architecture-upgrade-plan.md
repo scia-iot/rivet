@@ -1,7 +1,7 @@
 # Container Architecture Upgrade Plan
 
-Status: Phase M0 and Phases 0–3 complete; Phase 4 in progress
-Last updated: 2026-09-19
+Status: Phase M0 and Phases 0–4 complete; Phase 5 in progress
+Last updated: 2026-09-27
 
 This document is the source of truth for introducing a container-first
 production architecture for ovpncp and OpenVPN. The current UAT topology is not
@@ -355,8 +355,8 @@ cross-node filesystem socket.
 | 1 | Privileged-operation interfaces and agent contract | complete | Phase 0 |
 | 2 | Agent client, fake agent, and legacy host adapter | complete | Phase 1 |
 | 3 | Read-only VPN agent in shadow mode | complete | Phase 2 |
-| 4 | All privileged mutations moved behind the agent | in progress | Phase 3 |
-| 5 | Reproducible OpenVPN, agent, API, and UI images | planned | Phase 4 |
+| 4 | All privileged mutations moved behind the agent | complete | Phase 3 |
+| 5 | Reproducible OpenVPN, agent, API, and UI images | in progress | Phase 4 |
 | 6 | Compose reference and VPN integration | planned | Phase 5 |
 | 7 | Target OpenVPN migration and recovery execution | planned | Phase 6 |
 | 8 | Azure edge and network deployment plan | planned | Phase 7 |
@@ -605,7 +605,9 @@ Rollback: stop the agent and retain the host adapter.
 ### Phase 4: privileged mutations
 
 Status: complete; local quality gates and disposable real OpenVPN mutation
-verification accepted 2026-09-19. See the Phase 4 evidence below and
+verification accepted 2026-09-19. Implementation committed as `501cd05`
+(`feat(vpn): complete phase 4 privileged agent mutations`). See the
+[Phase 4 evidence](#phase-4-verification-evidence-2026-09-19) and
 [agent operations](vpn-agent.md#phase-4-mutation-configuration).
 
 Move one operation family at a time, with a feature flag and rollback after
@@ -641,6 +643,28 @@ Rollback: disable the transitioned family and reconcile with the host adapter.
 
 ### Phase 5: container images and supply chain
 
+Status: in progress; all four images tagged `phase5-hardening-20260924` are
+cached in `faureciaiot-b8c8fwavbhdudve2.azurecr.io`. New immutable digests were
+inspected and the disposable UDP/CCD, allow/deny, replay and agent restart
+rehearsal passes against them with unchanged host VPN/network state.
+Rescans and updated SBOMs confirm the removed packaging/XML payloads are absent;
+no critical or secret findings were reported. High findings remain (44 agent,
+45 API, 44 OpenVPN, 59 web), with no scanner-listed fixes in that scan. A
+[20-advisory review](container-vulnerability-review.md) records applicability
+and unresolved exposure; no exceptions have been approved. The operator
+deferred provenance and trusted signing handoff on 2026-09-24. Those items
+remain open release evidence, but do not block functional verification or
+portable build work. Existing optional Entra/Azure integrations remain intact.
+Source OpenSSL 3.0.13 differs from image 3.5.7; migration compatibility and
+container target mapping remain required. No production cutover has occurred.
+
+See [portable build instructions](container-builds.md),
+[image details](container-images.md), and the [deployment reference](container-deployment.md). The Compose artifact from
+Phase 6 is prepared early at the operator's request. Its first disposable
+container rehearsal and the 2026-09-27 extended credential lifecycle/API
+outage rehearsal passed with unchanged host state. Full runtime integration
+and exit criteria remain pending.
+
 Deliverables:
 
 - Maintain first-party Dockerfiles for OpenVPN, the VPN agent, API, and
@@ -649,7 +673,9 @@ Deliverables:
 - Use multi-stage builds, non-root users where possible, read-only root
   filesystems, explicit health checks, and no build tools in runtime images.
 - Produce an SBOM, vulnerability report, provenance, and signed image digest.
-- Add image and Compose configuration checks to CI.
+- Add image and Compose configuration checks to CI, with portable GitHub
+  Actions builds and configurable registry publishing. Keep deployment settings
+  at runtime and retain existing optional Entra/Azure integrations.
 
 Exit criteria:
 
@@ -1185,6 +1211,233 @@ Operational changes and limits:
   loss/gap evidence rather than aliasing sessions. Image confinement, packaging
   and production rollout verification remain in Phases 5 and 6.
 
+### 2026-09-22 — Phase 5 artifact handoff (phase remains in progress)
+
+- Prepared four first-party multi-stage Dockerfiles, immutable base/source
+  pins, fixed Debian snapshot and hashed CPython dependency closures.
+- Prepared separate build and deployment Compose files, non-root application
+  identities, explicit capability/mount limits, a private bridge, protected
+  socket directories and non-destructive empty-state preparation.
+- UI images are environment-agnostic: Entra tenant/client/scope are validated
+  runtime settings rendered in tmpfs and served without caching before browser
+  authentication initializes. Container builds require no Entra arguments and
+  cannot embed local environment files; missing/invalid runtime settings fail
+  closed. Static frontend deployment and local development remain supported.
+- Added container entrypoint/health/secret-boundary tests and CI validation of
+  image definitions and Compose configuration. An empty-environment event-hook
+  regression check covers OpenVPN's removal of inherited Python variables.
+- Build and runtime configuration instructions are in `docs/container-images.md`
+  and `docs/container-deployment.md`; operator values are documented in
+  `deploy/container.env.example`.
+- Both manifests passed `compose config --quiet` with synthetic settings using
+  the official checksum-verified Compose v5.5.1 standalone CLI. No Docker
+  engine, image build, image push, VPN service or host network was started.
+- Final local quality gates passed: `ruff format --check .` (151 files),
+  `ruff check .`, `mypy --no-incremental --exclude '^build/' .` (134 source
+  files), and `pytest --cov=src/sciaiot/ovpncp --cov=deploy/containers
+  --cov-report=term-missing` (729 passed; 90% combined coverage, 94% container
+  helper coverage). `git diff --check` passed. Hash-locked binary dependency
+  resolution passed for the AMD64 API and ARM64 agent; no packages were
+  installed into the application environment by these dry-run checks.
+- UI runtime correction checks passed: `npm run lint`, `npm run typecheck`,
+  `npm run test` (178), `npm run test:production` (8),
+  `CI=true npm run test:e2e` (5), `npm run test:e2e:production-guard` and
+  `npm run test:container`. Isolated builds reject embedded deployment values;
+  Chromium proved identical assets use two runtime Entra configurations and
+  fail closed for missing/invalid configuration. Fifteen Python tests exercise
+  the actual POSIX runtime renderer, injection rejection and file permissions.
+- The operator reported an Azure UI build failure at `npm ci`: TypeScript 6
+  conflicted with `openapi-typescript`'s TypeScript 5 peer dependency. The
+  local `.npmrc` bypass had hidden the conflict. TypeScript is pinned to 5.9.3,
+  the npm lockfile is regenerated, and the local bypass is disabled. A clean
+  install without `.npmrc` or reused `node_modules`, followed by
+  `npm run build:container` using the Dockerfile's exact copied input files,
+  passed. Docker and CI explicitly enable peer dependency resolution. Fresh
+  dependency verification also passed `npm run lint`, `npm run typecheck`,
+  `npm run api:check`, `npm run test` (178), `npm run test:production` (8),
+  and `npm ls typescript`. The navigation test now declares its local-admin
+  auth fixture explicitly instead of relying on local dotenv. Ruff formatting,
+  lint, mypy and all 44 focused container tests passed. Azure retry remains
+  pending; no successful UI image is claimed.
+- Successful operator builds, locally or using the supplied Azure ACR commands
+  for `faureciaiot`, remain pending. Record all four immutable
+  image references and build evidence before remote verification on
+  `fdsadmin@sciaiot-openvpn`. SBOM/provenance retention, vulnerability scanning,
+  signing, final layer inspection, effective capabilities and real container
+  VPN tests remain unverified; Phase 5 is not complete. Phase 6 runtime proof
+  and migration/cutover remain pending.
+
+### 2026-09-23 — Remote image/migration preflight
+
+- Operator reports `ovpncp-agent`, `ovpncp-api`, `ovpncp-openvpn`, and
+  `ovpncp-web` built in `faureciaiot` and authorizes verification/migration on
+  `fdsadmin@sciaiot-openvpn`.
+- Read-only checks confirm Azure VM `openvpn`, x86_64, Docker 29.8.1, Compose
+  v5.5.1, no running containers and no cached ovpncp images. The existing
+  `openvpn@server.service` is active; source OpenVPN is 2.6.19 with OpenSSL
+  3.0.13. No VPN service, firewall, PKI, cloud identity or container was changed.
+- The operator corrected the login server to
+  `faureciaiot-b8c8fwavbhdudve2.azurecr.io` and supplied agent tag
+  `phase5-20260922052553`. A remote `sudo -n docker pull` reached that registry
+  but failed with authentication required. No user/root Docker login was
+  found. The Azure managed-identity endpoint returns HTTP 400 `invalid_request`
+  with identity-not-found status. Root Docker pull authentication has been
+  requested; no image has been pulled or verified. Tags for the other three
+  images remain unverified.
+- Read-only migration review confirms that current M0 only supports stopped
+  targets owned by the migration operator and exact component versions. The
+  authoritative-state/runtime-projection container split needs a tested target
+  adapter before importing live source state. Existing namespace harnesses do
+  not isolate containers created by the host Docker daemon.
+- Next gates: resolve registry access and immutable digests; test image imports,
+  hooks, identities and actual non-root agent network capabilities in isolated
+  containers; complete disposable container connectivity/recovery and migration
+  adapter evidence before live cutover. Phases 5–7 remain incomplete.
+
+### 2026-09-23 — Cached-image runtime verification
+
+- The operator pulled all four images. Inspection confirms AMD64 images with
+  tag `phase5-20260922052553` in
+  `faureciaiot-b8c8fwavbhdudve2.azurecr.io`; previous authentication blockage no
+  longer prevents using the cached images. Recorded repository digests:
+
+  | Repository | Digest |
+  | --- | --- |
+  | `ovpncp-agent` | `sha256:107c7297ea196086fdeb05e40efcc559f2c531e2e7c62499abd76d08c5f6c1f8` |
+  | `ovpncp-api` | `sha256:5e9fc7086070ff032c16694622ffd02d4f2ed91362dd1b7f5a048a5159410f3b` |
+  | `ovpncp-openvpn` | `sha256:d8b900e3891dbe5d7d77b8765a266b0f8b3c6f81a4ec4ba72775cfb839a100d1` |
+  | `ovpncp-web` | `sha256:c0e580ca2a81c3b1b35318981481f39ed9475ea2372ccafa88dde9b46016f4c9` |
+
+- Actual agent probe used `--network none`, no mounts, read-only root,
+  `cap_drop=ALL`, `NET_ADMIN`, no-new-privileges, AppArmor and configured
+  UID/GIDs. UID 65532 had empty permitted/effective/inheritable/ambient
+  capability sets; only its bounding set contained NET_ADMIN. Actual child
+  `iptables-nft-save` and `ip link set lo up` returned permission failures.
+  This blocks deploying the original image; the correction is recorded below.
+- OpenVPN 2.6.19 runs and the absolute event-hook executable succeeds under an
+  empty environment. The image links OpenSSL 3.5.7, unlike source 3.0.13;
+  current exact-version migration validation must not be bypassed.
+- API dependency imports pass as UID 65531. API and UI reject missing
+  authentication settings. Nginx starts as UID 101 with synthetic public Entra
+  configuration; HTTP health, SPA and runtime-config responses pass, including
+  no-store headers and the expected runtime scope. No ports were published;
+  tests used private network namespaces and no production state mounts.
+- Disposable containers were removed; no running containers remain and the
+  host VPN stays active. An initial raw `iptables-save` digest comparison was
+  inconclusive because it included timestamp comments/counters. A repeat
+  isolated-container check normalizing those fields found unchanged host rules.
+- Full VPN connectivity/recovery, container target migration mapping and
+  release SBOM/provenance/scanning/signature evidence remain pending. No live
+  cutover or production PKI modification occurred.
+
+### 2026-09-23 — Agent capability correction (rebuild pending)
+
+- Phase 5 agent (`gpt-6-astra`, medium effort) added a fixed-purpose stdlib
+  bootstrap. It starts with NET_ADMIN/SETUID/SETGID, drops all real/effective/
+  saved IDs to UID/GID 65532, sets only supplementary group 65531 and retains
+  NET_ADMIN alone in permitted/effective/inheritable/ambient sets. It verifies
+  those identities and no-new-privileges before executing application code.
+  The root bootstrap uses isolated Python mode; daemon and Docker health
+  checks both pass through the same privilege drop. Dockerfile, Compose,
+  regression tests and deployment identity documentation are updated.
+- A bounded probe streamed the exact bootstrap source into the cached agent
+  image, using the corrected startup identity/capabilities, no network access
+  and no host mounts. Only the fixed post-drop exec target was replaced by
+  a diagnostic Python child. That child showed UID/GID 65532, groups [65531],
+  NET_ADMIN-only masks `0x1000`, and no-new-privileges enabled. Actual
+  `iptables-nft-save` and `ip link set lo up` child commands both succeeded.
+  Attempts to regain UID 0 or change supplementary groups were denied.
+  The bounding set retains SETUID/SETGID (`0x10c0`); neither is permitted,
+  effective, inheritable or ambient after the drop.
+- This proves the bootstrap on the target kernel; it does not claim that a
+  rebuilt image or the full agent service has been verified. Rebuild only
+  `ovpncp-agent` with the updated Dockerfile and pair it with updated Compose.
+  The three other cached image digests remain available for further testing.
+- The API additionally started with synthetic Entra configuration, disabled
+  background work, private tmpfs state and no network access. Its HTTP health
+  check confirmed authentication denial as expected; the container and state
+  were removed afterward.
+- Local gates passed: `ruff format --check .` (153 files), `ruff check .`,
+  `mypy --no-incremental --exclude '^build/' .` (136 source files),
+  `pytest --cov=src/sciaiot/ovpncp --cov=deploy/containers
+  --cov-report=term-missing` (746 passed, 90% combined coverage, 98% bootstrap
+  coverage), and `git diff --check`. Both Compose manifests passed
+  `config --quiet` with synthetic settings using Compose v5.5.1.
+- Rebuilt-image verification, full disposable VPN integration, source/target
+  OpenSSL compatibility and container migration mapping remain outstanding.
+  No production VPN cutover, source PKI change or host service restart occurred.
+
+### 2026-09-23 — Rebuilt agent image verified
+
+- The operator built and pulled `ovpncp-agent:phase5-agent-capfix-20260923`.
+  Its repository digest is
+  `sha256:2c9c0aaf0fc9637f8d509879ec6abe69e1f43c47025e9544acb43d1d5e450c4d`.
+  Inspection confirms root bootstrap entrypoint and health check, both using
+  isolated Python. Bootstrap file SHA-256 matches the workspace:
+  `b8d9d2be2d7327852f1107d7e95bf15bbb6d26f9a3e27c0a878e7707e338c248`.
+- The image's own bootstrap passed real `iptables-nft-save` and `ip link`
+  child-command probes with no host networking or production state mounts.
+  Its unmodified entrypoint then started a read-only agent with an ephemeral
+  control-socket directory. PID 1 had all UID/GID slots 65532, supplementary
+  group 65531, NET_ADMIN-only permitted/effective/inheritable/ambient sets and
+  no-new-privileges enabled. Its socket was owned 65532:65531 with mode 0660.
+- The first diagnostic process lacked access to the protected socket directory;
+  repeating with the Compose supplementary group and observing as daemon UID
+  passed. Both disposable containers were removed. The host VPN stays active.
+- Phase 6 disposable container integration preparation is in progress. This
+  image-level proof does not yet establish full VPN integration or migration
+  readiness; source state has not been imported or changed.
+
+### 2026-09-24 — Container integration and scan follow-up
+
+- Phase 6 agent (`gpt-6-astra`, high effort) added the explicitly invoked
+  disposable Docker rehearsal, safety regressions and invocation documentation.
+  Initial full checks passed: 759 tests, Ruff formatting/lint and mypy.
+- Two remote attempts established real two-client UDP/CCD/session behavior,
+  default-denied peer traffic and typed access mutation/replay. Allowed ping
+  still failed despite both allow-rule counters advancing. Packet diagnosis
+  continues; no allowed-flow success or Phase 6 completion is claimed.
+  Both cleanups and all host-network/VPN invariance checks passed.
+- Trivy 0.74.0 scans and post-build CycloneDX SBOMs now exist for all four
+  digests. No embedded secrets were reported. High findings remain in all
+  images; the web image also has one critical libxml2 finding. Detailed counts,
+  exact digests, private evidence locations, applicability limits and primary
+  sources are in [image verification](container-image-verification.md).
+- Phase 5 agent (`gpt-6-astra`, medium effort) prepared removal of unnecessary
+  pip/ensurepip payloads from Python images and unused XML modules/libraries
+  from the web image. No application dependency locks changed. Rebuild/rescan,
+  remaining finding review, provenance and signing are still required.
+- Source OpenSSL compatibility and the container migration target adapter
+  remain outstanding. No source PKI import, production cutover or live VPN
+  service restart has occurred.
+
+### 2026-09-24 — Disposable container rehearsal passed
+
+- Attempt 3's redacted packet types confirmed an echo reply plus an ICMP host
+  redirect. The one-packet ping counted the redirect as an error before the
+  reply. The harness now configures redirect emission only in its disposable
+  server namespace, before creating TUN; strict traffic assertions are unchanged.
+  Production gateway redirect policy is documented as an operator-owned
+  prerequisite. No live host sysctl was changed.
+- Attempt 4 passed real two-client UDP/CCD/session behavior, default deny,
+  agent-managed allow, denial after access removal, exact mutation replay and
+  data-plane survival through agent SIGKILL/restart. Cleanup passed. Host links,
+  addresses, IPv4/IPv6 routes/rules/firewall, VPN PID/service and server config
+  were unchanged. Detailed evidence/limits are in
+  [image verification](container-image-verification.md).
+- Exact Dockerfile packaging cleanup instructions passed in disposable writable
+  copies of all three Python images, including application imports. The exact
+  web purge/guard passed, followed by HTTP health, SPA and runtime-config
+  checks as UID 101. Cached images were not modified. Rebuild/rescan all four
+  images before claiming the scanner findings removed from deployed digests.
+- Final local gates passed: Ruff formatting (157 files), lint, mypy (138 source
+  files), the full coverage suite (776 passed; 90%) and whitespace checks.
+- Full Phase 6 remains incomplete: complete HTTP/RBAC/web integration,
+  credential lifecycle/CRL/reconnect, recovery and production Compose topology
+  need further proof. Release provenance/signature/finding review, exact-version
+  migration compatibility and the container target adapter also remain open.
+  No production migration or cutover occurred.
+
 ## Reference material
 
 - Docker devices and Linux capabilities:
@@ -1205,3 +1458,50 @@ Operational changes and limits:
   <https://github.com/OpenVPN/easy-rsa/blob/master/doc/EasyRSA-Renew-and-Revoke.md>
 - Easy-RSA advanced configuration:
   <https://github.com/OpenVPN/easy-rsa/blob/master/doc/EasyRSA-Advanced.md>
+
+
+### 2026-09-27 — Portable builds and extended remote rehearsal
+
+- The operator confirmed portable builds/deployment as the scope and retained
+  the existing optional Entra/Azure integrations. Provenance and signing handoff
+  are deferred; they are not treated as completed or used to block functional
+  verification. Phase 5 remains in progress.
+- The extended disposable harness passed against the four-image hardening
+  release (agent, API and OpenVPN participate in the VPN harness). Three real
+  UDP clients proved typed credential issuance, verified archive delivery,
+  exact CCD assignment, reconnect, signed CRL projection, denied revoked-client
+  handshakes, denied revoked archives, disconnect and deletion. VPN peer traffic
+  survived stopping/restarting both the real HTTP API and typed probe, as well
+  as agent SIGKILL/restart. Actual API HTTP checks rejected unauthenticated
+  requests. These checks do not prove valid-token RBAC or web integration.
+- Cleanup passed. Before/after normalized host links, addresses, IPv4/IPv6
+  routes, policy rules and firewalls matched; the host VPN PID, active state and
+  server configuration matched. Private results are retained as
+  `lifecycle-20260927-result.json` and `lifecycle-20260927-invariance.json` under
+  `/home/fdsadmin/.ovpncp-p6-container-jmpe6950`.
+- Exact-image applicability probes confirmed python-jose selects cryptography
+  backends in the API. Nginx and curl do not link Expat, TIFF, X11, XML or ACL
+  libraries. Standard systemd-homed/tiffcrop executable paths are absent; no
+  Archive/Tar.pm was found under the checked library/share directories. These
+  findings narrow specific paths and do not approve a blanket vulnerability
+  exception. See the vulnerability review for limits.
+- Full Phase 6 remains incomplete: authenticated HTTP/RBAC and web edge,
+  renewal, crash-during-mutation, reboot/restore and the production host-network
+  Compose topology need further verification. Source OpenSSL compatibility and
+  the container migration target mapping remain Phase 7 prerequisites. No
+  source PKI import, production service change or cutover occurred.
+
+- The Phase 5 agent (`gpt-6-astra`, medium effort) added
+  `.github/workflows/containers.yml`: all four AMD64 images build with SBOM
+  attestations on PR/push/manual events and export OCI artifacts plus digest
+  metadata. Publishing is explicit manual opt-in from the default branch.
+  GHCR is the default; external registries, including root-level ACR
+  repositories, use configurable targets and separate credentials. GitHub
+  tokens are never used for external registry login. No workflow deploys.
+- Local validation passed: `ruff format --check .` (160 files), `ruff check .`,
+  `mypy --no-incremental --exclude '^build/' .` (139 source files), and
+  `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing` (799 passed, 90%).
+  Plain `mypy .` encounters duplicate modules in generated `build/lib`; that
+  unrelated build output was retained and excluded from the successful check.
+  Official checksum-verified actionlint v1.7.7 validated the new workflow with
+  ShellCheck disabled. A hosted Actions run and publication have not occurred.
