@@ -10,8 +10,16 @@ Updated scans/SBOMs confirm removal of the packaging/XML payloads, with no
 critical or secret findings. Remaining high findings have an
 [applicability review](container-vulnerability-review.md) with unresolved paths.
 The operator deferred provenance and signing handoff; portable builds and
-functional verification continue. Phase 5 remains in progress; migration has not
-occurred. See [verification evidence](container-image-verification.md).
+functional verification continue. P5 implementation is complete with release
+verification deferred: finish vulnerability review before the GHCR release,
+and verify provenance/signing with that release. Migration has not occurred. See [verification evidence](container-image-verification.md).
+
+Phase 6 completed on 2026-09-30 using a newly built agent for actual host/bridge
+verification. The earlier hardening agent lacks the corrected TUN-scoped grant
+and Docker forwarding-policy proof. The corrected image is local to the test
+host; rebuild/publish from this tree for other deployments and refresh release
+evidence for those resulting digests. See the
+[deployment status](container-deployment.md).
 
 Use the repository root as the build context. Dockerfiles live in
 `deploy/openvpn`, `deploy/agent`, `deploy/api`, and `deploy/nginx`. Compose build

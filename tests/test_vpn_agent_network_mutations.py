@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.vpn_agent import bounded
+from sciaiot.ovpncp.application.vpn_control.errors import ControlError
+from sciaiot.ovpncp.vpn_agent import access_mutations, bounded, network
 from sciaiot.ovpncp.vpn_agent.writer import MutationVpnControl
 from tests.test_vpn_agent import request, settings
 
@@ -140,8 +141,15 @@ def firewall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         if kind == "backend":
             return b"iptables v1.8.9 (nf_tables)"
         assert kind == "rules"
-        declaration = ":OVPNCP_FORWARD - [0:0]\n" if chain else ""
-        return (declaration + "\n".join(shlex.join(rule) for rule in state)).encode()
+        declaration = ":FORWARD ACCEPT [0:0]\n"
+        if chain:
+            declaration += ":OVPNCP_FORWARD - [0:0]\n"
+        return (
+            "*filter\n"
+            + declaration
+            + "\n".join(shlex.join(rule) for rule in state)
+            + "\nCOMMIT\n"
+        ).encode()
 
     def restore(
         arguments: list[str], deadline: float, payload: bytes | None = None
@@ -254,3 +262,159 @@ def test_administrator_goto_is_not_bypassed(firewall) -> None:
     result = control.execute(request(s.SetAccess(intent=intent, present=True))).result
     assert isinstance(result, s.MutationResult) and result.state == "failed"
     assert commands == []
+
+
+def test_access_accepts_are_limited_to_the_configured_tun(firewall) -> None:
+    """Even a private-network grant must not bypass Docker bridge policy."""
+    _, _, _, intent, _ = firewall
+    inventory = network.Ownership(access=(intent,))
+    accepts = [
+        rule
+        for rule in access_mutations.rules(inventory, "tun0")
+        if rule[-1] == "ACCEPT"
+    ]
+    assert len(accepts) == 4
+    for rule in accepts:
+        assert rule[6:10] == ("-i", "tun0", "-o", "tun0")
+
+
+DOCKER_FILTER = """*filter
+:FORWARD DROP [0:0]
+:DOCKER-USER - [0:0]
+:DOCKER-FORWARD - [0:0]
+:DOCKER-CT - [0:0]
+:DOCKER-BRIDGE - [0:0]
+:DOCKER - [0:0]
+-A FORWARD -j DOCKER-USER
+-A FORWARD -j DOCKER-FORWARD
+-A DOCKER-FORWARD -j DOCKER-CT
+-A DOCKER-FORWARD -j DOCKER-BRIDGE
+-A DOCKER-FORWARD -i docker0 -j ACCEPT
+-A DOCKER-CT -o docker0 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A DOCKER-BRIDGE -o docker0 -j DOCKER
+-A DOCKER ! -i docker0 -o docker0 -j DROP
+COMMIT
+"""
+
+
+def test_docker_policy_proof_accepts_only_disjoint_denials() -> None:
+    """Docker's bridge-only DROP cannot affect a TUN-to-TUN grant."""
+    access_mutations.prove_foreign_forward(DOCKER_FILTER, "tun0")
+
+
+def test_access_observer_applies_docker_chain_proof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The production observation path accepts the proven Docker baseline."""
+    control = configured_control(tmp_path)
+    monkeypatch.setattr(bounded, "observe", lambda *_: DOCKER_FILTER.encode())
+    observed = access_mutations.AccessMutations(
+        control.settings, control.journal
+    )._observe("tun0", 1)
+    assert observed[0] is False
+    assert observed[1] == ()
+    assert len(observed[2]) == 2
+    control.close()
+
+
+def test_root_return_requires_accept_policy() -> None:
+    """A root RETURN is harmless only with an ACCEPT fallthrough policy."""
+    raw = DOCKER_FILTER.replace(":FORWARD DROP", ":FORWARD ACCEPT")
+    raw = raw.replace(
+        "-A FORWARD -j DOCKER-USER",
+        "-A FORWARD -j RETURN\n-A FORWARD -j DOCKER-USER",
+    )
+    access_mutations.prove_foreign_forward(raw, "tun0")
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "-A DOCKER-USER -i tun0 -j DROP",
+        "-A DOCKER-USER -j REJECT",
+        "-A DOCKER-USER -j MARK",
+        "-A DOCKER-USER -g DOCKER-CT",
+        "-A DOCKER-USER -j DOCKER-USER",
+        "-A DOCKER-USER -m comment --comment '-o' -j DROP",
+        "-A DOCKER-USER -o docker+ -j DROP",
+        "-A DOCKER-USER ! -o docker0 -j DROP",
+        "-A DOCKER-USER -o docker0 -o tun0 -j DROP",
+        "-A DOCKER-USER -o docker0 -j DROP -j ACCEPT",
+        "-A DOCKER-USER -o docker0 -j DROP !",
+        "-A DOCKER-USER --mystery docker0 -j DROP",
+    ],
+)
+def test_foreign_policy_proof_rejects_unsafe_or_ambiguous_rules(
+    extra: str,
+) -> None:
+    """Foreign denial or ambiguous syntax cannot be bypassed by an allow."""
+    raw = DOCKER_FILTER.replace("COMMIT", f"{extra}\nCOMMIT")
+    with pytest.raises(ControlError):
+        access_mutations.prove_foreign_forward(raw, "tun0")
+
+
+def test_foreign_policy_proof_rejects_root_return_to_drop() -> None:
+    """RETURN from built-in FORWARD reaches its DROP policy."""
+    raw = DOCKER_FILTER.replace(
+        "-A FORWARD -j DOCKER-USER",
+        "-A FORWARD -j RETURN\n-A FORWARD -j DOCKER-USER",
+    )
+    with pytest.raises(ControlError):
+        access_mutations.prove_foreign_forward(raw, "tun0")
+
+
+def test_foreign_policy_proof_bounds_reachable_chain_depth() -> None:
+    """A long acyclic chain graph cannot exhaust the agent stack."""
+    declarations = "\n".join(f":N{i} - [0:0]" for i in range(18))
+    jumps = "\n".join(f"-A N{i} -j N{i + 1}" for i in range(17))
+    raw = (
+        "*filter\n:FORWARD ACCEPT [0:0]\n"
+        f"{declarations}\n-A FORWARD -j N0\n{jumps}\nCOMMIT\n"
+    )
+    with pytest.raises(ControlError):
+        access_mutations.prove_foreign_forward(raw, "tun0")
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        ":FORWARD ACCEPT [0:0]\nCOMMIT\n",
+        "*filter\n:FORWARD ACCEPT [0:0]\n",
+        "*filter\n:FORWARD ACCEPT [0:0]\nCOMMIT\nCOMMIT\n",
+        "*filter\n:FORWARD MAYBE [0:0]\nCOMMIT\n",
+        "*filter\n:FORWARD ACCEPT [0:0]\n-P FORWARD ACCEPT\nCOMMIT\n",
+    ],
+)
+def test_foreign_policy_proof_rejects_incomplete_observation(raw: str) -> None:
+    """Truncated or unsupported filter snapshots are never trusted."""
+    with pytest.raises(ControlError):
+        access_mutations.prove_foreign_forward(raw, "tun0")
+
+
+def test_foreign_policy_proof_bounds_reachable_chain_count() -> None:
+    """A broad chain graph is bounded even when acyclic and shallow."""
+    declarations = "\n".join(f":N{i} - [0:0]" for i in range(70))
+    jumps = "\n".join(f"-A FORWARD -j N{i}" for i in range(70))
+    raw = f"*filter\n:FORWARD ACCEPT [0:0]\n{declarations}\n{jumps}\nCOMMIT\n"
+    with pytest.raises(ControlError):
+        access_mutations.prove_foreign_forward(raw, "tun0")
+
+
+def test_unqualified_owned_access_rule_is_not_adopted(firewall) -> None:
+    """An old owned grant lacking interface selectors blocks later writes."""
+    control, state, commands, intent, _ = firewall
+    initial = control.execute(request(s.SetAccess(intent=intent, present=True))).result
+    assert isinstance(initial, s.MutationResult) and initial.state == "succeeded"
+    owned = next(
+        rule for rule in state if rule[-1] == "ACCEPT" and rule[1] == "OVPNCP_FORWARD"
+    )
+    state.remove(owned)
+    state.append(owned[:6] + owned[10:])
+    count = len(commands)
+    result = control.execute(
+        request(s.SetAccess(intent=intent, present=False)).model_copy(
+            update={"expected_generation": control.journal.generation}
+        )
+    ).result
+    assert isinstance(result, s.MutationResult) and result.state == "failed"
+    assert len(commands) == count

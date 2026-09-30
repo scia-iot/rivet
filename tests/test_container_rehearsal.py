@@ -51,9 +51,20 @@ def test_launch_forbids_implicit_network_and_pull() -> None:
     assert argv[argv.index("--network") + 1] == "none"
     assert "--pull=never" in argv
     assert "--read-only" in argv
+    assert "--no-healthcheck" in argv
     assert "--privileged" not in argv
     assert "--publish" not in argv
     assert name in run.containers
+
+
+def test_real_service_launch_retains_image_healthcheck() -> None:
+    """Only an explicit real-service opt-in keeps the image readiness probe."""
+    run = rehearsal.Rehearsal.__new__(rehearsal.Rehearsal)
+    run.token = "a" * 12
+    run.containers = []
+    run.command = Mock(return_value=b"container-id")  # type: ignore[method-assign]
+    run.launch("server", "image", [], [], healthcheck=True)
+    assert "--no-healthcheck" not in run.command.call_args.args[0]
 
 
 def test_failed_launch_is_tracked_for_cleanup() -> None:
@@ -234,7 +245,7 @@ def test_packet_counters_redact_rule_addresses_and_unowned_comments() -> None:
     access_id = "12345678-1234-4234-8234-123456789abc"
     rules = f"""*filter
 +[3:180] -A FORWARD -i tun0 -m comment --comment "ovpncp:anchor:ingress" -j OVPNCP_FORWARD
-+[2:120] -A OVPNCP_FORWARD -s 10.231.0.10/32 -d 10.231.0.20/32 -m comment --comment "ovpncp:{access_id}:forward" -j ACCEPT
++[2:120] -A OVPNCP_FORWARD -s 10.231.0.10/32 -d 10.231.0.20/32 -i tun0 -o tun0 -m comment --comment "ovpncp:{access_id}:forward" -j ACCEPT
 +[1:60] -A OVPNCP_FORWARD -m comment --comment "ovpncp:terminal-deny" -j DROP
 +[9:540] -A FORWARD -m comment --comment "private-address-10.2.3.4" -j ACCEPT
 +COMMIT

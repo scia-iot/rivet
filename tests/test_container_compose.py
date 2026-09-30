@@ -69,6 +69,12 @@ def test_compose_enforces_privilege_and_mount_boundaries() -> None:
     for service in services.values():
         assert service["read_only"] is True
         assert service["cap_drop"] == ["ALL"]
+        expected_tmpfs = (
+            "/tmp:rw,noexec,nosuid,nodev,"
+            f"size={'16m' if service is services['openvpn'] else '32m'},"
+            "mode=1777"
+        )
+        assert service["tmpfs"] == [expected_tmpfs]
         assert "no-new-privileges:true" in service["security_opt"]
         assert not service.get("privileged", False)
         assert service.get("pid") != "host"
@@ -98,6 +104,20 @@ def test_compose_enforces_privilege_and_mount_boundaries() -> None:
         "OVPNCP_AGENT_ROUTE_PROTOCOL:?"
         in (services["agent"]["environment"]["OVPNCP_AGENT_ROUTE_PROTOCOL"])
     )
+
+
+def test_compose_starts_control_plane_after_service_readiness() -> None:
+    """Each dependent starts after its upstream health check succeeds."""
+    services = yaml.safe_load((ROOT / "deploy/compose.yml").read_text())["services"]
+    for downstream, upstream in (
+        ("agent", "openvpn"),
+        ("api", "agent"),
+        ("web", "api"),
+    ):
+        assert services[downstream]["depends_on"] == {
+            upstream: {"condition": "service_healthy"}
+        }
+    assert not services["openvpn"].get("depends_on")
 
 
 def test_build_manifest_has_four_independent_images() -> None:

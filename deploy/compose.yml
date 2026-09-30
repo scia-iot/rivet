@@ -27,7 +27,7 @@ services:
     network_mode: host
     cap_add: [NET_ADMIN, SETUID, SETGID]
     devices: [/dev/net/tun:/dev/net/tun:rwm]
-    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777]
+    tmpfs: ['/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777']
     volumes:
       - <<: *bind
         source: ${OVPNCP_STATE_ROOT:?Set the private state root}/vpn-projection
@@ -45,13 +45,16 @@ services:
         # Hooks record a durable producer-gap marker when agent is unavailable.
   agent:
     <<: *runtime
+    depends_on:
+      openvpn:
+        condition: service_healthy
     image: ${OVPNCP_AGENT_IMAGE:?Set the verified agent image digest}
     # Bootstrap drops root and SETUID/SETGID before loading agent code.
     user: '0:65532'
     group_add: ['65531']
     network_mode: host
     cap_add: [NET_ADMIN, SETUID, SETGID]
-    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777]
+    tmpfs: ['/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777']
     environment:
       OVPNCP_AGENT_CONFIG: /var/lib/ovpn-agent/config/server.conf
       OVPNCP_AGENT_PKI: /var/lib/ovpn-agent/pki
@@ -101,9 +104,12 @@ services:
         read_only: true
   api:
     <<: *runtime
+    depends_on:
+      agent:
+        condition: service_healthy
     image: ${OVPNCP_API_IMAGE:?Set the verified API image digest}
     user: '65531:65531'
-    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777]
+    tmpfs: ['/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777']
     networks:
       web:
         ipv4_address: 172.30.250.3
@@ -145,8 +151,8 @@ services:
       OVPNCP_UI_ENTRA_API_SCOPE: ${OVPNCP_UI_ENTRA_API_SCOPE:?Set the public API scope}
     depends_on:
       api:
-        condition: service_started
-    tmpfs: [/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777]
+        condition: service_healthy
+    tmpfs: ['/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777']
     networks:
       web:
         ipv4_address: 172.30.250.2

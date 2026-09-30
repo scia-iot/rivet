@@ -222,6 +222,7 @@ class Rehearsal:
         *,
         network: str = "none",
         detached: bool = True,
+        healthcheck: bool = False,
     ) -> str:
         """Track names before launch so timeouts cannot orphan known objects."""
         if not re.fullmatch(r"[a-z0-9-]+", role):
@@ -253,6 +254,7 @@ class Rehearsal:
                 "--cpus=1",
                 "--log-driver=none",
                 "--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777",
+                *([] if healthcheck else ["--no-healthcheck"]),
                 *(["--detach"] if detached else []),
                 *options,
                 image,
@@ -268,13 +270,26 @@ class Rehearsal:
             input_data=input_data,
         )
 
-    def anchor(self, role: str) -> str:
+    def anchor(self, role: str, *, host_aliases: tuple[str, ...] = ()) -> str:
         """Start an empty namespace and pin its identity before network setup."""
+        if host_aliases and (
+            role != "http"
+            or set(host_aliases)
+            != {
+                "login.microsoftonline.com=127.0.0.1",
+                "api=127.0.0.1",
+            }
+        ):
+            raise ValueError("Unexpected disposable namespace host aliases.")
         name = self.launch(
             f"anchor-{role}",
             self.images["openvpn"],
-            ["--entrypoint=python", "--user=65530:65532"],
-            ["-c", "import time; time.sleep(1800)"],
+            [
+                "--entrypoint=/bin/sleep",
+                "--user=65530:65532",
+                *(f"--add-host={alias}" for alias in host_aliases),
+            ],
+            ["1800"],
         )
         info = json.loads(self.docker("inspect", name))[0]
         if (
@@ -554,6 +569,7 @@ verb 0
             ],
             [],
             network=f"container:{anchors['server']}",
+            healthcheck=True,
         )
         paths = {
             "CONFIG": "/var/lib/ovpn-agent/config/server.conf",
@@ -597,17 +613,18 @@ verb 0
             options,
             [],
             network=f"container:{anchors['server']}",
+            healthcheck=True,
         )
         self.probe = self.launch(
             "probe",
             self.images["api"],
             [
                 "--user=65531:65531",
-                "--entrypoint=python",
+                "--entrypoint=/bin/sleep",
                 *self.mount("agent-socket", "/run/ovpn-agent", readonly=True),
                 *self.mount("probe-credentials", "/probe-credentials"),
             ],
-            ["-c", "import time; time.sleep(1800)"],
+            ["1800"],
         )
         self.wait_ready()
         for role in ("a", "b"):
@@ -875,7 +892,9 @@ print(json.dumps({{'mutation': 'passed'}}))
             *self.mount("agent-socket", "/run/ovpn-agent", readonly=True),
         ]
         options.extend(f"--env={key}={value}" for key, value in settings.items())
-        container = self.launch("http-api", self.images["api"], options, [])
+        container = self.launch(
+            "http-api", self.images["api"], options, [], healthcheck=True
+        )
         self.wait_http(container)
         return container
 
@@ -1057,11 +1076,15 @@ print(json.dumps({'deleted': True}))
         if (self.state / "vpn-pki/private/managed-client.key").exists():
             raise RuntimeError("Deleted client private key remained in agent PKI.")
 
+    def check_image_cache(self) -> None:
+        """Require every reviewed image to be present before launching state."""
+        for image in self.images.values():
+            self.docker("image", "inspect", image)
+
     def execute(self) -> dict[str, object]:
         """Prove UDP/CCD, packet allow/deny, API isolation and agent crash survival."""
         self.stage = "image-cache"
-        for image in self.images.values():
-            self.docker("image", "inspect", image)
+        self.check_image_cache()
         self.stage = "synthetic-pki"
         self.prepare()
         self.stage = "isolated-topology"
@@ -1131,8 +1154,8 @@ print(json.dumps({'ccd_sessions': 'passed'}))
             "full_phase6": False,
         }
 
-    def close(self) -> None:
-        """Remove tracked objects first; retain state if any teardown is uncertain."""
+    def close(self, *, remove_state: bool = True) -> None:
+        """Remove tracked objects first; retain state if teardown is uncertain."""
         failed = False
         for name in reversed(self.containers):
             try:
@@ -1151,7 +1174,8 @@ print(json.dumps({'ccd_sessions': 'passed'}))
             raise RuntimeError(
                 "Container cleanup incomplete; synthetic state retained."
             )
-        shutil.rmtree(self.root)
+        if remove_state:
+            shutil.rmtree(self.root)
 
 
 def main() -> int:

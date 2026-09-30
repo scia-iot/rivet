@@ -72,7 +72,8 @@ def routes(
     return tuple(sorted(declared, key=lambda item: item.route_id))
 
 
-def _rule(source: str, destination: str, marker: str) -> tuple[str, ...]:
+def _rule(source: str, destination: str, marker: str, device: str) -> tuple[str, ...]:
+    """Limit an owned access grant to peer traffic on one TUN device."""
     return (
         "-A",
         "OVPNCP_FORWARD",
@@ -80,6 +81,10 @@ def _rule(source: str, destination: str, marker: str) -> tuple[str, ...]:
         source,
         "-d",
         destination,
+        "-i",
+        device,
+        "-o",
+        device,
         "-m",
         "comment",
         "--comment",
@@ -145,8 +150,12 @@ def access(
             for index, network in enumerate(item.private_networks)
         )
         for source, destination, prefix in pairs:
-            required.append(_rule(source, destination, f"{prefix}:forward"))
-            required.append(_rule(destination, source, f"{prefix}:reverse"))
+            required.append(
+                _rule(source, destination, f"{prefix}:forward", config.device)
+            )
+            required.append(
+                _rule(destination, source, f"{prefix}:reverse", config.device)
+            )
     if "access" in settings.mutation_families:
         required.append(
             (
@@ -166,7 +175,10 @@ def access(
     for rule in observed:
         if (
             (len(rule) > 1 and rule[1] == "OVPNCP_FORWARD")
-            or ("-j" in rule and rule[rule.index("-j") + 1] == "OVPNCP_FORWARD")
+            or any(
+                rule[index : index + 2] == ("-j", "OVPNCP_FORWARD")
+                for index in range(2, len(rule) - 1)
+            )
         ) and rule not in required:
             raise ControlError(ErrorCode.CONFLICT)
     for rule in required:

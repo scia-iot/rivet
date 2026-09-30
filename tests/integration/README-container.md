@@ -116,3 +116,112 @@ Safety regressions can run without Docker:
 ```bash
 pytest -q tests/test_container_rehearsal.py
 ```
+
+## Compose and signed-HTTP rehearsal
+
+`compose_phase6_rehearsal.py` extends the disposable VPN proof with the
+reviewed deployment Compose manifest, all four cached service images, the
+Nginx edge, and real API authorization. Stage these additional files beside
+the files listed above:
+
+- `tests/integration/compose_phase6_rehearsal.py`
+- `tests/integration/container_http_fixture.py`
+- `deploy/compose.yml`
+
+Invoke it from the staged repository root with the exact reviewed digests:
+
+```bash
+sudo -n timeout --signal=TERM --kill-after=120s 20m \
+  python3 -m tests.integration.compose_phase6_rehearsal \
+  --compose deploy/compose.yml \
+  --agent-image 'registry.example/ovpncp-agent@sha256:<64-hex-digest>' \
+  --openvpn-image 'registry.example/ovpncp-openvpn@sha256:<64-hex-digest>' \
+  --api-image 'registry.example/ovpncp-api@sha256:<64-hex-digest>' \
+  --web-image 'registry.example/ovpncp-web@sha256:<64-hex-digest>' \
+  --upgrade-api-image 'registry.example/ovpncp-api@sha256:<64-hex-digest>'
+```
+
+The host also needs the Docker Compose plugin. The runner renders the source
+manifest with synthetic values, checks its exact services, grants, bind paths,
+readiness dependencies, images and network topology, then writes a private
+Compose bundle. It replaces host and bridge attachments with run-owned,
+attested `--network none` namespace anchors before starting any service.
+The isolated HTTP namespace uses an anchor-local hosts file for `api` and
+`login.microsoftonline.com`; it has no published port or host route. The
+runner never applies the source Compose manifest to the host.
+Disposable anchors and typed probes sleep without starting idle Python
+interpreters. Helper containers disable inherited image health checks; the
+four real Compose services keep their image health checks and startup order.
+The runner inspects each cached image digest once before launch and compares
+each service container's actual image ID with that recorded value afterward.
+
+The HTTP fixture creates a disposable TLS CA and a separate JWT signing key.
+Only the public CA is mounted into the API container. A loopback HTTPS server
+serves synthetic Entra JWKS at the normal discovery URL, and the API verifies
+signed tokens through its normal configuration. The probe requests Nginx
+health and runtime configuration, sends requests through `/api`, checks
+`sysadmin`, `device_user` and app-only `ServiceAdmin` permissions, and checks
+anonymous, delegated service-admin, wrong-audience, expired, tampered and
+unknown-role denial. For a tampered signature, the rehearsal accepts 401 or
+500 with a problem-response content type. It does not retain the exact status;
+it checks that neither the original nor tampered JWT appears in the response
+body.
+
+The run stops and restarts API and web, then recreates those two services from
+an upgrade bundle and rolls back to the original bundle. It records immutable
+container IDs and host PIDs for OpenVPN and agent, checks that both survive
+each control-plane change, and proves real peer traffic at each stage. The
+reported `phase6_compose_lifecycle: passed` refers to this isolated topology.
+`production_network_topology: false` and `full_phase6: false` remain explicit:
+the run does not validate production host networking, backup/restore,
+migration, reboot, or all release gates. Use the same host-state comparison and
+cleanup review described above before interpreting the result.
+
+Local safety regressions for this extension are:
+
+```bash
+pytest -q tests/test_compose_phase6_rehearsal.py tests/test_container_compose.py
+```
+
+## Opt-in actual host and bridge topology
+
+`compose_phase6_host_rehearsal.py` is a separate, root-only maintenance tool.
+Stage it alongside both runners and the HTTP fixture above. A maintenance
+wrapper must first stop the source application and OpenVPN services, make and
+verify a private encrypted backup of their frozen state, and record the stopped
+host's network and firewall baseline. The runner rechecks that both services
+are inactive and requires an explicit `--ssh-peer` IPv4 address whose route
+does not use a TUN or TAP. It never imports source state or starts those units.
+
+Use the same `--compose` and four immutable image arguments as the isolated
+runner, plus `--upgrade-api-image` and `--ssh-peer`. Invoke the module as
+`python3 -m tests.integration.compose_phase6_host_rehearsal` only through a
+reviewed maintenance wrapper with a bounded timeout. The wrapper must restore
+source services only after the runner reports successful cleanup, a fresh
+inventory finds no test containers, bridge or `OVPNCP_FORWARD` chain, and the
+stopped-host baseline and source-state fingerprints match.
+
+This variant preserves the rendered services' host networking for OpenVPN and
+agent, the private Compose bridge for API and web, and the loopback web port.
+It creates only fresh synthetic VPN state, a unique TUN, a token-scoped bridge
+and container project, and a firewall chain that must be absent at preflight.
+The synthetic OpenVPN server binds only the bridge gateway. Test clients and
+the local HTTPS JWKS helper use attested bridge namespaces; a fixed unprivileged
+HTTP probe reaches the web port through host loopback. The runner changes
+`net.ipv4.conf.all.send_redirects` only while the source VPN is stopped and
+restores its recorded value. It removes exact test-owned firewall rules and
+the attested bridge, then requires the host firewall baseline to match before
+reporting cleanup. An uncertain cleanup retains the synthetic state and run ID
+for manual review.
+
+This is a reused reference host with fresh deployment state, not a pristine OS
+provisioning test. It proves actual host/bridge Compose startup, signed web/API
+access, real UDP clients and access rules, and selected API/web upgrade and
+rollback while checking VPN process and traffic survival. Migration, reboot,
+restore and source-data cutover remain separate work.
+
+Local ownership regressions are:
+
+```bash
+pytest -q tests/test_compose_phase6_host_rehearsal.py
+```

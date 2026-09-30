@@ -1,7 +1,8 @@
 # Container Architecture Upgrade Plan
 
-Status: Phase M0 and Phases 0–4 complete; Phase 5 in progress
-Last updated: 2026-09-27
+Status: Phase M0 and Phases 0–4 complete; Phase 5 implementation complete,
+release verification deferred; Phase 6 complete
+Last updated: 2026-09-30
 
 This document is the source of truth for introducing a container-first
 production architecture for ovpncp and OpenVPN. The current UAT topology is not
@@ -356,8 +357,8 @@ cross-node filesystem socket.
 | 2 | Agent client, fake agent, and legacy host adapter | complete | Phase 1 |
 | 3 | Read-only VPN agent in shadow mode | complete | Phase 2 |
 | 4 | All privileged mutations moved behind the agent | complete | Phase 3 |
-| 5 | Reproducible OpenVPN, agent, API, and UI images | in progress | Phase 4 |
-| 6 | Compose reference and VPN integration | planned | Phase 5 |
+| 5 | Reproducible OpenVPN, agent, API, and UI images | implementation complete; release verification deferred | Phase 4 |
+| 6 | Compose reference and VPN integration | complete; isolated and actual host/bridge verification passed | Phase 5 |
 | 7 | Target OpenVPN migration and recovery execution | planned | Phase 6 |
 | 8 | Azure edge and network deployment plan | planned | Phase 7 |
 | 9 | Production cutover and rollback drill | planned | Phase 8 |
@@ -643,7 +644,9 @@ Rollback: disable the transitioned family and reconcile with the host adapter.
 
 ### Phase 5: container images and supply chain
 
-Status: in progress; all four images tagged `phase5-hardening-20260924` are
+Status: implementation complete; release verification deferred under the
+operator-approved sequence below. All four images tagged
+`phase5-hardening-20260924` are
 cached in `faureciaiot-b8c8fwavbhdudve2.azurecr.io`. New immutable digests were
 inspected and the disposable UDP/CCD, allow/deny, replay and agent restart
 rehearsal passes against them with unchanged host VPN/network state.
@@ -654,7 +657,15 @@ no critical or secret findings were reported. High findings remain (44 agent,
 and unresolved exposure; no exceptions have been approved. The operator
 deferred provenance and trusted signing handoff on 2026-09-24. Those items
 remain open release evidence, but do not block functional verification or
-portable build work. Existing optional Entra/Azure integrations remain intact.
+portable build work. On 2026-09-27 the operator also deferred the first hosted
+GitHub Actions run and its artifact verification until all architecture phases
+are finished. That follow-up does not block P5 closure or phase progression;
+local workflow validation and existing image evidence remain recorded. The
+remaining vulnerability applicability/release review is also deferred until
+before the GHCR release, per the operator's subsequent 2026-09-27 decision.
+It no longer blocks architecture phase progression. Existing optional
+Entra/Azure integrations remain intact. This status records implementation
+completion and scheduling changes, not security release approval.
 Source OpenSSL 3.0.13 differs from image 3.5.7; migration compatibility and
 container target mapping remain required. No production cutover has occurred.
 
@@ -679,15 +690,47 @@ Deliverables:
 
 Exit criteria:
 
-- Builds are reproducible from a clean checkout.
+- Builds are reproducible from a clean checkout. The first hosted GitHub
+  Actions run and verification of its artifacts are deferred until all phases
+  are finished by the operator's 2026-09-27 decision; they are not a phase
+  progression gate.
 - Critical or high applicable vulnerabilities are resolved or explicitly
-  accepted with expiry.
+  accepted with expiry. By the operator's 2026-09-27 decision, this remains a
+  pre-GHCR release requirement rather than a phase progression gate. Refresh
+  scans and applicability evidence against the actual release image digests.
 - Image inspection confirms the expected user, capabilities, mounts, ports,
   entry point, and no embedded credentials.
+
+Deferred release sequence (operator-approved 2026-09-27):
+
+1. Finish the remaining architecture phases using the recorded implementation
+   and functional verification evidence.
+2. Before the GHCR release, refresh image scans, finish advisory applicability
+   decisions, and resolve applicable findings or record acceptance with expiry.
+   Rebuild and verify changed images as needed.
+3. With the GitHub Actions/GHCR release, generate and verify build provenance,
+   SBOM attestations and image signatures against the expected repository,
+   workflow identity, source revision and published digests. Verify the first
+   hosted workflow's artifacts. These controls are not yet implemented in full
+   or verified; using GHCR alone does not establish trust.
 
 Rollback: retain the last verified image digests.
 
 ### Phase 6: Compose reference deployment
+
+Status: complete on 2026-09-30, using the requested `gpt-6-sol` agent
+at `xhigh` effort. Isolated Compose integration passed readiness, signed
+HTTP/RBAC through Nginx, UDP/CCD, credential lifecycle, CRL enforcement and
+API/web upgrade/rollback with surviving VPN traffic. The subsequent actual
+host/bridge rehearsal passed with the corrected agent image on the
+operator-approved existing `sciaiot-openvpn` host using fresh synthetic state.
+It verified allowed/denied flows and selected-service upgrade/rollback without
+restarting the VPN data plane. Cleanup, source-state fingerprints and all
+eleven stopped-host comparisons passed; both original services were restored.
+This fulfills the accepted reference deployment verification on a provisioned
+Linux host; it does not claim pristine-OS installation or source migration.
+P5 release checks remain deferred under the operator-approved schedule.
+Production migration and cutover belong to Phase 7.
 
 Deliverables:
 
@@ -1505,3 +1548,195 @@ Operational changes and limits:
   unrelated build output was retained and excluded from the successful check.
   Official checksum-verified actionlint v1.7.7 validated the new workflow with
   ShellCheck disabled. A hosted Actions run and publication have not occurred.
+
+
+### 2026-09-27 — GitHub verification deferred until after all phases
+
+- The operator deferred the first hosted GitHub Actions build and artifact
+  verification until all architecture phases are finished. Keep the workflow
+  and local checks in place; no push, dispatch or publication is required to
+  close P5 or progress through the remaining phases.
+- This is a scheduling change, not evidence that the hosted workflow passed.
+  Track its first run/artifact verification as a post-phase follow-up alongside
+  the already deferred provenance/signing handoff. The remaining vulnerability
+  review is unchanged; P5 is still in progress.
+
+
+### 2026-09-27 — P5 implementation complete; release checks rescheduled
+
+- The operator agreed to address the remaining image vulnerabilities before
+  the GHCR release, after completing the architecture phases. That review is
+  now deferred and does not block phase progression. No advisory was waived,
+  resolved or accepted merely by moving its review date.
+- Provenance and signing generation/verification are grouped with the first
+  GitHub Actions/GHCR release, as separately agreed by the operator. Existing
+  SBOMs and scans remain evidence for their recorded digests and scan dates.
+- P5 is recorded as implementation complete with release verification deferred.
+  This supersedes the earlier in-progress status caused by those review gates;
+  it does not claim signed images, a successful hosted run, security release
+  approval, full P6 integration or production migration.
+
+
+### 2026-09-28 — Phase 6 implementation started
+
+- The operator requested Phase 6 using `gpt-6-sol` at `xhigh` effort.
+- Continue from the existing Compose reference and passing disposable
+  three-client rehearsal. Evaluate remaining readiness, integrated service,
+  upgrade/rollback and clean-host workflow requirements without reclassifying
+  the earlier partial proof as a complete deployment test.
+- Preserve the live source VPN while verifying disposable fixtures. No
+  production migration, cutover, cloud resource change or publication is
+  included in this phase's implementation work.
+
+
+### 2026-09-29 — Phase 6 isolated Compose proof passed
+
+- Added the actual Compose service integration runner and synthetic TLS/JWKS
+  fixture. Real image entrypoints, health checks and API token verification
+  remain active. The source manifest is strictly checked before its network
+  attachments are replaced with owned, isolated namespaces.
+- Fixed readiness ordering (OpenVPN, agent, API, web) and quoted each complete
+  tmpfs option string so YAML does not split its comma-separated options into
+  additional mounts. Documented clean-host startup and selected-service
+  API/web upgrade and rollback commands.
+- The first Compose attempt reached healthy services and passed signed HTTP
+  checks, then timed out inspecting a Docker image. The small host showed
+  memory pressure; the precise timeout cause was not established. Manual
+  cleanup removed all 20 attested test containers and synthetic state, and
+  all eleven host invariance comparisons matched.
+- Reduced helper overhead: sleeping anchors/probes use `/bin/sleep`, helper
+  health checks are disabled, and expected image IDs are cached once. Real
+  service health checks and strict actual-image comparisons remain enabled.
+- The next run passed readiness, signed HTTP/RBAC, persistent API identity,
+  three real UDP clients, CCD, allowed/denied flows, replay, agent recovery,
+  credential issuance/archive/reconnect/revoke/delete and CRL enforcement.
+  API/web outage, recreation, a distinct API-image upgrade and rollback all
+  preserved VPN traffic and OpenVPN/agent process identities.
+- Cleanup passed. All eleven comparisons of host networking, firewall and
+  production VPN state matched. No test containers remained in a subsequent
+  inventory. No production import or cutover occurred.
+- Exact image identities, private evidence paths and the existing invalid-JWT
+  error-status limitation are recorded in
+  [container image verification](container-image-verification.md).
+- Local gates passed: Ruff formatting (163 files), Ruff lint, mypy (142 source
+  files, existing generated `build/` excluded), and 812 tests with 90% combined
+  application/container coverage. Focused harness tests: 45 passed.
+- `full_phase6: false` and `production_network_topology: false` remain accurate.
+  The outstanding Phase 6 exit check is a clean-host run of the documented
+  commands using the actual host/bridge topology. It cannot be run alongside
+  the production VPN on the current source host.
+
+
+### 2026-09-29 — Existing-host maintenance verification authorized
+
+- The operator selected `sciaiot-openvpn` for actual-topology verification
+  and explicitly authorized stopping its source VPN. This server is also
+  intended for later migration testing.
+- Use fresh synthetic deployment state on this existing Linux/Docker host;
+  do not describe it as a newly installed operating system. Preserve the
+  source VPN/application state for Phase 7. Stop both source writers during
+  the test and restore the existing services afterward.
+- Prepare and verify an encrypted maintenance backup before the host-network
+  test. Compare the stopped-host network and firewall state after cleanup;
+  temporarily changed redirect settings must be restored. Only attested
+  test containers, network and firewall entries may be removed.
+- This authorization allows the remaining reference topology check without
+  a second VM. Verification is still pending until the actual run completes;
+  source PKI migration and production cutover are not implied.
+
+
+### 2026-09-29 — Actual-topology access-policy conflict found
+
+- Two authorized maintenance attempts verified encrypted source backups and
+  restored both source services afterward. The first exposed a null Docker
+  network-inventory field; the runner now handles it with a regression test.
+- The second reached healthy host/bridge services, signed HTTP and real UDP
+  clients, then failed at access mutation. Read-only inspection confirms the
+  existing agent guard rejects Docker's broad FORWARD jumps. Do not remove
+  Docker policy or silently exempt chains by name to pass the test.
+- The stopped-host comparison identified only a newly initialized empty raw
+  table as different after cleanup. Its ACCEPT-only empty contents were
+  verified; excluding it reproduced the original firewall hash exactly.
+  Source files and other host state were preserved, and both source services
+  are active again. See the detailed private evidence references in
+  [container image verification](container-image-verification.md).
+- Phase 6 remains in progress while the forwarding-policy integration is
+  resolved. No migration or source PKI import occurred.
+
+
+### Proposed Phase 6 forwarding-policy correction
+
+The actual Docker bridge rehearsal exposed a mismatch between the intended
+peer-to-peer VPN access model and its firewall rule shape. Tighten owned access
+ACCEPT rules to require both input and output to be the configured TUN. This
+covers VPN client pairs and private networks routed behind a VPN peer; it does
+not grant VPN-to-host-LAN or VPN-to-container-bridge forwarding.
+
+Before a mutation, inspect reachable foreign filter chains conservatively.
+A positive exact input or output interface different from the TUN proves a
+rule cannot match these TUN-to-TUN flows. Otherwise, allow only nonrestrictive
+terminal/logging behavior or a bounded proof through declared user chains.
+Reject matching DROP/REJECT, unsupported targets/control flow, ambiguous
+interface matching, cycles and incomplete observations. No Docker chain name
+alone grants an exception, and no foreign rule is removed or reordered.
+
+This preserves rejection of administrator restrictions that could apply to the
+agent's allowed flows while accommodating Docker rules confined to bridges.
+Existing owned rules without both TUN selectors must fail validation rather
+than be silently adopted. This changes the agent's realized-rule contract and
+requires a rebuilt image plus renewed privileged verification. The source
+host remains on its restored original services during implementation.
+The matching and chain-traversal basis is the
+[iptables manual](https://man7.org/linux/man-pages/man8/iptables.8.html).
+
+
+### 2026-09-30 — Forwarding-policy fix and local image build
+
+- The requested `gpt-6-sol` / `xhigh` agent implemented the correction above.
+  Owned grants require both TUN selectors in canonical `iptables-save` order;
+  bounded foreign-chain inspection accommodates bridge-only Docker rules and
+  rejects applicable restrictions, ambiguous syntax and incomplete snapshots.
+  Existing unqualified owned grants fail validation.
+- Local validation: 848 tests passed with 90% combined application/container
+  coverage; Ruff formatting and lint passed. Mypy passed 144 source files with
+  `--exclude '^build/'`; plain `mypy .` finds a duplicate package in generated
+  `build/lib`. `git diff --check` passed.
+- The normal agent Dockerfile built successfully on `sciaiot-openvpn`, using
+  its pinned dependencies. The resulting local-only reference is
+  `ovpncp.local/ovpncp-agent@sha256:ed2acbab21303bc49afbac419cdc1f7dcb67e4cb01336124c3ed611a87f6d82f`.
+  Build context hashes and logs are retained privately under
+  `/var/lib/ovpncp-p6-agent-build-hsb6nu2s`. No image was published.
+- The fresh actual-topology maintenance rehearsal passed with this digest.
+  Evidence is retained at `/var/lib/ovpncp-p6-host-8js5885e`: verified encrypted
+  backup of 102 source entries, readiness, signed HTTP/RBAC, UDP allow/deny,
+  API/web upgrade/rollback and unchanged VPN process identities with surviving
+  traffic. The API changed to a distinct immutable image and back; web was
+  recreated with changed runtime settings and rolled back.
+- Cleanup passed, source files and metadata matched, and all eleven stopped
+  host-state comparisons passed both after cleanup and before restoration.
+  Both `ovpncp.service` and `openvpn@server.service` are active again.
+- Together with the earlier isolated credential/lifecycle proof, this closes
+  Phase 6 under the operator-approved existing-host verification scope. Each
+  runner retains `full_phase6: false` because it proves only its own subset;
+  phase completion is based on the combined evidence. Phase 7 is not started.
+  No source state was imported and no image was published. P5 release evidence
+  remains deferred to the agreed GHCR schedule.
+
+
+### 2026-09-30 — Native deployment support deferred until after upgrade
+
+The operator agreed to address native Linux/PyPI deployment support after the
+architecture upgrade. The intended follow-up is a complete native deployment
+of the same unprivileged API and separate VPN agent used by containers;
+retaining the legacy direct-host backend is not required for that design.
+
+Scope that follow-up around Python package installation, host OpenVPN and
+system dependencies, event hooks, systemd units, socket permissions, setup and
+upgrade tooling, documentation, and native integration verification. Publishing
+an API package or agent entry point alone does not establish support for the
+complete deployment. Container and native deployment are alternative operating
+models, not different feature tiers.
+
+This work is deferred and does not expand the current phase exit criteria.
+Finish the architecture and migration work before implementing native setup;
+no PyPI removal or legacy-backend retirement is authorized by this decision.

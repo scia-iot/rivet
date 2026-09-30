@@ -338,7 +338,7 @@ def ownership_fixture(runtime):
         ("192.168.3.0/24", f"ovpncp:{intent.access_id}:private:0"),
     ):
         rules.extend(
-            " ".join(network._rule(source, dest, marker))
+            " ".join(network._rule(source, dest, marker, "tun0"))
             for source, dest, marker in (
                 ("10.8.0.10/32", destination, prefix + ":forward"),
                 (destination, "10.8.0.10/32", prefix + ":reverse"),

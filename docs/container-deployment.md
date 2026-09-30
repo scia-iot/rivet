@@ -6,10 +6,25 @@ Status: all four `phase5-hardening-20260924` images are cached on
 the disposable three-client UDP/CCD, allow/deny, replay, credential lifecycle,
 CRL enforcement and API/agent outage proofs pass. Host VPN/network state is
 unchanged. Updated scans have no critical or secret findings; high-finding
-review remains open. Provenance/signing handoff is deferred by the operator.
+review is deferred until before the GHCR release. Provenance/signing
+verification is grouped with that release by the operator. These deferred
+release checks do not block architecture phase progression.
 Source OpenSSL 3.0.13 differs from image 3.5.7; migration compatibility and the
-container target adapter remain outstanding. Full integration and migration
-are incomplete. See the [phase evidence](container-architecture-upgrade-plan.md).
+container target adapter remain outstanding for Phase 7. Phase 6 is complete:
+isolated Compose integration and the actual host/bridge maintenance rehearsal
+passed, including signed HTTP/RBAC, real UDP allow/deny, and API/web upgrade and
+rollback with surviving VPN traffic. Source services were restored and all
+eleven stopped-host comparisons matched. This used fresh synthetic state on
+the operator-approved existing host, without importing source state.
+
+The actual-topology proof uses the corrected agent built from this tree,
+`ovpncp.local/ovpncp-agent@sha256:ed2acbab21303bc49afbac419cdc1f7dcb67e4cb01336124c3ed611a87f6d82f`.
+That image exists only on the test host. Build and publish the corrected agent
+for other targets; the earlier hardening agent does not include the Docker
+forwarding-policy compatibility fix. Existing owned access rules without both
+TUN selectors require explicit stopped-writer upgrade review, as described in
+[the agent guide](vpn-agent.md). See the
+[phase evidence](container-architecture-upgrade-plan.md).
 
 ## Topology and prerequisites
 
@@ -168,8 +183,120 @@ handoff remains a deferred release item at the operator's request; this does
 not prevent disposable functional verification. Image/UID/capability, actual
 TUN/CCD, allow/deny, agent/API outage recovery and credential lifecycle/CRL
 checks passed in the [disposable rehearsal](../tests/integration/README-container.md).
-Valid-token authentication/RBAC, integrated web behavior, reboot/restore and
-the actual host-network Compose topology still need isolated verification.
-Only then schedule the separately reviewed migration/cutover and rollback
-rehearsal. See Phases 5–7 in the
+Signed-token authentication/RBAC through Nginx, Compose readiness and
+API/web upgrade/rollback with surviving VPN traffic also passed on 2026-09-29.
+That runner substitutes private network namespaces; the actual host/bridge
+Compose topology and the commands below still require a disposable clean-host
+run. Reboot/restore, migration and production cutover require their separately
+reviewed later-phase rehearsals. See Phases 5–7 in the
 [architecture plan](container-architecture-upgrade-plan.md).
+
+## Clean-host startup and verification
+
+Use a dedicated disposable Linux target first. Complete the prerequisites,
+state provisioning, reviewed VPN configuration and host network policy above
+before these commands. The empty-directory preparation tool is not a CA
+provisioner or a migration importer. Do not run this startup sequence alongside
+the source VPN on its live host; source migration belongs to Phase 7.
+An explicitly approved maintenance rehearsal may reuse an existing host with
+fresh deployment state: stop its source application and VPN, verify a private
+source backup, then restore the original services after test cleanup. Such a
+run verifies deployment on a provisioned Linux host, not OS installation.
+
+From the repository root, with an authenticated Docker client and the reviewed
+`deploy/container.env`, retain a new private release directory outside the build
+context. Replace the example absolute path with an operator-owned location;
+keep the directory and referenced secret files private.
+
+```bash
+umask 077
+OVPNCP_RELEASE_DIR=/absolute/private/release-001
+mkdir -m 700 "$OVPNCP_RELEASE_DIR"
+docker compose --project-name ovpncp --env-file deploy/container.env \
+  -f deploy/compose.yml config --quiet
+docker compose --project-name ovpncp --env-file deploy/container.env \
+  -f deploy/compose.yml config --format json \
+  > "$OVPNCP_RELEASE_DIR/compose.json"
+docker compose --project-name ovpncp \
+  -f "$OVPNCP_RELEASE_DIR/compose.json" pull
+docker compose --project-name ovpncp \
+  -f "$OVPNCP_RELEASE_DIR/compose.json" create --no-build --pull never
+```
+
+Creation establishes the Docker bridge before services start. At this point,
+finalize the reviewed host forwarding/firewall baseline described above.
+Docker network creation can insert FORWARD rules: require the two exact
+agent-owned TUN anchors to be the first two FORWARD entries, with the owned
+terminal deny in place, before starting OpenVPN or enabling access mutations.
+Do not flush or adopt an existing administrator-owned chain. Then start:
+
+```bash
+docker compose --project-name ovpncp \
+  -f "$OVPNCP_RELEASE_DIR/compose.json" \
+  up --pull never --wait --wait-timeout 240
+docker compose --project-name ovpncp \
+  -f "$OVPNCP_RELEASE_DIR/compose.json" \
+  ps --all --format '{{.Service}}: {{.State}} / {{.Health}}'
+```
+
+The dependency chain is OpenVPN healthy, agent ready, API HTTP healthy, then
+web. OpenVPN can run independently of the control panel. Health checks gate
+startup, not continuous dependency recovery. No dependency restart propagation
+is configured. See Docker's [startup-order documentation](https://docs.docker.com/compose/how-tos/startup-order/).
+
+Require every service to become healthy, then verify the UI configuration,
+an authenticated `/api/me` response and the role-appropriate server health
+response through the private web endpoint. Use the normal Entra login/token
+workflow; do not put tokens in shell history, command arguments or retained
+reports. Check a real test client's UDP connection, its assigned tunnel address,
+an allowed flow and a denied flow. Health checks alone do not prove these
+behaviors. Record only redacted outcomes and selected image digests.
+
+The [disposable integration runner](../tests/integration/README-container.md)
+provides synthetic-client checks independently of live source state. Its
+network substitutions and synthetic identity service must never become a
+production Compose override.
+
+## API and web upgrade or rollback
+
+Prepare a second private release directory by repeating the configuration
+rendering step with the candidate API/web image digests and runtime settings.
+Retain the previous rendered bundle and keep the Compose project name, state
+bind paths, API identity and upstream proxy contract stable. Compare the two
+bundles privately: this procedure covers API/web changes only. Any database or
+persistent-format change needs a compatible rollback plan before proceeding;
+recreating an older image does not undo data changes.
+
+Record the OpenVPN and agent container IDs/PIDs before the update. The following
+commands select only the API and web services; they do not perform a full-stack
+shutdown. Replace both example bundle paths with the retained private files.
+
+```bash
+OVPNCP_PREVIOUS_BUNDLE=/absolute/private/release-001/compose.json
+OVPNCP_CANDIDATE_BUNDLE=/absolute/private/release-002/compose.json
+docker compose --project-name ovpncp -f "$OVPNCP_CANDIDATE_BUNDLE" config --quiet
+docker compose --project-name ovpncp -f "$OVPNCP_CANDIDATE_BUNDLE" pull api web
+docker compose --project-name ovpncp -f "$OVPNCP_CANDIDATE_BUNDLE" \
+  up --no-deps --force-recreate --pull never --wait --wait-timeout 240 api web
+```
+
+Repeat authenticated HTTP, UI configuration and real VPN traffic checks.
+Confirm OpenVPN/agent IDs and PIDs stayed unchanged. If validation fails,
+restore the previous API/web bundle with the same selected-service command:
+
+```bash
+docker compose --project-name ovpncp -f "$OVPNCP_PREVIOUS_BUNDLE" \
+  up --no-deps --force-recreate --pull never --wait --wait-timeout 240 api web
+```
+
+Verify the restored image digests and repeat the same checks. Keep previous
+images cached until the update is accepted. The `--no-deps` operation assumes
+the VPN services already run and are healthy; it deliberately skips dependency
+startup. See Docker's [`compose up` reference](https://docs.docker.com/reference/cli/docker/compose/up/).
+A failed `--wait` does not automatically roll back changes.
+
+OpenVPN or agent updates require a separate reviewed maintenance procedure;
+they are not covered by API/web traffic-survival claims. Whole-stack teardown
+stops VPN traffic. Do not use `compose down`, delete state directories, clear
+journals or replace PKI as an API/web rollback procedure. Consistent source
+capture, restoration and production cutover remain Phases 7–9.

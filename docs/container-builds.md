@@ -39,6 +39,19 @@ image variables require operator-selected immutable digest references.
 
 ## GitHub Actions
 
+Before the deferred GHCR release, refresh scans and finish the image
+vulnerability review, resolving applicable findings or recording explicit
+acceptance with expiry. Generate and verify provenance and signatures with
+that release, alongside SBOM attestations and the published image digests.
+These deferred release checks do not block architecture phase progression;
+the current workflow does not yet implement provenance/signing.
+
+The first hosted run and verification of its artifacts are deferred until all
+architecture phases are finished, per the operator's 2026-09-27 decision.
+The workflow is implemented and locally validated; hosted execution is a
+post-phase follow-up and does not block phase progression. No workflow has
+been pushed or dispatched as part of this handoff.
+
 `.github/workflows/containers.yml` runs all four AMD64 builds on pull requests,
 pushes, and manual dispatch. Ordinary builds have only `contents: read`, never
 log into a registry, and never publish. Checkout does not persist credentials.

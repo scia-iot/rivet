@@ -102,9 +102,16 @@ destination `/32` ACCEPT rules with comments
 `ovpncp:<access_id>:forward`/`ovpncp:<access_id>:reverse`. Optional private
 networks use source `/32` to private network and the reverse, with comments
 `ovpncp:<access_id>:private:<zero-based-index>:forward`/`reverse`.
-All rules use `-m comment --comment <marker> -j ACCEPT`; anchors jump to the
-owned chain. Missing, duplicate, incomplete or unexpected owned-chain rules
-fail inspection. Foreign rules outside the owned namespace are ignored.
+Every owned ACCEPT rule also requires `-i <dev> -o <dev>` and uses
+`-m comment --comment <marker> -j ACCEPT`; anchors jump to the owned chain.
+These grants cover client pairs and private networks routed behind a VPN peer,
+with both packet directions traversing the configured TUN. They do not grant
+forwarding between a TUN and a host LAN or Docker bridge. Missing, duplicate,
+incomplete or unexpected owned-chain rules fail inspection. Older owned
+ACCEPT rules without both interface selectors fail validation and require an
+explicit stopped-writer upgrade review; they are never silently adopted.
+Read-only observation ignores foreign rules outside the owned namespace;
+access mutation applies the foreign-policy proof described below.
 Declared pushes must belong to a declared access intent/client and occur
 exactly once in that client's CCD. No packet is sent and no rule is changed.
 
@@ -217,10 +224,21 @@ last in the owned chain. This avoids an initially permissive forwarding window
 and a readiness/bootstrap deadlock. Do this only on reviewed disposable or
 operator-authorized target state. The agent atomically rebuilds only its owned
 chain and exact anchors using `iptables-nft-restore --noflush`. It never adds an
-established-connection bypass. Existing administrator DROP/REJECT or custom
-chain enforcement that could apply to TUN traffic is a conflict requiring
-operator review; the agent will not prepend an ACCEPT ahead of it. Foreign
-rules, routes and unmarked CCD directives are preserved, never adopted.
+established-connection bypass. Before granting access, the agent checks
+foreign FORWARD rules and reachable user chains with a bounded, conservative
+parser. A positive exact input or output interface different from the VPN TUN
+proves that a rule cannot match the owned TUN-to-TUN grants. Other reachable
+rules must have provably nonrestrictive behavior. Applicable DROP/REJECT,
+unsupported targets or control flow, ambiguous syntax, cycles and incomplete
+observations fail closed with a conflict. Docker chain names alone grant no
+exception: ordinary bridge-specific rules pass only because their interface
+constraints exclude the VPN peer traffic.
+
+Administrator restrictions that could apply to those grants still require
+operator review; the agent will not prepend an ACCEPT ahead of them. Foreign
+rules, routes and unmarked CCD directives are preserved, never adopted. The
+interface and chain-traversal semantics follow the
+[iptables manual](https://man7.org/linux/man-pages/man8/iptables.8.html).
 
 CCD writes replace only exact `# ovpncp:begin:OWNER` / `# ovpncp:end:OWNER`
 blocks. Existing unmarked assignments conflict rather than becoming implicitly
