@@ -1,5 +1,11 @@
 # Production deployment
 
+This source-checkout runbook describes the previous root API deployment and
+is retained for transition reference. New non-container releases use the
+[native PyPI deployment guide](native-deployment.md), which runs an
+unprivileged API and separate VPN agent. Do not install this page's root API
+unit on a new deployment.
+
 This runbook deploys the React application and FastAPI service behind one
 HTTPS origin. The API can change OpenVPN, routes, firewall rules, and
 certificate material with root privileges, so the boundary is deliberately

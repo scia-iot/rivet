@@ -57,6 +57,7 @@ RUNTIME_OPTIONS = frozenset(
         "management",
         "management-client-user",
         "management-client-group",
+        "status-version",
     }
 )
 PLAIN_OPTIONS = frozenset(
@@ -77,6 +78,7 @@ PLAIN_OPTIONS = frozenset(
         "nobind",
         "persist-key",
         "persist-tun",
+        "disable-dco",
         "keepalive",
         "ping",
         "ping-restart",
@@ -260,6 +262,7 @@ def _collect(
     configs: dict[str, list[Directive]] = {}
     hooks: dict[str, str] = {}
     runtime: list[str] = []
+    used_external: set[str] = set()
     total = 0
 
     def add(name: str, data: bytes) -> str:
@@ -287,19 +290,26 @@ def _collect(
             raise MigrationError("unsafe Easy-RSA configuration path")
         add(f"pki/{name}", filesystem.read_file(easyrsa / path))
 
-    def resolve(value: str) -> pathlib.Path:
+    def resolve(value: str, *, role: str = "") -> pathlib.Path:
         candidate = pathlib.Path(value)
         if ".." in candidate.parts or "\\" in value:
             raise MigrationError("unsafe source path")
         path = candidate if candidate.is_absolute() else vpn / candidate
         if not (path.is_relative_to(vpn) or path.is_relative_to(pki)):
-            raise MigrationError("file reference outside approved roots")
+            if spec.external_files.get(str(path)) != role or role not in {
+                "pool",
+                "hook",
+            }:
+                raise MigrationError("file reference outside approved roots")
+            used_external.add(str(path))
         return path
 
     def reference(value: str, kind: str = "assets") -> str:
-        path = resolve(value)
+        path = resolve(value, role=kind)
         if path.is_relative_to(pki):
             name = f"pki/{path.relative_to(pki).as_posix()}"
+        elif not path.is_relative_to(vpn) and kind == "pool":
+            name = "pool/ipp.txt"
         else:
             name = f"{kind}/{path.relative_to(vpn).as_posix()}"
         return add(name, filesystem.read_file(path))
@@ -353,7 +363,29 @@ def _collect(
                     2 if option == "auth-user-pass-verify" else 1
                 ):
                     raise MigrationError("hook arguments require reviewed conversion")
-                code_hash = filesystem.digest(filesystem.read_file(resolve(args[0])))
+                hook_path = args[0]
+                if spec.container_runtime_hooks:
+                    from sciaiot.ovpncp.migration import container_target
+
+                    if (
+                        option not in {"client-connect", "client-disconnect"}
+                        or hook_path != container_target.HOOK_COMMAND
+                        or spec.versions
+                        != {
+                            "openvpn": "2.6.19",
+                            "easyrsa": "3.1.7",
+                            "openssl": "3.5.7",
+                        }
+                    ):
+                        raise MigrationError("unsupported container checkpoint hook")
+                    hook_path = container_target.HOOK
+                code_hash = filesystem.digest(
+                    filesystem.read_file(resolve(hook_path, role="hook"))
+                )
+                if spec.container_runtime_hooks and (
+                    code_hash != container_target.HOOK_SHA256
+                ):
+                    raise MigrationError("container checkpoint hook hash mismatch")
                 hook_id = f"{option}:{code_hash}"
                 hooks[hook_id] = code_hash
                 refs["0"] = f"hook/{hook_id}"
@@ -367,6 +399,8 @@ def _collect(
         return name
 
     main = configuration(spec.server_config)
+    if used_external != set(spec.external_files):
+        raise MigrationError("unused or unsupported external file approval")
     manifest = Manifest(
         versions=spec.versions,
         serial_policy=spec.serial_policy,

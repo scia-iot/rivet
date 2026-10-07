@@ -1,21 +1,48 @@
 # Container deployment reference
 
-Status: all four `phase5-hardening-20260924` images are cached on
-`fdsadmin@sciaiot-openvpn` from
-`faureciaiot-b8c8fwavbhdudve2.azurecr.io`. Inspection, initial runtime checks and
-the disposable three-client UDP/CCD, allow/deny, replay, credential lifecycle,
-CRL enforcement and API/agent outage proofs pass. Host VPN/network state is
-unchanged. Updated scans have no critical or secret findings; high-finding
-review is deferred until before the GHCR release. Provenance/signing
-verification is grouped with that release by the operator. These deferred
-release checks do not block architecture phase progression.
-Source OpenSSL 3.0.13 differs from image 3.5.7; migration compatibility and the
-container target adapter remain outstanding for Phase 7. Phase 6 is complete:
-isolated Compose integration and the actual host/bridge maintenance rehearsal
-passed, including signed HTTP/RBAC, real UDP allow/deny, and API/web upgrade and
-rollback with surviving VPN traffic. Source services were restored and all
-eleven stopped-host comparisons matched. This used fresh synthetic state on
-the operator-approved existing host, without importing source state.
+Status: the operator-approved testing server `fdsadmin@sciaiot-openvpn`
+was migrated to the four-container deployment on 2026-10-02. The approved
+repaired VPN copy passed import verification with no unexplained drift;
+unchanged-client connectivity and CCD assignment passed. The original source
+files are preserved and legacy services are stopped. Phase 6 is complete;
+Phase 7 migration is complete. Coordinated Compose recovery passed on this
+host on 2026-10-07: encrypted VPN, API, agent and deployment state restored
+into fresh directories with the original bind-mounted state unavailable.
+All four services became healthy in 96.7 seconds; database contents, protected
+files, operation history, revocation, a nonempty owned route and unchanged
+client connectivity were verified. VM-loss/off-host recovery, production RPO
+acceptance and host/Docker restart checks remain operator responsibilities.
+
+The test deployment reuses the existing Entra settings and privately mounted
+optional storage credential. Its API database is fresh, populated from three
+active VPN clients with one active fixed-address assignment. Legacy users,
+device links, grants and archives were not copied. Its container UI replaces
+the existing IPv4 port-80 listener; the reference Compose default remains
+loopback. No Azure network changes were made. Browser sign-in and the external
+Azure UDP path still require end-to-end verification.
+
+Private release/state/evidence live at
+`/var/lib/ovpncp-phase7-deployment`; the Compose manifest is
+`release/compose.json`. After the recovery drill, VPN/API state is under
+`/var/lib/ovpncp-verification-20261006/recovered-final`; the manifest contains
+the authoritative bind paths. Encrypted artifacts and private verification
+results are retained in that verification directory. The original state is
+retained separately and is not required by the running deployment.
+`ovpncp-containers.service` owns ordered startup. This test release overrides
+all container restart policies to `no` so Docker cannot restart OpenVPN before
+the deployment controller prepares and checks the owned firewall baseline.
+Use `sudo systemctl restart ovpncp-containers.service` for this deployment's
+lifecycle and inspect container health with the retained Compose manifest.
+The oneshot service orders startup; it does not automatically restart a
+container that later exits. A real host reboot and Docker-daemon restart have
+not yet been verified. Do not substitute the raw
+reference Compose restart policy without reviewing that startup ordering.
+
+Updated image scans have no critical or secret findings. High-finding review
+is deferred until before the GHCR release; signing/provenance verification is
+grouped with that release by the operator. These deferred release checks do
+not block architecture phase progression. See the detailed
+[phase evidence](container-architecture-upgrade-plan.md).
 
 The actual-topology proof uses the corrected agent built from this tree,
 `ovpncp.local/ovpncp-agent@sha256:ed2acbab21303bc49afbac419cdc1f7dcb67e4cb01336124c3ed611a87f6d82f`.
@@ -186,8 +213,8 @@ checks passed in the [disposable rehearsal](../tests/integration/README-containe
 Signed-token authentication/RBAC through Nginx, Compose readiness and
 API/web upgrade/rollback with surviving VPN traffic also passed on 2026-09-29.
 That runner substitutes private network namespaces; the actual host/bridge
-Compose topology and the commands below still require a disposable clean-host
-run. Reboot/restore, migration and production cutover require their separately
+Compose topology subsequently passed its approved maintenance rehearsal. The
+commands below remain a provisioning procedure for separately reviewed targets. Reboot/restore, migration and production cutover require their separately
 reviewed later-phase rehearsals. See Phases 5–7 in the
 [architecture plan](container-architecture-upgrade-plan.md).
 

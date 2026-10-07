@@ -447,7 +447,7 @@ class MutationRehearsal(AgentRehearsal):
         assert isinstance(observed, s.RoutesResult) and route in observed.items
         self.mutate(s.SetRoute(route=route, present=False))
         assert b"10.235.0.0/24" in self.run(
-            ["/usr/sbin/ip", "-j", "-4", "route", "show", "proto", "201"]
+            ["/usr/sbin/ip", "-N", "-j", "-4", "route", "show", "proto", "201"]
         )
         access = s.AccessIntent(
             access_id=str(uuid.uuid4()),

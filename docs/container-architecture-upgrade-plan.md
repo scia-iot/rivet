@@ -1,8 +1,10 @@
 # Container Architecture Upgrade Plan
 
 Status: Phase M0 and Phases 0–4 complete; Phase 5 implementation complete,
-release verification deferred; Phase 6 complete
-Last updated: 2026-09-30
+release verification deferred; Phase 6 complete; Phase 7 migration complete,
+same-host Compose recovery verified; off-host recovery acceptance pending;
+Phases 8–10 deferred to real deployment.
+Last updated: 2026-10-07
 
 This document is the source of truth for introducing a container-first
 production architecture for ovpncp and OpenVPN. The current UAT topology is not
@@ -359,10 +361,10 @@ cross-node filesystem socket.
 | 4 | All privileged mutations moved behind the agent | complete | Phase 3 |
 | 5 | Reproducible OpenVPN, agent, API, and UI images | implementation complete; release verification deferred | Phase 4 |
 | 6 | Compose reference and VPN integration | complete; isolated and actual host/bridge verification passed | Phase 5 |
-| 7 | Target OpenVPN migration and recovery execution | planned | Phase 6 |
-| 8 | Azure edge and network deployment plan | planned | Phase 7 |
-| 9 | Production cutover and rollback drill | planned | Phase 8 |
-| 10 | Optional high availability and scaling | deferred | stable Phase 9 |
+| 7 | Target OpenVPN migration and recovery execution | migration and same-host Compose recovery verified; off-host acceptance assigned to operator | Phase 6 |
+| 8 | Azure edge and network deployment plan | deferred to real deployment; reassess target conditions | Phase 7 |
+| 9 | Production cutover and rollback drill | deferred to real deployment | Phase 8 |
+| 10 | Optional high availability and scaling | deferred; assess only if real deployment requires HA | stable Phase 9 |
 
 ### Phase M0: portable OpenVPN migration toolkit
 
@@ -756,6 +758,19 @@ Rollback: redeploy the previous Compose bundle and image digests.
 
 ### Phase 7: target OpenVPN migration and recovery execution
 
+Status: started on 2026-09-30 with the requested `gpt-6-sol` agent at `xhigh`
+effort. The OpenVPN-only migration, unchanged-client connection, encrypted
+checkpoint restore and exact nonempty rollback passed on the approved test host
+on 2026-10-01. On 2026-10-02 the operator authorized persistent cutover of
+`sciaiot-openvpn`, accepting downtime. The approved repaired VPN copy is now
+imported into the persistent four-service container deployment; original source
+files remain preserved and legacy services are stopped.
+Migration implementation and test-server cutover are complete. The authorized
+same-host Compose recovery drill passed on 2026-10-07, including coordinated
+API/agent state and real client connectivity. Off-host/VM-loss recovery and
+production RPO acceptance remain with the operator. Keep backend/database/
+archive/authentication/UI artifacts outside M0.
+
 Deliverables:
 
 - Select an approved source and use the Phase M0 toolkit to create a fresh
@@ -786,6 +801,11 @@ discard the failed disposable target only after collecting redacted evidence.
 
 ### Phase 8: Azure edge and network instructions
 
+Status: deferred by the operator to real deployment. Reassess the actual target
+platform, topology, ingress, identity and network requirements then. The Azure
+items below remain reference material, not an approved target design or work
+to execute against the current test server.
+
 Prepare operator-reviewed instructions or infrastructure definitions, but do
 not apply them automatically.
 
@@ -812,6 +832,10 @@ the operator runbook.
 
 ### Phase 9: production cutover
 
+Status: deferred by the operator to real deployment. Prepare the cutover,
+acceptance and rollback procedure for that environment's conditions and
+maintenance constraints; the test-server migration is not production approval.
+
 Deliverables:
 
 - Freeze control-plane mutations and take the verified recovery set.
@@ -837,6 +861,9 @@ Rollback: freeze new writes, restore the prior endpoint and recovery set, start
 the prior single writer, and reconcile before reopening mutations.
 
 ### Phase 10: optional high availability
+
+Status: deferred to real deployment planning, and only if availability or
+scaling requirements justify it. No HA implementation is currently requested.
 
 Do not start this phase until the single-workload production deployment is
 stable and HA requirements are measurable.
@@ -1740,3 +1767,386 @@ models, not different feature tiers.
 This work is deferred and does not expand the current phase exit criteria.
 Finish the architecture and migration work before implementing native setup;
 no PyPI removal or legacy-backend retirement is authorized by this decision.
+
+
+### 2026-09-30 — Phase 7 started; source reconciliation required
+
+- The operator requested Phase 7 with `gpt-6-sol` at `xhigh` effort. The
+  implementation agent owns the M0 container-target adapter and tests; native
+  deployment support remains deferred until after the architecture upgrade.
+- Read-only checks on the approved `sciaiot-openvpn` source found the original
+  application, OpenVPN and Nginx active, with no containers remaining. Source
+  versions are OpenVPN 2.6.19, Easy-RSA 3.1.7 and OpenSSL 3.0.13. The pinned
+  container uses OpenSSL 3.5.7, requiring a reviewed compatibility extension;
+  exact-version rejection remains the default.
+- The current CA and server certificate are unexpired, and the PKI CRL is
+  current. However, the server configuration omits `crl-verify`, and six issued
+  certificates signed by the current CA are absent from both the current and
+  previous CA indices. All six have private-key files and four have CCD files.
+  These are unexplained source inconsistencies, not artifacts to discard or
+  certificates to mark valid by inference. The operator was asked for an
+  authoritative CA-index backup or issuance/revocation history. The operator
+  confirmed none is available: this test server was restored from another
+  server. Reconciliation must therefore use an explicit conservative policy,
+  not an inferred valid status. The operator approved repairing an isolated
+  copy by explicitly revoking the six unindexed certificates, then testing
+  migration with indexed valid clients. Original source files remain intact.
+- Source references also include a pool file and two OpenVPN event hooks
+  outside the approved OpenVPN tree. Any source-boundary extension must allow
+  only explicitly approved pool/hook files; it must not expose the backend
+  directory, database, environment, archives or authentication configuration to
+  the migration tool. Hooks remain hash-only inventory with reviewed target
+  replacements, never executable migration payloads.
+- The target adapter must derive private authoritative state and the minimal
+  daemon-readable projection from the authenticated M0 bundle, preserve the
+  exact runtime ownership/mode contract, and retain mandatory rollback. It
+  must not make the entire migration tree accessible to OpenVPN or create an
+  unrelated second import path.
+- Adapter implementation and valid-fixture verification may proceed while
+  source history is investigated. No source file was changed, no source
+  service stopped, and no migration or recovery success is claimed yet.
+
+
+### Phase 7 approved isolated-source reconciliation
+
+Before M0 export, briefly freeze the original application and VPN writers,
+verify an encrypted OpenVPN-only recovery copy and source fingerprints, and
+capture a private isolated copy. Restore the original services before doing
+PKI repair. This preparation is separate from the migration toolkit.
+
+In the isolated copy, use OpenSSL's CA revocation command to explicitly add
+revoked records for the six unindexed certificates and generate a signed CRL.
+Preserve existing index records, certificates and private-key bytes, and verify
+CRL rejection for all six. Add `crl-verify` to the copied server configuration
+and remap only source file references into the captured copy; retain the
+original hashes and a private reconciliation audit. This is an approved change
+in the test copy, not a claim that the missing historical status was recovered.
+The procedure passed a synthetic fixture matching the observed record counts
+before execution. The command contract follows the
+[OpenSSL 3.0 CA documentation](https://docs.openssl.org/3.0/man1/openssl-ca/).
+
+M0 must still validate the complete repaired source and reject unexplained
+PKI/configuration drift. No original source CRL or index is replaced, and no
+restored test deployment may become the production endpoint in this phase.
+
+
+### 2026-09-30 — Isolated source reconciliation passed
+
+- Private preparation evidence is retained under
+  `/var/lib/ovpncp-p7-source-r6s2gwm2`. A brief writer freeze captured and
+  verified all 75 entries of an encrypted OpenVPN-only recovery set. Frozen
+  source fingerprints matched; both original services were restored active
+  before repairs to the isolated copy began.
+- The first isolated repair stopped safely when OpenSSL detected two distinct
+  certificates sharing one unindexed serial. The original source was not
+  affected. A repeat started from the verified recovery capture and retained
+  the failed copy for inspection.
+- The final isolated copy revokes five distinct serials covering all six
+  formerly unindexed certificates. CRL checks reject all six. One conflicting
+  certificate is retained in private quarantine outside the active copied PKI,
+  with a recorded hash and reason; all original credential bytes remain in
+  recovery evidence. Three valid index rows and the previous revocation are
+  unchanged. The copied configuration now enforces the CRL.
+- The conservative collision handling also passed a synthetic fixture before
+  the repeat. No migration validator was relaxed to accept conflicting
+  certificates, and no original index, CRL, key, certificate or config was
+  replaced. The copied source has an explicit reconciliation history rather
+  than silently discarding an unexplained record.
+- Cached target image observations confirm OpenVPN 2.6.19/OpenSSL 3.5.7 and
+  agent Easy-RSA 3.1.7/OpenSSL 3.5.7. Although target `--help` omits
+  `data-ciphers-fallback`, a non-networking parser probe accepted that option
+  with `AES-256-CBC`, which is also listed among available target ciphers.
+  Actual M0 export and target migration/recovery verification remain pending.
+
+
+### Phase 7 source export validation finding
+
+The committed M0 inventory accepted the repaired copy: 50 logical files,
+180,312 bytes, two hook replacements required, with log/status directives
+excluded. Evidence is retained at `/var/lib/ovpncp-p7-export-a666xw_b`.
+Encrypted export then rejected a certificate/index subject comparison before
+writing a bundle. Read-only diagnosis found that the five newly revoked index
+rows contain the correct single common name followed by other distinguished
+name attributes. The validator incorrectly requires the common name to be the
+last attribute. Correct that parser with regression tests for field order,
+escaping and ambiguous duplicate names; preserve the authentic certificate and
+index bytes. Target migration and recovery remain unverified at this point.
+
+
+### Phase 7 copied server identity reconciliation approved
+
+After the subject-parser fix, M0 reached a separate source inconsistency: the
+configured server certificate is absent from the CA index and issued inventory.
+No indexed valid certificate has server-authentication usage. The operator
+explicitly approved issuing a replacement server certificate under the copied
+CA with the same server common name, preserving existing client credentials and
+all original server files.
+
+The isolated procedure creates a fresh server key and server-authentication
+certificate, explicitly retires the superseded unindexed server in the copied
+index/CRL, verifies both server purpose and revoked rejection, and checks that
+all prior client credential bytes and index records remain unchanged. Only the
+copied configuration switches to the new indexed server identity. This
+procedure passed a synthetic fixture before remote execution; its private
+audit records the old and new identities. M0 will compare the reconciled copy's
+server fingerprint, not claim that the original live server identity migrated
+unchanged. No production endpoint or original source credential is replaced.
+
+
+### 2026-09-30 — Reconciled source export passed
+
+The approved copied-server replacement passed on the test host: server purpose
+and the unchanged common name were verified, the superseded server was revoked
+in the copied CRL, and all nine prior index rows and existing client credential
+bytes were preserved. Two index rows were added for the retired and replacement
+server identities. Private evidence is retained in
+`/var/lib/ovpncp-p7-source-r6s2gwm2/server-repair-result.json` and its adjacent
+private reconciliation audit. The original application and VPN services remain
+active; neither original server credentials nor client credentials were changed.
+
+Authenticated M0 export then succeeded with 52 logical files (175,183 bytes)
+from the repaired, quiescent copy. The encrypted bundle, private key file,
+redacted export result and helper-code hashes are retained under
+`/var/lib/ovpncp-p7-export-3q6mzyet`. The source inventory requires two reviewed
+hook replacements and excludes runtime log/status directives. This establishes
+the migration baseline; container import, connectivity, restore and rollback
+evidence are still pending.
+
+
+### Phase 7 pinned target capability evidence
+
+A fresh confined probe of the cached pinned images confirmed OpenVPN 2.6.19,
+Easy-RSA 3.1.7 and OpenSSL 3.5.7, with the reviewed event-hook SHA-256 unchanged.
+It observed 233 option names and 64 cipher names; an explicit successful
+`--data-ciphers-fallback AES-256-CBC --show-ciphers` invocation supplements the
+help output, which omits that option. The redacted observations are retained at
+`/var/lib/ovpncp-p7-capabilities-zc2cyg7j/capabilities.json`. Probe containers had
+no network, no capabilities, read-only roots and no writable host mounts.
+
+The focused migration regression suite passed 106 tests before the final
+container-policy hardening and live rehearsal. Final quality gates and recovery
+acceptance remain pending.
+
+
+### 2026-10-01 — Actual bundle target preflight passed
+
+The interrupted read-only preflight completed successfully; its result was
+recovered from `/var/lib/ovpncp-p7-preflight-4npu1srp/preflight-result.json`.
+The authenticated source bundle passed the pinned container policy and mapped
+to 63 target files. All eight client-authentication certificates present in
+the issued inventory had the required usage extension and compatible
+filename/common-name values. This count includes revoked certificates; it is
+not a count of valid connection candidates. Both original services were
+confirmed active with zero running test containers. Live connection and
+recovery rehearsal remain pending.
+
+
+### 2026-10-01 — Stopped container import and verification passed
+
+The actual bundle was imported into a separate private disposable target using
+the pinned API image as an offline migration helper. An initial attempt stopped
+before activation when metadata verification detected missing setgid directory
+bits. Running the helper as `0:65532` with supplementary group `65531` preserves
+those fixed runtime modes using only `CHOWN`, `FOWNER` and `DAC_OVERRIDE`; no
+additional capability was needed. This is a helper invocation requirement, not
+a relaxation of the target ownership check.
+
+The retry at `/var/lib/ovpncp-p7-import-xkp2n72l/import-result.json` passed
+activation and full M0 verification: 63 target files, 43 PKI files, seven revoked
+serials, five CCD entries and zero unexplained drift. CA identity, the approved
+replacement server identity, client serial status, CCD and server options all
+matched the authenticated repaired-copy baseline. The target remains stopped
+with rollback retained. No original source service was stopped for this check.
+Live connectivity and recovery acceptance remain pending.
+
+
+### 2026-10-01 — First live migration rehearsal and checkpoint finding
+
+The bounded run at `/var/lib/ovpncp-p7-run-w12rkdrp` completed actual import and
+verification, unchanged-client UDP/TUN connectivity with the imported CCD
+assignment, VPN restart/reconnect, new target issuance/revocation and an
+authenticated encrypted checkpoint of the stopped target. It then failed at
+restore-policy validation; restore and rollback were not reached.
+
+Read-only diagnosis found exactly one missing capability observation:
+`disable-dco`, which the adapter adds to the runtime configuration. The pinned
+daemon had accepted the option in the live run, but its help output omits it.
+The validator correctly refused to assume availability during checkpoint
+restore. A fresh explicit `--disable-dco --show-ciphers` probe passed, and
+updated immutable observations at
+`/var/lib/ovpncp-p7-capabilities-_182q2s3/capabilities.json` contain 234 option
+names, 64 cipher names and explicit fallback/DCO-option probe results. Add a
+regression to reject missing generated-option evidence before initial import.
+
+The maintenance guard confirmed unchanged source files, all eleven stopped-host
+network/sysctl comparisons, complete test-container cleanup and both original
+services restored active. No endpoint cutover occurred. The local full suite
+passed 875 tests with 90% overall coverage (86% for the new adapter); formatting,
+lint and mypy checks also passed before this capability regression fix.
+
+The broader coordinated recovery acceptance still needs a separate encrypted
+recovery set for fresh test API data, agent journals/ownership and deployment
+metadata alongside M0's OpenVPN-only bundle. Earlier Phase 6 evidence does not
+cover that whole-state restore. No source backend, archive, authentication or
+UI data will be imported by M0.
+
+
+### 2026-10-01 — OpenVPN migration, restore and rollback passed
+
+The second bounded run at `/var/lib/ovpncp-p7-run-uiers0wr` passed the complete
+OpenVPN rehearsal. Its private evidence root is
+`/var/lib/ovpncp-p7-run-uiers0wr/ovpncp-p7-cee8bf7eea21-86ack0b8`; the parent
+`maintenance-status.json` and `rehearsal-result.json` contain redacted results.
+
+- Authenticated M0 import and semantic/CCD reconciliation passed.
+- An indexed valid client connected with unchanged certificate/key/CA bytes
+  and received its imported CCD address.
+- VPN restart and client reconnect took 4.373 seconds against the 300-second
+  objective.
+- New target issuance/revocation and a stopped-writer encrypted checkpoint
+  passed. The restored deployment retained that acknowledged revocation.
+- Client reconnect after starting the restored VPN took 3.940 seconds. This
+  measures VPN startup/reconnect, not full VM restore time.
+- Exact rollback restored a distinct nonempty prior generation derived from
+  the post-revocation checkpoint. The revoked credential remained revoked
+  after rollback, and another new issuance/revocation then passed.
+- All eleven host network/sysctl comparisons passed, original source files
+  remained unchanged, both original services were restored active and all
+  test containers were removed. No production endpoint was selected.
+
+The result explicitly records full VM/API restore and coordinated API/agent RPO
+as not tested. A separate operator recovery set and disposable Compose drill
+are now being implemented for those remaining checks, using fresh synthetic API
+state. The M0 tool and bundle remain restricted to OpenVPN state. Phase 7 is not
+yet marked complete.
+
+
+### 2026-10-02 — Persistent test-server migration
+
+The operator explicitly requested stopping existing services and leaving the
+migrated deployment running on `sciaiot-openvpn`; downtime was accepted. This
+supersedes the earlier rehearsal-only restoration of legacy services. No Azure
+resources, DNS, or cloud ingress rules were changed.
+
+- Deployment and private evidence root:
+  `/var/lib/ovpncp-phase7-deployment`.
+- The authenticated bundle from the approved repaired isolated source passed
+  validation, dry-run, stopped import and verification. All 63 target files
+  matched: 43 PKI files, seven revoked serials, five CCD entries, one source
+  configuration, and zero unexplained drift.
+- OpenVPN, agent, API and web use the pinned images from the successful
+  rehearsal, including the corrected locally cached agent. All four reached
+  healthy state in the reference host/bridge topology.
+- Separate deployment steps reused existing Entra API/SPA/scope settings and
+  the shared client endpoint. The existing optional storage credential is
+  mounted as a private file. M0 did not read or write those settings.
+- The API database is fresh. The tested private operator initializer imported
+  three active clients, one active fixed-address assignment, and skipped six
+  inactive discoveries. Legacy users, device links, access grants, database
+  records and archive files were not copied. The five migrated CCD files
+  include entries associated with revoked credentials, which remain revoked.
+- The container web service takes the existing IPv4 HTTP port 80. UI HTTP 200,
+  matching runtime Entra settings and unauthenticated API rejection with 401
+  passed. Real Entra browser sign-in remains an external verification step.
+- A client using unchanged CA/certificate/key bytes connected in 1.025 seconds,
+  received the imported CCD address, pinged the VPN gateway and appeared in
+  agent sessions. The temporary canary was removed. This tests a local bridge
+  client on the approved VM, not the Azure public UDP path.
+- The owned VPN firewall starts with its exact two TUN anchors and terminal
+  deny. API event consumption and operation reconciliation were enabled after
+  inventory initialization; existing access rules were not silently adopted.
+- A deployment-specific systemd controller owns startup ordering. Its release
+  sets container restart policies to `no`, creates the Docker bridge before
+  attesting/repositioning only the owned anchors, and starts VPN services only
+  after the default-deny baseline exists. Original application/Nginx boot
+  activation is disabled and the generated legacy OpenVPN instance is masked.
+  Original source/configuration bytes and private rollback evidence remain.
+
+The hardened systemd controller completed a controlled stop/start successfully;
+`activation-result.json` confirms the unit is active/enabled and legacy
+services remain stopped. The repeated unchanged-client check passed in 1.022
+seconds. `final-audit.json` confirms all four containers are healthy, use the
+expected images and runtime UIDs, have read-only roots and no privileged or
+runtime-socket grants, and have actual Docker restart policies set to `no`.
+The owned anchors remain first and the original VPN source fingerprint is
+unchanged. `verification-before-lifecycle.json` retains the initial canary
+result, and `verification-result.json` records the post-restart result. These
+checks do not claim a real host reboot or Docker-daemon restart.
+
+The local final gates passed: 895 tests, 90% overall coverage, Ruff formatting
+and lint, mypy over 153 files with generated `build/` excluded, and
+`git diff --check`. The new recovery-set module also handles committed SQLite
+WAL contents by backing up a bounded private scratch copy, without asking
+SQLite to write side files beside read-only source volumes.
+
+This persistent migration does not close the coordinated full API/agent
+recovery or VM-loss/RPO acceptance criteria. The encrypted recovery-set core
+has unit coverage; a live whole-state restore and the Phase 0 off-host recovery
+objectives remain outstanding. Image signing/provenance and remaining release
+vulnerability review remain deferred to the agreed GHCR release work. No
+Phase 7 commit has been requested or made.
+
+
+### Operator handoff — remaining Phase 7 recovery acceptance
+
+After reviewing the remaining recovery scope, the operator stated, "I'll
+handle all of that." Remaining manual backup, whole-application restore,
+off-host/VM-loss recovery, recovery-time and recovery-point verification, and
+host/Docker restart checks are assigned to the operator. Automated scheduling
+is not required for this handoff; the agreed recovery objectives remain the
+acceptance reference.
+
+Migration implementation and persistent test-server cutover are complete.
+The later test-host authorization extended this handoff to an agent-run,
+coordinated Compose restore. That same-host check is now verified; the
+remaining off-host and production acceptance scope stays with the operator.
+
+
+### Deployment scope handoff — Phases 8–10
+
+The operator confirmed that Phases 8, 9 and 10 will be handled during real
+deployment under potentially different conditions. They are outside the
+current architecture implementation scope and are deferred, not completed.
+Their existing deliverables remain reference material to reassess against the
+actual deployment. No further deployment or HA work is authorized by this
+handoff, and the current test-server deployment is unchanged.
+
+Core architecture implementation and test-server migration through Phase 7 are
+complete. Same-host Compose recovery is verified; remaining off-host recovery
+acceptance is operator-owned. The deferred Phase 5 release checks remain
+associated with the future GHCR release.
+
+### Coordinated Compose recovery verification — 2026-10-07
+
+The operator authorized disruptive verification on `sciaiot-openvpn` and
+waived test-server data preservation requirements. The drill still retained
+the previous state privately. With writers stopped, it captured encrypted M0
+VPN state, a separately encrypted API/agent recovery set, and an encrypted
+deployment-settings/secret capsule linked to those artifacts and image IDs.
+
+The corrected procedure restored into fresh directories while the original
+bind-mounted state was unavailable, recreated the Compose deployment and
+owned firewall/route state, and reached four healthy services in 96.732 seconds.
+SQLite logical contents matched; profile/archive and intent files matched
+byte-for-byte. Acknowledged certificate revocation and operation history were
+retained, and a nonempty owned route was observed. Three tampered or mismatched
+recovery-set cases were rejected before extraction. An unchanged real VPN
+client connected with its expected CCD address, passed gateway traffic and
+appeared in the agent session inventory. The disposable route was subsequently
+removed through the agent before native host verification.
+
+The first restore attempt exposed an operator-script secret-file ownership
+error. After correcting its owner/mode, the entire restore was repeated into
+another fresh generation; the failed attempt and final evidence are retained
+privately under `/var/lib/ovpncp-verification-20261006`. API SQLite mode was
+also tightened to `0600` before capture, as required by the recovery-set tool.
+
+The route canary exposed a product observation bug: iproute2 rendered protocol
+186 as `bgp`, preventing reconciliation. Route observations now request numeric
+values with `ip -N`; regression tests and the real acknowledged operation pass.
+This test server uses a locally patched agent image; no image was published.
+
+This verifies a coordinated same-host restore with cached pinned images. It
+does not establish full VM rebuild, off-host key recovery, production RPO,
+nonempty access-grant restoration, or real Entra browser authentication.
+Phases 8–10 and the agreed GHCR release checks remain deferred.

@@ -384,6 +384,19 @@ def test_owned_network_realization_and_foreign_state(runtime, monkeypatch):
     assert not ReadOnlyVpnControl(runtime).execute(request(s.ListAccess())).result.items
 
 
+def test_route_observation_requests_numeric_protocol_json(monkeypatch):
+    """Named iproute2 aliases must not strand an owned route operation."""
+    arguments = []
+
+    def observe_command(command, deadline):
+        arguments.append(command)
+        return b"[]"
+
+    monkeypatch.setattr(bounded, "command", observe_command)
+    assert bounded.observe("routes", "tun0", time.monotonic() + 2) == b"[]"
+    assert arguments == [["/usr/sbin/ip", "-N", "-j", "-4", "route", "show"]]
+
+
 def test_ownership_unknown_duplicate_and_backend_failures(runtime, monkeypatch):
     configured, outputs = ownership_fixture(runtime)
     monkeypatch.setattr(bounded, "observe", lambda kind, *_: outputs[kind])

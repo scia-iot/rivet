@@ -44,7 +44,7 @@ def ownership(settings: Settings, deadline: float) -> Ownership:
 def routes(
     settings: Settings, config: s.ConfigResult, deadline: float
 ) -> tuple[s.ManagedRoute, ...]:
-    """Require exact network/gateway/device and dedicated protocol 200."""
+    """Require exact network, gateway, device and numeric owned protocol."""
     inventory = ownership(settings, deadline)
     declared = inventory.routes
     if not declared:

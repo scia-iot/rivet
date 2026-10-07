@@ -66,6 +66,16 @@ def legacy(tmp_path):
             .serial_number(serial)
             .not_valid_before(now - datetime.timedelta(days=1))
             .not_valid_after(now + datetime.timedelta(days=20))
+            .add_extension(
+                x509.ExtendedKeyUsage(
+                    [
+                        x509.ExtendedKeyUsageOID.SERVER_AUTH
+                        if name == "server"
+                        else x509.ExtendedKeyUsageOID.CLIENT_AUTH
+                    ]
+                ),
+                False,
+            )
             .sign(ca_key, hashes.SHA256())
         )
         (pki / f"issued/{name}.crt").write_bytes(

@@ -310,7 +310,7 @@ verb 3
 
     def kernel_digest(self) -> str:
         """Hash only namespace-owned route/rule configuration, excluding counters."""
-        routes = self.run(["/usr/sbin/ip", "-j", "-4", "route", "show"])
+        routes = self.run(["/usr/sbin/ip", "-N", "-j", "-4", "route", "show"])
         rules = self.run(["/usr/sbin/iptables-nft-save", "-t", "filter"])
         stable = b"\n".join(
             line for line in rules.splitlines() if not line.startswith(b"#")

@@ -149,27 +149,30 @@ def test_runbook_documents_the_application_gateway_trust_boundary() -> None:
 
 
 def test_systemd_keeps_fastapi_on_the_trusted_loopback_boundary() -> None:
-    """The privileged API is not exposed beside the trusted HTTP proxy."""
+    """The API is unprivileged and exposed only to the trusted HTTP proxy."""
     configuration = SYSTEMD_SERVICE.read_text(encoding="utf-8")
 
     assert "Environment=HOST=127.0.0.1" in configuration
     assert "Environment=PORT=8000" in configuration
     assert "Environment=OVPNCP_ROOT_PATH=/api" in configuration
-    assert "EnvironmentFile=/etc/ovpncp/ovpncp.env" in configuration
-    assert "ExecStart=/opt/ovpncp/venv/bin/ovpncp" in configuration
-    assert "User=root" in configuration
+    assert "EnvironmentFile=/etc/ovpncp/api.env" in configuration
+    assert "ExecStart=/usr/local/lib/ovpncp/api-venv/bin/ovpncp" in configuration
+    assert "Environment=OVPNCP_VPN_BACKEND=agent" in configuration
+    assert "User=ovpn-api" in configuration
+    assert "CapabilityBoundingSet=" in configuration
     assert "UMask=0077" in configuration
 
 
 def test_static_release_is_outside_the_api_writable_tree() -> None:
-    """Nginx can read releases that the privileged API cannot modify."""
+    """Nginx can read releases that the API cannot modify."""
     runbook = PRODUCTION_RUNBOOK.read_text(encoding="utf-8")
     service = SYSTEMD_SERVICE.read_text(encoding="utf-8")
 
     assert "/srv/ovpncp/frontend/current" in runbook
     assert "/opt/ovpncp/frontend" not in runbook
     assert "sudo chmod -R u=rwX,go=rX" in runbook
-    assert "ReadWritePaths=/etc/openvpn /opt/ovpncp" in service
+    assert "ReadWritePaths=/opt/ovpncp" in service
+    assert "InaccessiblePaths=-/var/lib/ovpn-agent" in service
     assert "ProtectSystem=strict" in service
     assert "/srv/ovpncp" not in service
 

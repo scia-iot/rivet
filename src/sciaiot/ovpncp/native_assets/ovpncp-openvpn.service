@@ -1,0 +1,28 @@
+[Unit]
+Description=OpenVPN server for ovpncp
+Wants=network-online.target
+Requires=ovpncp-forward-policy.service
+After=network-online.target systemd-tmpfiles-setup.service ovpncp-forward-policy.service
+
+[Service]
+Type=simple
+User=root
+Group=ovpn-runtime
+WorkingDirectory=/var/lib/openvpn
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/sbin/openvpn --config /var/lib/ovpn-agent/projection/server.conf
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0007
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SETUID CAP_SETGID
+AmbientCapabilities=
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/run/openvpn /run/ovpn-events /var/lib/openvpn
+InaccessiblePaths=-/opt/ovpncp -/run/ovpn-agent -/var/lib/ovpn-agent/pki -/var/lib/ovpn-agent/ccd -/var/lib/ovpn-agent/journal
+
+[Install]
+WantedBy=multi-user.target

@@ -9,9 +9,16 @@ from typing import Never
 
 import pydantic
 
-from sciaiot.ovpncp.migration import bundle, filesystem, source, target
+from sciaiot.ovpncp.migration import (
+    bundle,
+    container_target,
+    filesystem,
+    source,
+    target,
+)
 from sciaiot.ovpncp.migration.models import (
     MAX_BUNDLE_BYTES,
+    ContainerTargetSpec,
     MigrationError,
     SourceSpec,
     TargetSpec,
@@ -44,6 +51,9 @@ def _parser() -> argparse.ArgumentParser:
             command.add_argument("--pki-passphrases-file", type=pathlib.Path)
         if name in ("validate", "import", "verify"):
             command.add_argument("--policy", type=pathlib.Path, required=True)
+            command.add_argument("--container", action="store_true")
+        if name == "rollback":
+            command.add_argument("--container", action="store_true")
         if name in ("import", "verify", "rollback"):
             command.add_argument("--target", type=pathlib.Path, required=True)
         if name in ("import", "rollback"):
@@ -92,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
                     "file_count": len(state.files),
                 }
         elif args.command == "rollback":
-            result = target.rollback(
+            adapter = container_target if args.container else target
+            result = adapter.rollback(
                 args.target, apply=args.apply, target_stopped=args.target_stopped
             )
         else:
@@ -101,14 +112,20 @@ def main(argv: list[str] | None = None) -> int:
                 _read_key(args.key_file),
                 key_passwords=passwords,
             )
-            policy = parse_model(TargetSpec, filesystem.read_file(args.policy))
+            policy_bytes = filesystem.read_file(args.policy)
+            policy = (
+                parse_model(ContainerTargetSpec, policy_bytes)
+                if args.container
+                else parse_model(TargetSpec, policy_bytes)
+            )
+            adapter = container_target if args.container else target
             if args.command == "validate":
                 # Compatibility rendering uses no target writes or services.
-                result = target.validate_policy(state, policy)
+                result = adapter.validate_policy(state, policy)
             elif args.command == "verify":
-                result = target.verify(state, args.target, policy)
+                result = adapter.verify(state, args.target, policy)
             else:
-                result = target.install(
+                result = adapter.install(
                     state,
                     args.target,
                     policy,

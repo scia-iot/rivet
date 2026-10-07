@@ -42,11 +42,9 @@ application lives in [`frontend/`](frontend/README.md). It includes admin and
 device-user workflows, fine-grained authorization presentation, and
 Playwright coverage. The phased implementation source of truth is
 [`docs/frontend-implementation-plan.md`](docs/frontend-implementation-plan.md).
-Use the [production deployment runbook](docs/production-deployment.md) for the
-reviewed Nginx, systemd, security-header, build, smoke, and rollback workflow.
-The proposed privileged VPN-agent boundary and phased container migration are
-tracked in the
-[container architecture upgrade plan](docs/container-architecture-upgrade-plan.md).
+Use the [native PyPI deployment guide](docs/native-deployment.md) for a
+systemd host or the [container deployment guide](docs/container-deployment.md)
+for Compose. The API and VPN agent are separate runtime identities.
 
 ```shell
 cd frontend
@@ -66,94 +64,17 @@ the CLI does not migrate the backend or UI.
 
 ## Installation
 
-Python 3.14 or newer is required. The service needs root privileges because it
-manages OpenVPN, firewall rules, routes, and protected certificate files.
+Python 3.14 or newer is required. A native installation uses the same
+versioned wheel in two environments: `ovpncp[api]` runs FastAPI as an
+unprivileged user, while plain `ovpncp` runs the separate VPN agent and
+OpenVPN event hook. Add `azure`, `mysql` or `postgres` to the API extra only
+when those integrations are used. The browser UI is a separate static build
+served by Nginx; it is not included in the Python wheel.
 
-The current application imports the Entra token validator during startup, so
-install the `security` extra even when SQLite and local certificate storage are
-used:
-
-```shell
-sudo pipx install "ovpncp[security]"
-```
-
-Use the `azure` extra when Azure Blob Storage is configured. It includes the
-`security` dependencies:
-
-```shell
-sudo pipx install "ovpncp[azure]"
-```
-
-Add `mysql` or `postgres` to the selected extras when using either database,
-for example `ovpncp[azure,postgres]`.
-
-Wheels contain dependency metadata, not copies of third-party packages. A
-local wheel installation must therefore select the same extras explicitly and
-allow pipx to resolve them:
-
-```shell
-sudo pipx install \
-  "ovpncp[azure] @ file:///absolute/path/to/ovpncp-0.1.7-py3-none-any.whl"
-```
-
-To replace an existing pipx installation, stop the service, run
-`sudo pipx uninstall ovpncp`, install the new package with the appropriate
-extras, and start the service again. Verify the installed version and service
-health before removing the wheel used for deployment.
-
-## OpenVPN Server Setup
-
-Make sure the `client-to-client` directive is disabled:
-
-```shell
-;client-to-client
-```
-
-Enable CCD & make it exclusive:
-
-```shell
-client-config-dir /etc/openvpn/ccd
-ccd_exclusive
-```
-
-Enable the scripts of client connection:
-
-```shell
-client-connect /opt/ovpncp/scripts/client-connect.sh
-client-disconnect /opt/ovpncp/scripts/client-disconnect.sh
-```
-
-Start the application:
-
-```shell
-sudo -i ovpncp
-```
-
-Restart the server:
-
-```shell
-sudo systemctl restart openvpn
-```
-
-## Running as a systemd Service (Recommended)
-
-Production terminates public TLS and hostname matching at Azure Application
-Gateway, which forwards private HTTP to Nginx. Nginx serves the UI and proxies
-`/api` to FastAPI on loopback. The reviewed
-[`deploy/systemd/ovpncp.service`](deploy/systemd/ovpncp.service) publishes that
-external API root and restricts filesystem writes while retaining required
-host privileges.
-
-```shell
-sudo install -m 0644 deploy/systemd/ovpncp.service \
-  /etc/systemd/system/ovpncp.service
-sudo systemctl daemon-reload
-sudo systemctl enable ovpncp
-sudo systemctl restart ovpncp
-```
-
-Complete the remaining production steps in the
-[production deployment runbook](docs/production-deployment.md).
+The [native deployment guide](docs/native-deployment.md) covers package
+installation, exported service templates, state ownership, firewall startup,
+OpenVPN hooks, UI delivery and verification. The
+[container deployment guide](docs/container-deployment.md) covers Compose.
 
 ## API - Basic Usage
 

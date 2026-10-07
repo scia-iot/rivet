@@ -108,6 +108,171 @@ Schema 1 fails closed on version differences. There is no blanket `--force` or
 unreviewed cross-version transformation. A changed source profile requires a
 reviewed, tested transformation and a future schema/implementation change.
 
+### Phase 7 container profile
+
+The container profile uses the existing authenticated M0 bundle and retains the
+M0 stopped-target transaction: a private migration-owned wrapper contains an
+`active` generation, a byte-and-metadata-exact `rollback` generation, and a
+durable journal. Compose binds the `active` generation as its state root. The
+adapter maps only OpenVPN state into `vpn-config`, `vpn-pki`, `vpn-ccd`,
+`vpn-projection`, `vpn-pool`, and the VPN runtime directories. It does not read
+or create API, database, archive, authentication, or UI state. The runtime
+projection contains only the CA certificate, server certificate and key, CRL,
+reviewed DH parameters, and CCD entries. The CA private key never enters this
+projection. The source's complete PKI remains in the
+agent-private mount. The source pool file maps to the daemon-owned pool mount.
+
+The only proposed cross-version allowance is OpenVPN 2.6.19 and Easy-RSA
+3.1.7 on both sides, with source OpenSSL 3.0.13 and target OpenSSL 3.5.7 in
+the pinned Phase 6 OpenVPN image. This is an explicit compatibility policy,
+not an assertion that the versions are equivalent. It must be paired with
+target-side validation of the imported CA/server/client keys, chains and CRL,
+an unchanged-client connection, and target Easy-RSA issue/revoke/CRL tests.
+Any other version pair, image digest, missing option/cipher, or failed target
+crypto operation is rejected. The policy does not alter source key or
+certificate bytes and does not permit an unreviewed option transformation.
+
+An inconsistent legacy source must be reconciled in an isolated, audited copy
+before export. The M0 validator keeps rejecting absent revocation enforcement,
+unindexed certificates and duplicate serials. The approved Phase 7 source copy
+passed those checks and produced an authenticated encrypted bundle; the
+original installation remains unchanged. External pool and hook references
+must be approved as exact files; broad access to application directories is
+forbidden. The source-specific repair and preservation evidence is recorded in
+the architecture upgrade plan.
+
+The source descriptor can name those exceptions as `external_files`, keyed by
+absolute file path with role `pool` or `hook`. Only an
+`ifconfig-pool-persist` reference may consume a `pool` approval, and only a
+reviewed hook directive may consume a `hook` approval. Every approved path must
+be used in the parsed source configuration. The pool bytes enter the encrypted
+bundle as `pool/ipp.txt`; a hook is hashed and inventoried but its executable
+bytes never enter the bundle. The reader rejects symlinks, hard links, special
+files, path traversal and concurrent file replacement. Add exact entries to
+the private source descriptor as needed:
+
+```json
+{
+  "external_files": {
+    "/approved/runtime/ipp.txt": "pool",
+    "/approved/application/client-connect.sh": "hook",
+    "/approved/application/client-disconnect.sh": "hook"
+  }
+}
+```
+
+The container policy is a strict extension of the M0 target policy. Its
+`image_digest` must equal the pinned Phase 6 OpenVPN image digest, and
+`target_device` must be an operator-reviewed numbered TUN device such as
+`tun9`. The adapter transforms source `dev tun` into that exact device, adds
+`dev-type tun`, `disable-dco`, service identity, management/status paths and
+private runtime log handling, then renders the same configuration in the
+agent-private and daemon projection mounts. It rejects source includes,
+host-specific `local`, TLS static-key options, unrecognized assets, and
+non-UDP/non-subnet profiles until a reviewed conversion exists. Every source
+hook replacement maps to the pinned image's
+`/usr/local/bin/ovpncp-vpn-event`, with SHA-256
+`bd29220d58469db027654ff9a5468f61f5c81d877511da1e28f04dc0fe31edb3`.
+Check this hash against the actual cached image file before import. The
+adapter refuses any other replacement hash or path.
+
+With the encrypted M0 bundle, private key file and protected container policy,
+the non-interactive sequence is:
+
+```bash
+ovpncp-migrate validate --container --bundle migration.bundle \
+  --key-file migration.key --policy container-target.json
+ovpncp-migrate import --container --bundle migration.bundle \
+  --key-file migration.key --policy container-target.json \
+  --target /private/migration
+ovpncp-migrate import --container --bundle migration.bundle \
+  --key-file migration.key --policy container-target.json \
+  --target /private/migration --apply --target-stopped
+ovpncp-migrate verify --container --bundle migration.bundle \
+  --key-file migration.key --policy container-target.json \
+  --target /private/migration
+```
+
+Run the applying command as root on a stopped disposable target with all VPN
+writers frozen; the adapter assigns the fixed image UIDs and GIDs. Keep the
+private wrapper and its `rollback` generation on one filesystem. Set Compose
+`OVPNCP_STATE_ROOT=/private/migration/active`. Provision separate API-related
+state outside this migration-owned wrapper before running a full four-service
+deployment. After stopping the target and freezing writers again, run
+`ovpncp-migrate rollback --container --target /private/migration --apply
+--target-stopped`; it restores the exact previous generation, including the
+previously absent state. Verify before issuing new target credentials, because
+the expected imported PKI hashes change after issuance and revocation.
+
+For a fresh API database, imported VPN certificates do not automatically
+become API client rows. Keep the API and web containers stopped while the
+agent is healthy, and run the operator-only
+`tests/integration/phase7_api_initializer.py` in the pinned API image as UID
+65531. Mount only the new API data and profile directories read-write, the
+agent socket read-only, and a privately staged UID 65531-owned mode 0400 or
+0600 endpoint file read-only; use no network. Pass `--remote-host-file` and the
+reviewed active-client and assigned-CCD counts as `--expected-active` and
+`--expected-assigned`. The helper refuses a nonempty API inventory and checks
+agent discovery before writing. It uses the existing server/profile workflow
+and client import logic, then checks the resulting rows and assignments. Its
+output contains counts only. A failure after an API database commit requires
+restoring the separately preserved fresh API root before retrying. This
+operator process does not add an unauthenticated HTTP route. Revoked VPN
+identities remain excluded from the API inventory, while old API users,
+devices, grants and archives are outside the M0 migration scope.
+
+Start the API with `OVPNCP_VPN_EVENTS=0` and `OVPNCP_VPN_RECONCILE=0` during
+this initialization. The latter recovers pending API workflows; it does not
+import PKI clients. Enable event consumption and reconciliation after API
+inventory and agent health checks. Enabling the agent's `access` mutation
+family requires exact owned `FORWARD` anchors, `OVPNCP_FORWARD` chain and
+terminal deny rule before startup. Provision and attest that baseline after
+Docker creates its bridge and before OpenVPN starts.
+
+### Coordinated recovery set design for Phase 7
+
+The VPN checkpoint above is only the OpenVPN part of a recovery generation.
+The separate deployment-operator recovery set will carry a generation ID and
+capture time, pinned image digests, an authenticated SHA-256 link to the
+encrypted M0 VPN bundle, a consistent SQLite backup from the API volume,
+API-owned profile and local archive files, and agent-owned operation/event
+journal and network-ownership intent. No backend artifact enters M0. The
+recovery manifest records each relative file path, byte count, hash, mode,
+owner and group inside authenticated encryption. The outer versioned format
+uses a fresh nonce and AES-256-GCM with a 32-byte key delivered separately from
+both encrypted artifacts. A record is valid only after the complete
+authentication tag, manifest, file inventory and linked M0 digest verify.
+Reject symlinks, hard links, special files, path traversal, extra members,
+duplicate names and unsupported schema or image versions before target writes.
+
+The operator stops API mutations, agent mutations and OpenVPN pool writes,
+waits for in-flight operations to reach durable terminal state, then takes the
+SQLite online backup and captures the other owned volumes and M0 VPN bundle
+under one generation ID. A checkpoint is complete only when both encrypted
+artifacts, separately protected keys and off-host copies have been verified.
+The 15-minute cadence and 35-day retention need measured off-host evidence;
+the reference rehearsal must not infer them from one local snapshot. A failed
+checkpoint must preserve the last valid generation and alert the operator.
+
+Restore authenticates both artifacts while services remain stopped, creates a
+new private target generation, imports and verifies the M0 VPN state, restores
+the API/agent-owned state with its recorded owners and modes, then checks API
+database integrity, profile/archive inventory, agent operation generation and
+revocation/CRL consistency. Reconcile any acknowledged issuance or revocation
+after the checkpoint before reopening VPN ingress. Missing revocation evidence
+blocks ingress. Only then start agent, OpenVPN, API and web and measure
+authenticated API readiness, unchanged-client reconnect and allowed/denied
+traffic. Keep the previous generation for exact rollback. The isolated Phase 7
+rehearsal uses fresh synthetic API state and does not read legacy application
+data.
+
+### Existing stopped-target profile
+
+The following policy example applies to the original offline stopped-target
+profile. The Phase 7 container profile above additionally requires a pinned
+image digest, exact target versions, fixed runtime identities and reviewed TUN
+mapping. Do not use this example as a Phase 7 container policy.
+
 The target policy records exact observed versions, the source serial allocation
 policy, existing target owner/group **names**, and option/cipher availability.
 An example minimal policy for a server without additional directives is:

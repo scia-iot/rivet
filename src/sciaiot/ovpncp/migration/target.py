@@ -48,7 +48,17 @@ def _replace_json(path: pathlib.Path, value: dict[str, object]) -> None:
     _sync(path.parent)
 
 
-def _owned(destination: pathlib.Path, *, create: bool = False) -> None:
+def _owned(
+    destination: pathlib.Path,
+    *,
+    create: bool = False,
+    profile: str = "offline",
+) -> None:
+    expected = {"schema": 1, "destination": str(destination)}
+    if profile == "container":
+        expected["profile"] = "container"
+    elif profile != "offline":
+        raise MigrationError("unsupported migration target profile")
     if not destination.exists():
         if not create:
             return
@@ -62,20 +72,12 @@ def _owned(destination: pathlib.Path, *, create: bool = False) -> None:
     if not children and create:
         filesystem.write_private(
             destination / MARKER,
-            json.dumps(
-                {
-                    "schema": 1,
-                    "destination": str(destination),
-                }
-            ).encode(),
+            json.dumps(expected).encode(),
         )
         return
     if not children:
         return
-    if MARKER not in children or _json(destination / MARKER) != {
-        "schema": 1,
-        "destination": str(destination),
-    }:
+    if MARKER not in children or _json(destination / MARKER) != expected:
         raise MigrationError("non-empty target is not migration-owned")
     allowed = {MARKER, JOURNAL, "active", "rollback", ".lock"}
     if JOURNAL in children:
@@ -356,10 +358,11 @@ def rollback(
     *,
     apply: bool = False,
     target_stopped: bool = False,
+    profile: str = "offline",
 ) -> dict[str, object]:
     """Restore exact prior file hashes/modes/owners and stopped service state."""
     destination = pathlib.Path(os.path.abspath(destination))
-    _owned(destination)
+    _owned(destination, profile=profile)
     if not (destination / JOURNAL).exists():
         raise MigrationError("mandatory rollback snapshot is unavailable")
     if not apply:

@@ -13,13 +13,13 @@ from sciaiot.ovpncp.vpn_agent.writer import MutationVpnControl
 from tests.test_vpn_agent import request, settings
 
 
-def configured_control(tmp_path: Path) -> MutationVpnControl:
+def configured_control(tmp_path: Path, protocol: int = 201) -> MutationVpnControl:
     """Build only synthetic files and explicitly allocated route ownership."""
     configured = dataclasses.replace(
         settings(tmp_path),
         journal_path=tmp_path,
         mutation_families=frozenset({"routes", "access"}),
-        route_protocol=201,
+        route_protocol=protocol,
         ownership_path=tmp_path / "ownership.json",
     )
     configured.config_path.write_text(
@@ -70,6 +70,71 @@ def test_owned_route_reconciles_after_command_before_inventory(
         json.loads(control.settings.ownership_path.read_bytes())["routes"][0][
             "route_id"
         ]
+        == route.route_id
+    )
+    control.close()
+
+
+def test_named_iproute_protocol_reconciles_from_numeric_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A kernel route named bgp by iproute2 completes its pending journal."""
+    control = configured_control(tmp_path, protocol=186)
+    route = s.ManagedRoute(
+        route_id="00000000-0000-4000-8000-000000000001",
+        network="192.168.40.0/24",
+        gateway="10.8.0.2",
+    )
+    intent = request(s.SetRoute(route=route, present=True))
+    installed = False
+    route_adds = 0
+    original_observe = bounded.observe
+
+    def observe(kind: str, device: str, deadline: float) -> bytes:
+        if kind == "routes":
+            return original_observe(kind, device, deadline)
+        return b""
+
+    def command(arguments: list[str], deadline: float) -> bytes:
+        nonlocal installed, route_adds
+        if arguments[:2] == ["/usr/sbin/ip", "-N"]:
+            protocol = "186"
+        elif arguments[:2] == ["/usr/sbin/ip", "-j"]:
+            protocol = "bgp"
+        else:
+            protocol = None
+        if "show" in arguments:
+            rows = (
+                [
+                    {
+                        "dst": route.network,
+                        "gateway": route.gateway,
+                        "dev": "tun0",
+                        "protocol": protocol,
+                    }
+                ]
+                if installed
+                else []
+            )
+            return json.dumps(rows).encode()
+        if "add" in arguments:
+            route_adds += 1
+            installed = True
+            raise OSError("reply lost after kernel accepted route")
+        pytest.fail("Unexpected system command")
+
+    monkeypatch.setattr(bounded, "observe", observe)
+    monkeypatch.setattr(bounded, "command", command)
+    with pytest.raises(ControlError):
+        control.execute(intent)
+    control.reconcile()
+    result = control.execute(intent).result
+    assert isinstance(result, s.MutationResult)
+    assert result.state == "succeeded"
+    assert route_adds == 1
+    assert control.settings.ownership_path is not None
+    assert (
+        json.loads(control.settings.ownership_path.read_text())["routes"][0]["route_id"]
         == route.route_id
     )
     control.close()

@@ -113,6 +113,26 @@ def _index(data: bytes) -> dict[int, tuple[str, str, str, str]]:
     return records
 
 
+def _index_common_name(subject: str) -> str:
+    if not subject.startswith("/") or "\\" in subject:
+        raise MigrationError("unsupported Easy-RSA index subject encoding")
+    names: list[str] = []
+    for part in subject[1:].split("/"):
+        name, separator, value = part.partition("=")
+        if (
+            not separator
+            or not value
+            or re.fullmatch(r"[A-Za-z][A-Za-z0-9.]*", name) is None
+            or any(ord(char) < 32 for char in value)
+        ):
+            raise MigrationError("invalid Easy-RSA index subject")
+        if name == "CN":
+            names.append(value)
+    if len(names) != 1:
+        raise MigrationError("ambiguous Easy-RSA index common name")
+    return names[0]
+
+
 def semantic_state(state: Snapshot) -> dict[str, object]:
     """Verify cryptographic PKI and return protected semantic comparison data."""
     try:
@@ -200,8 +220,8 @@ def _semantic_state(state: Snapshot) -> dict[str, object]:
         ):
             raise MigrationError("certificate and index expiry disagree")
         common_names = cert.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)
-        if len(common_names) != 1 or not subject.endswith(
-            f"/CN={common_names[0].value!s}"
+        if len(common_names) != 1 or _index_common_name(subject) != str(
+            common_names[0].value
         ):
             raise MigrationError("certificate and index subject disagree")
         if status == "E" and cert.not_valid_after_utc >= now:
@@ -258,10 +278,10 @@ def _semantic_state(state: Snapshot) -> dict[str, object]:
     )
     if not server.not_valid_before_utc <= now <= server.not_valid_after_utc:
         raise MigrationError("server certificate is not currently valid")
-    if (
-        identities[str(server.serial_number)]["fingerprint"]
-        != server.fingerprint(hashes.SHA256()).hex()
-    ):
+    indexed_server = identities.get(str(server.serial_number))
+    if indexed_server is None:
+        raise MigrationError("configured server certificate absent from PKI inventory")
+    if indexed_server["fingerprint"] != server.fingerprint(hashes.SHA256()).hex():
         raise MigrationError("server certificate differs from indexed identity")
     try:
         if server.extensions.get_extension_for_class(x509.BasicConstraints).value.ca:

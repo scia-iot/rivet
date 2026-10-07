@@ -1,28 +1,34 @@
 [Unit]
 Description=OpenVPN Control Panel API
 Wants=network-online.target
-After=network-online.target openvpn.service
+Wants=ovpncp-vpn-agent.service
+After=network-online.target ovpncp-vpn-agent.service
 
 [Service]
 Type=simple
-User=root
-Group=root
+User=ovpn-api
+Group=ovpn-control
 WorkingDirectory=/opt/ovpncp
 Environment=HOST=127.0.0.1
 Environment=PORT=8000
 Environment=OVPNCP_ROOT_PATH=/api
-EnvironmentFile=/etc/ovpncp/ovpncp.env
-ExecStart=/opt/ovpncp/venv/bin/ovpncp
+Environment=OVPNCP_VPN_BACKEND=agent
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=/etc/ovpncp/api.env
+ExecStart=/usr/local/lib/ovpncp/api-venv/bin/ovpncp
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30
 UMask=0077
-
 NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=/etc/openvpn /opt/ovpncp
+ReadWritePaths=/opt/ovpncp
+InaccessiblePaths=-/var/lib/ovpn-agent -/run/openvpn -/run/ovpn-events -/etc/openvpn
 
 [Install]
 WantedBy=multi-user.target

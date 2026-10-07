@@ -79,7 +79,7 @@ def observe(kind: str, device: str, deadline: float) -> bytes:
         raise ControlError(ErrorCode.INVALID_INPUT)
     remaining(deadline)
     commands = {
-        "routes": ["/usr/sbin/ip", "-j", "-4", "route", "show"],
+        "routes": ["/usr/sbin/ip", "-N", "-j", "-4", "route", "show"],
         "link": ["/usr/sbin/ip", "-j", "link", "show", "dev", device],
         "rules": ["/usr/sbin/iptables-nft-save", "-t", "filter"],
         "backend": ["/usr/sbin/iptables-nft-save", "--version"],

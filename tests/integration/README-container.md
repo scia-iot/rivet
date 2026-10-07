@@ -225,3 +225,60 @@ Local ownership regressions are:
 ```bash
 pytest -q tests/test_compose_phase6_host_rehearsal.py
 ```
+
+## Opt-in Phase 7 encrypted OpenVPN migration rehearsal
+
+`phase7_container_rehearsal.py` reuses the isolated Phase 6 network
+namespaces. It requires a separately prepared, authenticated M0 OpenVPN-only
+bundle, its private key and independently observed pinned-image capabilities.
+It does not read the legacy application database or archive. A reviewed root
+maintenance guard must verify an SSH route outside the VPN, preserve and
+fingerprint the original OpenVPN-only state, stop source application and VPN
+services for memory headroom, then restore and compare them after all
+disposable containers and namespaces are removed.
+
+Place `migration.bundle`, `migration.key` and `capabilities.json` as root-owned
+mode-0600 regular files in a root-owned mode-0700 input directory. Stage the
+reviewed migration package and Phase 7 helper beside this runner, with the
+pinned `vpn_event.sh`. Use a separate root-owned mode-0700 parent for retained
+evidence. Invoke `python3 -m tests.integration.phase7_container_rehearsal`
+through the bounded guard with `--input-dir`, `--private-parent`, and immutable
+`--openvpn-image`, `--agent-image`, and `--api-image` references. The runner
+requires the OpenVPN and agent references to equal the capability record and
+the API reference to match the reviewed digest.
+
+The runner imports and semantically verifies the M0 bundle into a private
+Compose VPN mount generation. It connects one indexed valid client with
+unchanged credentials and checks its CCD address, times a VPN restart and
+reconnect, issues and revokes a new test client, freezes the target and exports
+an encrypted M0 checkpoint, restores that checkpoint into a nonempty target,
+reconnects the unchanged client, and verifies the acknowledged revocation.
+It then rolls back to an exact previous VPN generation with the same revoked
+state, compares full hashes, modes and owners, and proves a further new
+client can be issued and revoked after rollback. `progress.json` and the final
+redacted JSON identify the private evidence root. The maintenance guard owns
+source service restoration and host invariance checks.
+
+This rehearsal establishes only OpenVPN state and VPN reconnect behavior.
+Full-VM restore, application/API data recovery, and coordinated agent
+network-policy RPO need separate evidence before the Phase 0 recovery gate can
+be accepted.
+
+## Native host and coordinated Compose verification
+
+`native_host_rehearsal.py` is a separate, explicitly invoked Linux host test.
+It stages installed-wheel systemd services, verifies process/socket/firewall
+and HTTP boundaries, and provides typed canary mutations and marker-owned
+cleanup. It changes host services and must only run on an authorized test
+host after stopping conflicting deployments and reviewing its fixed paths.
+It is not part of ordinary pytest execution. See the
+[native installation plan](../../docs/native-installation-plan.md) for the
+completed host checks and [native deployment](../../docs/native-deployment.md)
+for the supported installation layout.
+
+The 2026-10-07 coordinated Compose restore on `sciaiot-openvpn` separately
+verified encrypted VPN/API/agent/deployment state, restored into fresh
+directories while original state was unavailable. Its scope and limits are
+recorded in the [architecture plan](../../docs/container-architecture-upgrade-plan.md#coordinated-compose-recovery-verification--2026-10-07).
+After native cleanup, all four Compose services were healthy and the final
+unchanged-client VPN, CCD, gateway traffic, session and UI/API checks passed.

@@ -8,21 +8,23 @@ version = "0.1.7"
 license = { text = "Apache License 2.0" }
 description = "OpenVPN Control Panel for Restricted Network."
 authors = [{ name = "Nick Yao", email = "ipaddict@outlook.com" }]
+requires-python = ">=3.14"
 dependencies = [
     "cryptography",
-    "fastapi[all]",
-    "PyYAML",
-    "sqlmodel",
-    "uvicorn",
+    "pydantic>=2",
 ]
 
 [project.optional-dependencies]
-security = [
+api = [
+    "fastapi",
+    "PyYAML",
+    "sqlmodel",
+    "uvicorn",
     "python-jose[cryptography]",
-    "types-python-jose"
 ]
+security = ["ovpncp[api]"]
 azure = [
-    "ovpncp[security]",
+    "ovpncp[api]",
     "azure-storage-blob"
 ]
 mysql = [
@@ -41,10 +43,12 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.scripts]
-ovpncp = "sciaiot.ovpncp.main:run"
+ovpncp = "sciaiot.ovpncp.native_api:main"
 ovpncp-vpn-event = "sciaiot.ovpncp.vpn_agent.event_hook:main"
 ovpncp-vpn-agent = "sciaiot.ovpncp.vpn_agent.cli:main"
 ovpncp-migrate = "sciaiot.ovpncp.migration.cli:main"
+ovpncp-export-native = "sciaiot.ovpncp.native_assets:main"
+ovpncp-native-firewall = "sciaiot.ovpncp.native_firewall:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -55,6 +59,9 @@ exclude = [
 
 [tool.setuptools.package-data]
 sciaiot = ["**/*.yml", "**/*.sh"]
+"sciaiot.ovpncp.native_assets" = [
+    "*.service", "*.conf", "*.example", "*.template", "*.sh"
+]
 
 [tool.pytest.ini_options]
 pythonpath = [

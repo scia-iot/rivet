@@ -18,6 +18,38 @@ from sciaiot.ovpncp.migration.models import (
 from tests.test_migration import legacy as legacy  # noqa: PLC0414
 
 
+def test_index_cn_may_precede_other_subject_attributes(legacy):
+    """OpenSSL revocation keeps the CN even when it is not the last RDN."""
+    root, spec = legacy
+    index = root / "pki/index.txt"
+    index.write_text(
+        index.read_text().replace(
+            "/CN=client\n",
+            "/O=example/CN=client/emailAddress=client@example.test\n",
+        )
+    )
+    assert source.capture(spec, writers_frozen=True).manifest.semantics["serial_status"]
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        "/O=example/CN=client/CN=client",
+        "/O=example/CN=other",
+        "/O=example/CN=client-extra",
+        "/O=example/CN=client\\/spoof",
+        "/O=example/CN=client//emailAddress=x",
+    ],
+)
+def test_index_cn_rejects_ambiguous_or_spoofed_values(legacy, subject):
+    """Only one complete, unescaped matching CN is accepted."""
+    root, spec = legacy
+    index = root / "pki/index.txt"
+    index.write_text(index.read_text().replace("/CN=client\n", f"{subject}\n"))
+    with pytest.raises(MigrationError):
+        source.capture(spec, writers_frozen=True)
+
+
 def _add_file(state, name, data):
     """Add an authenticated file as a hostile bundle author could."""
     state.files[name] = data
