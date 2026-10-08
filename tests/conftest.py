@@ -1,22 +1,29 @@
+"""Shared test fixtures with disposable database storage."""
+
+from collections.abc import Generator
+from pathlib import Path
+
 import pytest
+from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine
 
+pytest_plugins = ("tests.support.migration", "tests.support.pki")
 
-@pytest.fixture(scope="session")
-def db_engine(request):
-    sqlite_file_name = ".devcontainer/ovpncp.db"
-    sqlite_url = f"sqlite:///{sqlite_file_name}"
 
-    engine = create_engine(sqlite_url, echo=True)
+@pytest.fixture
+def db_engine(tmp_path: Path) -> Generator[Engine]:
+    """Give each test an isolated SQLite database under pytest storage."""
+    database = tmp_path / "ovpncp.db"
+    engine = create_engine(f"sqlite:///{database}")
     SQLModel.metadata.create_all(engine)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
 
-    yield engine
 
-    SQLModel.metadata.drop_all(engine)
-    engine.dispose()
-
-
-@pytest.fixture(scope="session")
-def db_session(db_engine):
+@pytest.fixture
+def db_session(db_engine: Engine) -> Generator[Session]:
+    """Keep one database session open for each test's API requests."""
     with Session(db_engine) as session:
         yield session

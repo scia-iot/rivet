@@ -54,7 +54,7 @@ def _pem_key(key: rsa.RSAPrivateKey) -> bytes:
 
 def generate() -> None:
     """Generate a short-lived TLS CA/leaf and separate JWT signing key."""
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     ca_name = x509.Name(
         [x509.NameAttribute(NameOID.COMMON_NAME, "Disposable Phase 6 CA")]
@@ -193,7 +193,7 @@ def _token(
     app_only: bool = False,
 ) -> str:
     """Sign a short-lived synthetic token with the fixture private key."""
-    now = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+    now = int(datetime.datetime.now(datetime.UTC).timestamp())
     claims = {
         "iss": f"https://login.microsoftonline.com/{TENANT}/v2.0",
         "aud": audience,

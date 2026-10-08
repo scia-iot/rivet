@@ -72,7 +72,7 @@ def main() -> None:
             server_header=False,
             log_config=None,
         )
-    except (KeyError, OSError, ValueError):
+    except KeyError, OSError, ValueError:
         raise SystemExit("API startup failed; check private configuration.") from None
 
 

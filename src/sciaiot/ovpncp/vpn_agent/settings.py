@@ -73,7 +73,7 @@ class Settings:
                 raise ValueError("Canonical absolute observation paths required.")
 
     @classmethod
-    def from_environment(cls) -> "Settings":
+    def from_environment(cls) -> Settings:
         """Fail startup when an explicit trust identity is missing or invalid."""
         try:
 
@@ -117,7 +117,7 @@ class Settings:
                     )
                 ),
             )
-        except (KeyError, ValueError):
+        except KeyError, ValueError:
             raise ValueError(
                 "Invalid or missing private agent configuration."
             ) from None

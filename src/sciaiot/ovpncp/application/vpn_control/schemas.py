@@ -6,6 +6,8 @@ from typing import Annotated, Literal, Self
 
 import pydantic
 
+from sciaiot.ovpncp.application import client_name
+
 from .errors import ErrorCode
 
 MAX_JSON_BYTES = 1024 * 1024
@@ -17,7 +19,7 @@ MAX_QUEUED_OPERATIONS = 100
 MAX_DEADLINE_MS = 60_000
 MAX_DEPTH = 20
 
-Name = Annotated[str, pydantic.Field(pattern=r"^[A-Za-z0-9_-]{1,255}$")]
+Name = Annotated[str, pydantic.Field(pattern=client_name.CLIENT_NAME_PATTERN)]
 Identifier = Annotated[
     str,
     pydantic.Field(

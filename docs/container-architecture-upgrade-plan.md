@@ -4,7 +4,7 @@ Status: Phase M0 and Phases 0–4 complete; Phase 5 implementation complete,
 release verification deferred; Phase 6 complete; Phase 7 migration complete,
 same-host Compose recovery verified; off-host recovery acceptance pending;
 Phases 8–10 deferred to real deployment.
-Last updated: 2026-10-07
+Last updated: 2026-10-08
 
 This document is the source of truth for introducing a container-first
 production architecture for ovpncp and OpenVPN. The current UAT topology is not
@@ -649,7 +649,7 @@ Rollback: disable the transitioned family and reconcile with the host adapter.
 Status: implementation complete; release verification deferred under the
 operator-approved sequence below. All four images tagged
 `phase5-hardening-20260924` are
-cached in `faureciaiot-b8c8fwavbhdudve2.azurecr.io`. New immutable digests were
+cached in the private verification registry. New immutable digests were
 inspected and the disposable UDP/CCD, allow/deny, replay and agent restart
 rehearsal passes against them with unchanged host VPN/network state.
 Rescans and updated SBOMs confirm the removed packaging/XML payloads are absent;
@@ -725,7 +725,7 @@ at `xhigh` effort. Isolated Compose integration passed readiness, signed
 HTTP/RBAC through Nginx, UDP/CCD, credential lifecycle, CRL enforcement and
 API/web upgrade/rollback with surviving VPN traffic. The subsequent actual
 host/bridge rehearsal passed with the corrected agent image on the
-operator-approved existing `sciaiot-openvpn` host using fresh synthetic state.
+approved existing test host using fresh synthetic state.
 It verified allowed/denied flows and selected-service upgrade/rollback without
 restarting the VPN data plane. Cleanup, source-state fingerprints and all
 eleven stopped-host comparisons passed; both original services were restored.
@@ -762,7 +762,7 @@ Status: started on 2026-09-30 with the requested `gpt-6-sol` agent at `xhigh`
 effort. The OpenVPN-only migration, unchanged-client connection, encrypted
 checkpoint restore and exact nonempty rollback passed on the approved test host
 on 2026-10-01. On 2026-10-02 the operator authorized persistent cutover of
-`sciaiot-openvpn`, accepting downtime. The approved repaired VPN copy is now
+the approved test host, accepting downtime. The approved repaired VPN copy is now
 imported into the persistent four-service container deployment; original source
 files remain preserved and legacy services are stopped.
 Migration implementation and test-server cutover are complete. The authorized
@@ -1251,7 +1251,7 @@ Operational changes and limits:
   stream invalidation, producer gaps, and same-second reconnect identity.
 - Public OpenAPI exactly matches the retained Phase 2 baseline: 32 paths,
   48 operations. No public endpoint or response schema changed.
-- Disposable verification on `fdsadmin@sciaiot-openvpn` used OpenVPN 2.6.19,
+- Disposable verification on the approved test host used OpenVPN 2.6.19,
   Easy-RSA 3.1.7, a fresh synthetic CA, two real VPN clients, and attested mount,
   PID and network namespaces. Host OpenVPN paths were masked before execution.
   The runner is `tests/integration/run_vpn_mutation_namespace.sh`; its executable
@@ -1271,8 +1271,8 @@ Operational changes and limits:
   OpenVPN/PKI files or executable filesystem were available, and local process
   calls were forbidden. Discovery, profile generation, certificate issue/delete,
   and credential streaming passed.
-- Final private evidence: `/home/fdsadmin/.ovpncp-p4-pm_12vyb/last-result.log`
-  and `evidence-ourky57x/host-before.json` / `host-after.json`. All seven host
+- Final private evidence: `last-result.log`
+  and `host-before.json` / `host-after.json`. All seven host
   fingerprints matched: routes, links, addresses, policy rules, IPv4 firewall,
   IPv6 firewall, and existing OpenVPN process identities. Every earlier
   disposable attempt also left these host fingerprints unchanged.
@@ -1330,9 +1330,9 @@ Operational changes and limits:
   lint, mypy and all 44 focused container tests passed. Azure retry remains
   pending; no successful UI image is claimed.
 - Successful operator builds, locally or using the supplied Azure ACR commands
-  for `faureciaiot`, remain pending. Record all four immutable
+  for the private verification registry, remain pending. Record all four immutable
   image references and build evidence before remote verification on
-  `fdsadmin@sciaiot-openvpn`. SBOM/provenance retention, vulnerability scanning,
+  the approved test host. SBOM/provenance retention, vulnerability scanning,
   signing, final layer inspection, effective capabilities and real container
   VPN tests remain unverified; Phase 5 is not complete. Phase 6 runtime proof
   and migration/cutover remain pending.
@@ -1340,14 +1340,14 @@ Operational changes and limits:
 ### 2026-09-23 — Remote image/migration preflight
 
 - Operator reports `ovpncp-agent`, `ovpncp-api`, `ovpncp-openvpn`, and
-  `ovpncp-web` built in `faureciaiot` and authorizes verification/migration on
-  `fdsadmin@sciaiot-openvpn`.
-- Read-only checks confirm Azure VM `openvpn`, x86_64, Docker 29.8.1, Compose
+  `ovpncp-web` built in the private verification registry and authorizes verification/migration on
+  the approved test host.
+- Read-only checks confirm an Azure VM, x86_64, Docker 29.8.1, Compose
   v5.5.1, no running containers and no cached ovpncp images. The existing
   `openvpn@server.service` is active; source OpenVPN is 2.6.19 with OpenSSL
   3.0.13. No VPN service, firewall, PKI, cloud identity or container was changed.
 - The operator corrected the login server to
-  `faureciaiot-b8c8fwavbhdudve2.azurecr.io` and supplied agent tag
+  the private verification registry and supplied agent tag
   `phase5-20260922052553`. A remote `sudo -n docker pull` reached that registry
   but failed with authentication required. No user/root Docker login was
   found. The Azure managed-identity endpoint returns HTTP 400 `invalid_request`
@@ -1368,7 +1368,7 @@ Operational changes and limits:
 
 - The operator pulled all four images. Inspection confirms AMD64 images with
   tag `phase5-20260922052553` in
-  `faureciaiot-b8c8fwavbhdudve2.azurecr.io`; previous authentication blockage no
+  the private verification registry; previous authentication blockage no
   longer prevents using the cached images. Recorded repository digests:
 
   | Repository | Digest |
@@ -1548,7 +1548,7 @@ Operational changes and limits:
   routes, policy rules and firewalls matched; the host VPN PID, active state and
   server configuration matched. Private results are retained as
   `lifecycle-20260927-result.json` and `lifecycle-20260927-invariance.json` under
-  `/home/fdsadmin/.ovpncp-p6-container-jmpe6950`.
+  the private verification directory.
 - Exact-image applicability probes confirmed python-jose selects cryptography
   backends in the API. Nginx and curl do not link Expat, TIFF, X11, XML or ACL
   libraries. Standard systemd-homed/tiffcrop executable paths are absent; no
@@ -1656,7 +1656,7 @@ Operational changes and limits:
 
 ### 2026-09-29 — Existing-host maintenance verification authorized
 
-- The operator selected `sciaiot-openvpn` for actual-topology verification
+- The operator selected the approved test host for actual-topology verification
   and explicitly authorized stopping its source VPN. This server is also
   intended for later migration testing.
 - Use fresh synthetic deployment state on this existing Linux/Docker host;
@@ -1728,13 +1728,13 @@ The matching and chain-traversal basis is the
   coverage; Ruff formatting and lint passed. Mypy passed 144 source files with
   `--exclude '^build/'`; plain `mypy .` finds a duplicate package in generated
   `build/lib`. `git diff --check` passed.
-- The normal agent Dockerfile built successfully on `sciaiot-openvpn`, using
+- The normal agent Dockerfile built successfully on the approved test host, using
   its pinned dependencies. The resulting local-only reference is
-  `ovpncp.local/ovpncp-agent@sha256:ed2acbab21303bc49afbac419cdc1f7dcb67e4cb01336124c3ed611a87f6d82f`.
+  `sha256:ed2acbab21303bc49afbac419cdc1f7dcb67e4cb01336124c3ed611a87f6d82f`.
   Build context hashes and logs are retained privately under
-  `/var/lib/ovpncp-p6-agent-build-hsb6nu2s`. No image was published.
+  the private image-build evidence directory. No image was published.
 - The fresh actual-topology maintenance rehearsal passed with this digest.
-  Evidence is retained at `/var/lib/ovpncp-p6-host-8js5885e`: verified encrypted
+  Evidence is retained at the private verification directory: verified encrypted
   backup of 102 source entries, readiness, signed HTTP/RBAC, UDP allow/deny,
   API/web upgrade/rollback and unchanged VPN process identities with surviving
   traffic. The API changed to a distinct immutable image and back; web was
@@ -1774,7 +1774,7 @@ no PyPI removal or legacy-backend retirement is authorized by this decision.
 - The operator requested Phase 7 with `gpt-6-sol` at `xhigh` effort. The
   implementation agent owns the M0 container-target adapter and tests; native
   deployment support remains deferred until after the architecture upgrade.
-- Read-only checks on the approved `sciaiot-openvpn` source found the original
+- Read-only checks on the approved test source found the original
   application, OpenVPN and Nginx active, with no containers remaining. Source
   versions are OpenVPN 2.6.19, Easy-RSA 3.1.7 and OpenSSL 3.0.13. The pinned
   container uses OpenSSL 3.5.7, requiring a reviewed compatibility extension;
@@ -1833,7 +1833,7 @@ restored test deployment may become the production endpoint in this phase.
 ### 2026-09-30 — Isolated source reconciliation passed
 
 - Private preparation evidence is retained under
-  `/var/lib/ovpncp-p7-source-r6s2gwm2`. A brief writer freeze captured and
+  the private source snapshot directory. A brief writer freeze captured and
   verified all 75 entries of an encrypted OpenVPN-only recovery set. Frozen
   source fingerprints matched; both original services were restored active
   before repairs to the isolated copy began.
@@ -1863,7 +1863,7 @@ restored test deployment may become the production endpoint in this phase.
 
 The committed M0 inventory accepted the repaired copy: 50 logical files,
 180,312 bytes, two hook replacements required, with log/status directives
-excluded. Evidence is retained at `/var/lib/ovpncp-p7-export-a666xw_b`.
+excluded. Evidence is retained at the private verification directory.
 Encrypted export then rejected a certificate/index subject comparison before
 writing a bundle. Read-only diagnosis found that the five newly revoked index
 rows contain the correct single common name followed by other distinguished
@@ -1900,14 +1900,14 @@ and the unchanged common name were verified, the superseded server was revoked
 in the copied CRL, and all nine prior index rows and existing client credential
 bytes were preserved. Two index rows were added for the retired and replacement
 server identities. Private evidence is retained in
-`/var/lib/ovpncp-p7-source-r6s2gwm2/server-repair-result.json` and its adjacent
+`server-repair-result.json` and its adjacent
 private reconciliation audit. The original application and VPN services remain
 active; neither original server credentials nor client credentials were changed.
 
 Authenticated M0 export then succeeded with 52 logical files (175,183 bytes)
 from the repaired, quiescent copy. The encrypted bundle, private key file,
 redacted export result and helper-code hashes are retained under
-`/var/lib/ovpncp-p7-export-3q6mzyet`. The source inventory requires two reviewed
+the private verification directory. The source inventory requires two reviewed
 hook replacements and excludes runtime log/status directives. This establishes
 the migration baseline; container import, connectivity, restore and rollback
 evidence are still pending.
@@ -1920,7 +1920,7 @@ Easy-RSA 3.1.7 and OpenSSL 3.5.7, with the reviewed event-hook SHA-256 unchanged
 It observed 233 option names and 64 cipher names; an explicit successful
 `--data-ciphers-fallback AES-256-CBC --show-ciphers` invocation supplements the
 help output, which omits that option. The redacted observations are retained at
-`/var/lib/ovpncp-p7-capabilities-zc2cyg7j/capabilities.json`. Probe containers had
+`capabilities.json`. Probe containers had
 no network, no capabilities, read-only roots and no writable host mounts.
 
 The focused migration regression suite passed 106 tests before the final
@@ -1931,7 +1931,7 @@ acceptance remain pending.
 ### 2026-10-01 — Actual bundle target preflight passed
 
 The interrupted read-only preflight completed successfully; its result was
-recovered from `/var/lib/ovpncp-p7-preflight-4npu1srp/preflight-result.json`.
+recovered from `preflight-result.json`.
 The authenticated source bundle passed the pinned container policy and mapped
 to 63 target files. All eight client-authentication certificates present in
 the issued inventory had the required usage extension and compatible
@@ -1951,7 +1951,7 @@ those fixed runtime modes using only `CHOWN`, `FOWNER` and `DAC_OVERRIDE`; no
 additional capability was needed. This is a helper invocation requirement, not
 a relaxation of the target ownership check.
 
-The retry at `/var/lib/ovpncp-p7-import-xkp2n72l/import-result.json` passed
+The retry at `import-result.json` passed
 activation and full M0 verification: 63 target files, 43 PKI files, seven revoked
 serials, five CCD entries and zero unexplained drift. CA identity, the approved
 replacement server identity, client serial status, CCD and server options all
@@ -1962,7 +1962,7 @@ Live connectivity and recovery acceptance remain pending.
 
 ### 2026-10-01 — First live migration rehearsal and checkpoint finding
 
-The bounded run at `/var/lib/ovpncp-p7-run-w12rkdrp` completed actual import and
+The bounded run at the private verification directory completed actual import and
 verification, unchanged-client UDP/TUN connectivity with the imported CCD
 assignment, VPN restart/reconnect, new target issuance/revocation and an
 authenticated encrypted checkpoint of the stopped target. It then failed at
@@ -1974,7 +1974,7 @@ daemon had accepted the option in the live run, but its help output omits it.
 The validator correctly refused to assume availability during checkpoint
 restore. A fresh explicit `--disable-dco --show-ciphers` probe passed, and
 updated immutable observations at
-`/var/lib/ovpncp-p7-capabilities-_182q2s3/capabilities.json` contain 234 option
+`capabilities.json` contain 234 option
 names, 64 cipher names and explicit fallback/DCO-option probe results. Add a
 regression to reject missing generated-option evidence before initial import.
 
@@ -1993,10 +1993,9 @@ UI data will be imported by M0.
 
 ### 2026-10-01 — OpenVPN migration, restore and rollback passed
 
-The second bounded run at `/var/lib/ovpncp-p7-run-uiers0wr` passed the complete
-OpenVPN rehearsal. Its private evidence root is
-`/var/lib/ovpncp-p7-run-uiers0wr/ovpncp-p7-cee8bf7eea21-86ack0b8`; the parent
-`maintenance-status.json` and `rehearsal-result.json` contain redacted results.
+The second bounded run passed the complete OpenVPN rehearsal.
+`maintenance-status.json` and `rehearsal-result.json` contain redacted results
+in its private evidence directory.
 
 - Authenticated M0 import and semantic/CCD reconciliation passed.
 - An indexed valid client connected with unchanged certificate/key/CA bytes
@@ -2024,12 +2023,12 @@ yet marked complete.
 ### 2026-10-02 — Persistent test-server migration
 
 The operator explicitly requested stopping existing services and leaving the
-migrated deployment running on `sciaiot-openvpn`; downtime was accepted. This
+migrated deployment running on the approved test host; downtime was accepted. This
 supersedes the earlier rehearsal-only restoration of legacy services. No Azure
 resources, DNS, or cloud ingress rules were changed.
 
 - Deployment and private evidence root:
-  `/var/lib/ovpncp-phase7-deployment`.
+  the operator-managed deployment directory.
 - The authenticated bundle from the approved repaired isolated source passed
   validation, dry-run, stopped import and verification. All 63 target files
   matched: 43 PKI files, seven revoked serials, five CCD entries, one source
@@ -2118,7 +2117,7 @@ associated with the future GHCR release.
 
 ### Coordinated Compose recovery verification — 2026-10-07
 
-The operator authorized disruptive verification on `sciaiot-openvpn` and
+The operator authorized disruptive verification on the approved test host and
 waived test-server data preservation requirements. The drill still retained
 the previous state privately. With writers stopped, it captured encrypted M0
 VPN state, a separately encrypted API/agent recovery set, and an encrypted
@@ -2138,7 +2137,7 @@ removed through the agent before native host verification.
 The first restore attempt exposed an operator-script secret-file ownership
 error. After correcting its owner/mode, the entire restore was repeated into
 another fresh generation; the failed attempt and final evidence are retained
-privately under `/var/lib/ovpncp-verification-20261006`. API SQLite mode was
+privately under the private recovery evidence directory. API SQLite mode was
 also tightened to `0600` before capture, as required by the recovery-set tool.
 
 The route canary exposed a product observation bug: iproute2 rendered protocol

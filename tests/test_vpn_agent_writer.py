@@ -13,11 +13,8 @@ from sciaiot.ovpncp.application.vpn_control import schemas as s
 from sciaiot.ovpncp.application.vpn_control.errors import ControlError
 from sciaiot.ovpncp.vpn_agent.server import UnixAgentServer
 from sciaiot.ovpncp.vpn_agent.writer import MutationVpnControl
-from tests import test_vpn_agent_pki as fixtures
-from tests.test_vpn_agent import request
-
-pki_control = fixtures.pki_control
-change = fixtures.change
+from tests.support.agent import request
+from tests.support.pki import change
 
 
 def test_lookup_and_flags_work_while_unready(pki_control) -> None:

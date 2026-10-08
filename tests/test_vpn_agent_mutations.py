@@ -37,7 +37,7 @@ def test_assignment_crash_after_replace_reconciles(
     from sciaiot.ovpncp.application.vpn_control import schemas as s
     from sciaiot.ovpncp.vpn_agent import mutations
     from sciaiot.ovpncp.vpn_agent.writer import MutationVpnControl
-    from tests.test_vpn_agent import request, settings
+    from tests.support.agent import request, settings
 
     configured = dataclasses.replace(
         settings(tmp_path),

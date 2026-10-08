@@ -16,8 +16,8 @@ Copy `deploy/container.env.example` to the ignored `deploy/container.env`.
 `OVPNCP_REGISTRY` is a registry host plus an optional namespace, for example
 `ghcr.io/my-organization`, `docker.io/my-account`, or
 `registry.example.com/team`. Root-level repositories also work, such as
-`faureciaiot-b8c8fwavbhdudve2.azurecr.io/ovpncp-api` when
-`OVPNCP_REGISTRY=faureciaiot-b8c8fwavbhdudve2.azurecr.io`. It is an image naming prefix, not a URL. Choose
+`registry.example.com/ovpncp-api` when
+`OVPNCP_REGISTRY=registry.example.com`. It is an image naming prefix, not a URL. Choose
 `OVPNCP_IMAGE_TAG` for the build.
 
 ```bash

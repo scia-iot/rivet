@@ -1,9 +1,11 @@
 # Container image verification evidence
 
-Remote target: `fdsadmin@sciaiot-openvpn`. Images are in
-`faureciaiot-b8c8fwavbhdudve2.azurecr.io`. Verification uses immutable digests;
-no production cutover has occurred. See the
-[architecture plan](container-architecture-upgrade-plan.md) for phase status.
+These historical records describe verification on an operator-provisioned
+Linux host using immutable image digests. Host names, registry endpoints and
+private evidence locations are managed outside this repository. Each dated
+entry refers to its own retained evidence; these artifacts are not deployment
+defaults. See the [architecture plan](container-architecture-upgrade-plan.md)
+for current phase status.
 
 ## Image scan on 2026-09-23
 
@@ -25,7 +27,7 @@ into a scanner container. Disposable image archives were removed after scans.
 Counts are scanner package findings, not distinct CVEs or demonstrated
 exploitable application paths. Zero secret findings is not proof that every
 layer is credential-free. Reports and SBOMs are private files under
-`/home/fdsadmin/.ovpncp-image-evidence-vcfnq8y6`; each component has
+the private verification directory; each component has
 `<component>-scan.json`, `<component>-sbom.cdx.json` and
 `<component>-summary.json`. These post-build SBOMs do not establish builder
 provenance, signatures or full identification of source-built binaries.
@@ -94,7 +96,7 @@ All attempts cleaned up their synthetic state and containers. Normalized host
 links, addresses, IPv4/IPv6 routes and policy rules, IPv4/IPv6 firewall, the
 existing VPN PID/service state and server configuration were unchanged.
 Private attempt evidence is retained under
-`/home/fdsadmin/.ovpncp-p6-container-jmpe6950`; `attempt4-result.json` and
+the private verification directory; `attempt4-result.json` and
 `attempt4-invariance.json` record the passing run. No production import or
 cutover occurred.
 
@@ -122,7 +124,7 @@ The cached AMD64 digests, scan counts and post-build CycloneDX SBOMs are:
 
 Trivy 0.74.0 used database timestamp `2026-09-23T20:20:57.734988316Z`.
 Reports/SBOMs are retained beneath
-`/home/fdsadmin/.ovpncp-image-evidence-vcfnq8y6/hardening-20260924-ujm0njq3`.
+the private verification directory.
 The removed pip/ensurepip vendored payloads and web XML/XSLT packages are absent.
 No fixed versions were listed for the remaining high findings in that scan.
 These counts are historical evidence, not a continuously updated scan.
@@ -151,7 +153,7 @@ Cleanup passed and all eleven host invariance comparisons matched: links,
 addresses, IPv4/IPv6 routes, rules and firewall, VPN PID, active state and server
 configuration. Private evidence is `lifecycle-20260927-result.json` and
 `lifecycle-20260927-invariance.json` under
-`/home/fdsadmin/.ovpncp-p6-container-jmpe6950`.
+the private verification directory.
 
 The result deliberately remains `full_phase6: false`. Valid-token HTTP/RBAC,
 web edge integration, renewal, crash-during-mutation, reboot/restore, full
@@ -160,7 +162,7 @@ Provenance/signing handoff is deferred at the operator's request. No production
 cutover or source PKI migration occurred.
 
 Exact-image read-only applicability probes are retained in
-`/home/fdsadmin/.ovpncp-image-evidence-vcfnq8y6/hardening-applicability-20260927.json`.
+`hardening-applicability-20260927.json`.
 They confirm the API's cryptography backend and no Expat/TIFF/X11/XML/ACL links
 from nginx or curl. Standard systemd-homed/tiffcrop paths were absent and no
 Archive/Tar.pm was found under `/usr/share`, `/usr/lib` or `/usr/local/lib`.
@@ -200,7 +202,7 @@ All images came from the existing local cache; no rebuild, pull or release
 approval is implied by this functional test.
 
 The first attempt retained private evidence under
-`/home/fdsadmin/.ovpncp-p6-compose-psk5_blo`. Compose services became healthy
+the private verification directory. Compose services became healthy
 and the signed HTTP fixture reported `passed`, but a Docker image inspection
 timed out and automatic cleanup was incomplete. Resource diagnostics showed
 about 90 MiB available on a single-CPU, approximately 0.8 GiB host with no swap;
@@ -210,7 +212,7 @@ removal of all 20 owned containers and synthetic state, and unchanged host
 VPN/network state.
 
 After reducing helper overhead, the successful run retained evidence under
-`/home/fdsadmin/.ovpncp-p6-compose-ajuuqeyx`:
+the private verification directory:
 
 - `compose-20260928-result.json`: exit success, all functional checks passed,
   cleanup passed and a distinct upgrade image confirmed.
@@ -254,11 +256,11 @@ Local checks passed after these harness changes:
 ## Actual-topology maintenance attempt on 2026-09-29
 
 The operator authorized stopping the existing application and VPN on
-`sciaiot-openvpn` to test fresh deployment state with the actual host/bridge
+the approved test host to test fresh deployment state with the actual host/bridge
 network layout. This is an existing provisioned host, not an OS installation.
 
 The first attempt retained root-private evidence at
-`/var/lib/ovpncp-p6-host-c76xkjd_`. It stopped both source services, created an
+the private verification directory. It stopped both source services, created an
 encrypted backup, and verified all 102 captured entries against frozen source
 content and filesystem metadata. No source state was imported into containers.
 Preflight then stopped on an unhandled null `IPAM.Config` in Docker's built-in
@@ -275,7 +277,7 @@ not recorded as actual-topology success.
 
 
 The second actual-topology attempt used the corrected built-in-network
-preflight and retained evidence under `/var/lib/ovpncp-p6-host-12lhahho`.
+preflight and retained evidence under the private verification directory.
 It verified another encrypted 102-entry source backup, started the real
 host/bridge Compose services, passed signed HTTP checks through the published
 loopback web port, and connected the synthetic UDP clients. It failed at the
@@ -304,16 +306,16 @@ repeat run below supersede that incomplete status.
 The normal `deploy/agent/Dockerfile` built successfully on the test host from
 reviewed source with its pinned base/dependencies. The local-only immutable
 reference is
-`ovpncp.local/ovpncp-agent@sha256:ed2acbab21303bc49afbac419cdc1f7dcb67e4cb01336124c3ed611a87f6d82f`.
+`sha256:ed2acbab21303bc49afbac419cdc1f7dcb67e4cb01336124c3ed611a87f6d82f`.
 Root-private build context hashes, image ID and logs are retained under
-`/var/lib/ovpncp-p6-agent-build-hsb6nu2s`. No registry publication or release
+the private image-build evidence directory. No registry publication or release
 signing/provenance approval is implied. OpenVPN and web used their existing
 hardening digests; API started at the prior digest listed above, upgraded to
 the distinct hardening digest, then rolled back. Web was recreated and its
 runtime configuration changed and restored with those bundles.
 
 The maintenance evidence is retained under
-`/var/lib/ovpncp-p6-host-8js5885e`:
+the private verification directory:
 
 - `maintenance-status.json` and `maintenance-output.json`: overall passed,
   runner exit 0, verified encrypted backup of all 102 captured source entries,

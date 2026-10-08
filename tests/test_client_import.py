@@ -1,7 +1,7 @@
 """Transactional bulk Easy-RSA client and Device import tests."""
 
 from collections.abc import Generator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -64,8 +64,8 @@ def certificate_details(name: str) -> dict[str, object]:
     return {
         "issued_by": "test-ca",
         "issued_to": name,
-        "issued_on": datetime(2026, 1, 1, tzinfo=timezone.utc),
-        "expires_on": datetime(2027, 1, 1, tzinfo=timezone.utc),
+        "issued_on": datetime(2026, 1, 1, tzinfo=UTC),
+        "expires_on": datetime(2027, 1, 1, tzinfo=UTC),
     }
 
 

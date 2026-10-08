@@ -3,12 +3,11 @@
 import hashlib
 import ipaddress
 import json
-import re
 import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
@@ -19,6 +18,7 @@ from sqlmodel import Session, col, select
 from sciaiot.ovpncp import dependencies
 from sciaiot.ovpncp.adapters.vpn.host import HostVpnControl
 from sciaiot.ovpncp.adapters.vpn.shadow import ShadowHostVpnControl
+from sciaiot.ovpncp.application import client_name
 from sciaiot.ovpncp.application.vpn_control import schemas as s
 from sciaiot.ovpncp.application.vpn_control import wire
 from sciaiot.ovpncp.application.vpn_control.errors import ControlError, ErrorCode
@@ -39,12 +39,9 @@ def validate_name(name: str) -> None:
         raise ValueError("The VPN client name is invalid.")
 
 
-def is_valid_name(name: str) -> bool:
+def is_valid_name(name: object) -> bool:
     """Return whether a value fits the constrained client identity domain."""
-    return (
-        isinstance(name, str)
-        and re.fullmatch(r"[A-Za-z0-9_-]{1,255}", name) is not None
-    )
+    return client_name.is_valid_name(name)
 
 
 def request(command: s.Command, **kwargs: Any) -> s.Request:
@@ -458,7 +455,7 @@ class VpnService:
     @staticmethod
     def _certificate_details(item: s.ClientMetadata) -> dict[str, Any]:
         """Convert exact microsecond metadata from one consistent observation."""
-        epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        epoch = datetime(1970, 1, 1, tzinfo=UTC)
         return {
             "issued_by": item.issuer,
             "issued_to": item.subject,

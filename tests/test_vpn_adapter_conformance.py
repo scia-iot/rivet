@@ -49,7 +49,7 @@ class SyntheticServer:
             try:
                 with connection:
                     self._reply(connection)
-            except (BrokenPipeError, ConnectionResetError):
+            except BrokenPipeError, ConnectionResetError:
                 pass
             except Exception as error:  # noqa: BLE001 - report fixture failure
                 self.errors.append(error)

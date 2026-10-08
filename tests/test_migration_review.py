@@ -15,7 +15,6 @@ from sciaiot.ovpncp.migration.models import (
 )
 
 # Re-export the shared pytest fixture for this independent test module.
-from tests.test_migration import legacy as legacy  # noqa: PLC0414
 
 
 def test_index_cn_may_precede_other_subject_attributes(legacy):

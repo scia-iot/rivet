@@ -29,8 +29,10 @@ from typing import Any
 
 def validate_image(value: str, role: str) -> None:
     """Reject mutable or unexpected image references before invoking Docker."""
+    registry = r"[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]+)?"
+    namespace = r"(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*"
     if not re.fullmatch(
-        rf"[a-z0-9][a-z0-9.:-]*/ovpncp-{role}@sha256:[a-f0-9]{{64}}",
+        rf"{registry}{namespace}/ovpncp-{re.escape(role)}@sha256:[a-f0-9]{{64}}",
         value,
     ):
         raise ValueError("A reviewed repository digest is required.")

@@ -30,7 +30,7 @@ from sciaiot.ovpncp.vpn_agent.control import ReadOnlyVpnControl
 from sciaiot.ovpncp.vpn_agent.management import Management
 from sciaiot.ovpncp.vpn_agent.server import UnixAgentServer
 from sciaiot.ovpncp.vpn_agent.settings import Settings
-from tests.test_vpn_agent import request, settings
+from tests.support.agent import STATUS, request, settings
 
 
 @pytest.fixture
@@ -254,9 +254,6 @@ def test_management_real_uds_identity_and_fixed_commands(tmp_path):
     configured, thread, _ = management_peer(tmp_path, b"END\n")
     assert Management(configured).read("state", time.monotonic() + 2) == ""
     thread.join(2)
-
-
-STATUS = "HEADER\tCLIENT_LIST\tCommon Name\tReal Address\tVirtual Address\tConnected Since (time_t)\tClient ID\tPeer ID\nCLIENT_LIST\talpha\t192.0.2.1:1234\t10.8.0.10\t1700000000\t0\t1"
 
 
 def test_sessions_and_health(runtime, monkeypatch):

@@ -1,54 +1,158 @@
 import logging
-from datetime import datetime, timezone
+from collections.abc import Generator
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 from fastapi.testclient import TestClient
 from httpx2 import Response
+from sqlmodel import Session, select
 
 from sciaiot.ovpncp import dependencies
-from sciaiot.ovpncp.data.server import Client
+from sciaiot.ovpncp.data.network import RestrictedNetwork
+from sciaiot.ovpncp.data.server import Cert, Client, Connection, VirtualAddress
 from sciaiot.ovpncp.dependencies import get_session
 from sciaiot.ovpncp.main import app
-from tests import test_iproute, test_openvpn
+from sciaiot.ovpncp.routes.server import load_from_config
+from sciaiot.ovpncp.utils import openvpn
+from tests.support.api import MOCKED_ROUTES, SERVER_CONFIG_LINES, SERVER_STATUS_ACTIVE
 
 
 @pytest.fixture(name="client")
-def client_fixture(db_session):
-    def get_session_override():
+def client_fixture(db_session: Session) -> Generator[TestClient]:
+    """Authenticate API requests against one test-local database."""
+
+    def get_session_override() -> Session:
         return db_session
 
+    previous_override = app.dependency_overrides.get(get_session)
     app.dependency_overrides[get_session] = get_session_override
+    try:
+        with (
+            patch(
+                "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+                return_value={
+                    "iss": "https://login.example/tenant/v2.0",
+                    "sub": "service-object-id",
+                    "oid": "service-object-id",
+                    "roles": ["ServiceAdmin"],
+                },
+            ),
+            patch(
+                "sciaiot.ovpncp.middlewares.azure_security.TENANT_ID",
+                "mocked_tenant_id",
+            ),
+            patch(
+                "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID",
+                "mocked_app_client_id",
+            ),
+            patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
+            patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+            patch(
+                "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+                "ServiceAdmin",
+            ),
+        ):
+            client = TestClient(app)
+            try:
+                yield client
+            finally:
+                client.close()
+    finally:
+        if previous_override is not None:
+            app.dependency_overrides[get_session] = previous_override
+        else:
+            app.dependency_overrides.pop(get_session, None)
 
-    with (
-        patch(
-            "sciaiot.ovpncp.middlewares.azure_security.validate_token",
-            return_value={
-                "iss": "https://login.example/tenant/v2.0",
-                "sub": "service-object-id",
-                "oid": "service-object-id",
-                "roles": ["ServiceAdmin"],
-            },
-        ),
-        patch(
-            "sciaiot.ovpncp.middlewares.azure_security.TENANT_ID", "mocked_tenant_id"
-        ),
-        patch(
-            "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID",
-            "mocked_app_client_id",
-        ),
-        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
-        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
-        patch(
-            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-            "ServiceAdmin",
+
+@pytest.fixture
+def initialized_server(db_session: Session) -> None:
+    """Persist the same host server represented by the API sample config."""
+    with patch("builtins.open", new_callable=mock_open, read_data=SERVER_CONFIG_LINES):
+        config = openvpn.get_server_config()
+    db_session.add(load_from_config(config))
+    db_session.commit()
+
+
+@pytest.fixture
+def seeded_clients(initialized_server: None, db_session: Session) -> None:
+    """Add the three clients used by client and network API scenarios."""
+    issued = datetime(2026, 1, 1, tzinfo=UTC)
+    expires = datetime(2027, 1, 1, tzinfo=UTC)
+    for name, cidr in (
+        ("test_client_1", None),
+        ("test_client_2", None),
+        ("test_gateway_1", "192.168.1.0/24"),
+    ):
+        client = Client(name=name, cidr=cidr)
+        client.cert = Cert(
+            issued_by="mock",
+            issued_to="client",
+            issued_on=issued,
+            expires_on=expires,
+        )
+        db_session.add(client)
+    db_session.commit()
+
+
+@pytest.fixture
+def assigned_clients(seeded_clients: None, db_session: Session) -> None:
+    """Assign the addresses expected by access and client API scenarios."""
+    for name, address in (
+        ("test_client_1", "10.8.0.2"),
+        ("test_client_2", "10.8.0.3"),
+        ("test_gateway_1", "10.8.0.11"),
+    ):
+        client = db_session.exec(select(Client).where(Client.name == name)).one()
+        virtual_address = db_session.exec(
+            select(VirtualAddress).where(VirtualAddress.ip == address)
+        ).one()
+        client.virtual_address = virtual_address
+        db_session.add(client)
+    db_session.commit()
+
+
+@pytest.fixture
+def connected_clients(assigned_clients: None, db_session: Session) -> None:
+    """Add one live connection for each ordinary client."""
+    for name, remote_address in (
+        ("test_client_1", "172.205.176.207:60374"),
+        ("test_client_2", "172.205.176.208:60374"),
+    ):
+        client = db_session.exec(select(Client).where(Client.name == name)).one()
+        db_session.add(
+            Connection(
+                client=client,
+                remote_address=remote_address,
+                connected_time=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+        )
+    db_session.commit()
+
+
+@pytest.fixture
+def restricted_networks(assigned_clients: None, db_session: Session) -> None:
+    """Persist the two access grants exercised by network deletion tests."""
+    for destination_name, address, private_addresses in (
+        ("test_client_2", "10.8.0.3", ""),
+        (
+            "test_gateway_1",
+            "10.8.0.11",
+            "192.168.1.1,192.168.1.2,192.168.1.3",
         ),
     ):
-        client = TestClient(app)
-        yield client
-
-    app.dependency_overrides.clear()
+        db_session.add(
+            RestrictedNetwork(
+                source_name="test_client_1",
+                source_virtual_address="10.8.0.2",
+                destination_name=destination_name,
+                destination_virtual_address=address,
+                private_network_addresses=private_addresses,
+                start_time=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+        )
+    db_session.commit()
 
 
 def _assert_problem_detail(response: Response, detail: str) -> None:
@@ -60,9 +164,7 @@ def _assert_problem_detail(response: Response, detail: str) -> None:
     assert all(key in problem for key in ("type", "title", "instance"))
 
 
-@patch(
-    "builtins.open", new_callable=mock_open, read_data=test_openvpn.server_config_lines
-)
+@patch("builtins.open", new_callable=mock_open, read_data=SERVER_CONFIG_LINES)
 def test_init_server(mock_open, client: TestClient, tmp_path: Path):
     response = client.get("/server")
     assert response.status_code == 404
@@ -99,6 +201,7 @@ def test_init_server(mock_open, client: TestClient, tmp_path: Path):
     mock_open.assert_called_with("/etc/openvpn/server.conf", "r")
 
 
+@pytest.mark.usefixtures("initialized_server")
 def test_get_server(client: TestClient):
     response = client.get("/server")
     assert response.status_code == 200
@@ -107,9 +210,8 @@ def test_get_server(client: TestClient):
     assert server["ip"] == "10.8.0.1"
 
 
-@patch(
-    "builtins.open", new_callable=mock_open, read_data=test_openvpn.server_config_lines
-)
+@patch("builtins.open", new_callable=mock_open, read_data=SERVER_CONFIG_LINES)
+@pytest.mark.usefixtures("initialized_server")
 def test_regenerate_shared_client_profile(
     mock_open,
     client: TestClient,
@@ -159,9 +261,7 @@ def test_initialize_rejects_invalid_remote_without_path_leak(
     assert not profile_path.exists()
 
 
-@patch(
-    "subprocess.run", return_value=MagicMock(stdout=test_openvpn.server_status_active)
-)
+@patch("subprocess.run", return_value=MagicMock(stdout=SERVER_STATUS_ACTIVE))
 def test_get_service_health(mock_run, client: TestClient):
     response = client.get("/server/health")
     assert response.status_code == 200
@@ -175,6 +275,7 @@ def test_get_service_health(mock_run, client: TestClient):
     )
 
 
+@pytest.mark.usefixtures("initialized_server")
 def test_get_assignable_virtual_addresses(client: TestClient):
     response = client.get("/server/assignable-virtual-addresses")
     assert response.status_code == 200
@@ -183,7 +284,8 @@ def test_get_assignable_virtual_addresses(client: TestClient):
     assert len(addresses) == 253
 
 
-@patch("subprocess.run", return_value=MagicMock(stdout=test_iproute.mocked_routes))
+@patch("subprocess.run", return_value=MagicMock(stdout=MOCKED_ROUTES))
+@pytest.mark.usefixtures("initialized_server")
 def test_get_routes(mock_run, client: TestClient):
     response = client.get("/server/routes")
     assert response.status_code == 200
@@ -193,6 +295,7 @@ def test_get_routes(mock_run, client: TestClient):
 
 
 @patch("sciaiot.ovpncp.utils.iproute.add")
+@pytest.mark.usefixtures("initialized_server")
 def test_add_route(mock_add, client: TestClient):
     response = client.post("/server/routes", json={"network": "192.168.1.0/24"})
     assert response.status_code == 204
@@ -200,6 +303,7 @@ def test_add_route(mock_add, client: TestClient):
     mock_add.assert_called_once_with("192.168.1.0/24", "10.8.0.1", "tun0")
 
 
+@pytest.mark.usefixtures("initialized_server")
 def test_add_wrong_route(client: TestClient):
     response = client.post("/server/routes", json={"network": "invalid_address"})
     assert response.status_code == 400
@@ -216,6 +320,7 @@ def test_add_wrong_route(client: TestClient):
         "192.168.1.1",
     ],
 )
+@pytest.mark.usefixtures("initialized_server")
 def test_add_route_rejects_non_rfc1918_or_noncanonical_network(
     network: str,
     client: TestClient,
@@ -232,6 +337,7 @@ def test_add_route_rejects_non_rfc1918_or_noncanonical_network(
     "sciaiot.ovpncp.utils.iproute.add",
     side_effect=RuntimeError("route 192.168.77.0/24 failed"),
 )
+@pytest.mark.usefixtures("initialized_server")
 def test_add_route_command_failure_is_safe(mock_add, client: TestClient, caplog):
     response = client.post("/server/routes", json={"network": "192.168.77.0/24"})
 
@@ -253,6 +359,7 @@ def test_add_route_command_failure_is_safe(mock_add, client: TestClient, caplog)
         "192.168.1.0/24 via 10.8.0.1",
     ],
 )
+@pytest.mark.usefixtures("initialized_server")
 def test_delete_route(mock_list, mock_delete, client: TestClient):
     response = client.delete("/server/routes", params={"network": "192.168.1.0/24"})
     assert response.status_code == 204
@@ -265,6 +372,7 @@ def test_delete_route(mock_list, mock_delete, client: TestClient):
     "sciaiot.ovpncp.utils.iproute.list",
     return_value=["10.8.0.0/24 proto kernel scope link src 10.8.0.1"],
 )
+@pytest.mark.usefixtures("initialized_server")
 def test_delete_wrong_route(mock_list, client: TestClient):
     response = client.delete("/server/routes", params={"network": "192.168.1.0/24"})
     assert response.status_code == 404
@@ -276,8 +384,8 @@ def test_delete_wrong_route(mock_list, client: TestClient):
 cert_details = {
     "issued_by": "mock",
     "issued_to": "client",
-    "issued_on": datetime.now(timezone.utc),
-    "expires_on": datetime.now(timezone.utc),
+    "issued_on": datetime.now(UTC),
+    "expires_on": datetime.now(UTC),
 }
 
 
@@ -320,6 +428,7 @@ def test_create_client(mock_build_client, mock_read_client_cert, client: TestCli
     mock_read_client_cert.assert_called_with("test_gateway_1")
 
 
+@pytest.mark.usefixtures("seeded_clients")
 def test_get_clients(client: TestClient):
     response = client.get("/clients")
     assert response.status_code == 200
@@ -331,6 +440,7 @@ def test_get_clients(client: TestClient):
 
 @patch("sciaiot.ovpncp.utils.openvpn.add_iroute")
 @patch("sciaiot.ovpncp.utils.openvpn.assign_client_ip")
+@pytest.mark.usefixtures("seeded_clients")
 def test_assign_virtual_address(
     mock_assign_client_ip,
     mock_add_iroute,
@@ -405,12 +515,13 @@ def test_assign_virtual_address(
     mock_add_iroute.assert_called_with("test_gateway_1", "192.168.1.0 255.255.255.0")
 
 
+@pytest.mark.usefixtures("seeded_clients")
 def test_start_connection(client: TestClient):
     response = client.post(
         "/clients/test_client_1/connections",
         json={
             "remote_address": "172.205.176.207:60374",
-            "connected_time": datetime.now(timezone.utc).isoformat(),
+            "connected_time": datetime.now(UTC).isoformat(),
         },
     )
     assert response.status_code == 200
@@ -423,7 +534,7 @@ def test_start_connection(client: TestClient):
         "/clients/test_client_2/connections",
         json={
             "remote_address": "172.205.176.208:60374",
-            "connected_time": datetime.now(timezone.utc).isoformat(),
+            "connected_time": datetime.now(UTC).isoformat(),
         },
     )
     assert response.status_code == 200
@@ -434,6 +545,7 @@ def test_start_connection(client: TestClient):
     "sciaiot.ovpncp.utils.iptables.list_rules",
     return_value=["DROP all -- anywhere anywhere"],
 )
+@pytest.mark.usefixtures("assigned_clients")
 def test_create_restricted_network(
     mock_list_rules, mock_apply_rules, client: TestClient
 ):
@@ -469,6 +581,7 @@ def test_create_restricted_network(
 @patch(
     "sciaiot.ovpncp.routes.network.get_client_by_name", return_value=Client(name="N/A")
 )
+@pytest.mark.usefixtures("initialized_server")
 def test_create_restricted_network_fail(mock_get_client_by_name, client: TestClient):
     response = client.post(
         "/networks",
@@ -485,6 +598,7 @@ def test_create_restricted_network_fail(mock_get_client_by_name, client: TestCli
     "sciaiot.ovpncp.utils.iptables.list_rules",
     return_value=["DROP all -- anywhere anywhere"],
 )
+@pytest.mark.usefixtures("assigned_clients")
 def test_create_restricted_network_with_private_network_addresses(
     mock_list_rules, mock_apply_rules, mock_push_client_routes, client: TestClient
 ):
@@ -532,6 +646,7 @@ def test_create_restricted_network_with_private_network_addresses(
         "192.168.1.3/24",
     ],
 )
+@pytest.mark.usefixtures("assigned_clients")
 def test_create_restricted_network_rejects_non_rfc1918_or_noncanonical_address(
     private_network: str,
     client: TestClient,
@@ -560,6 +675,7 @@ def test_create_restricted_network_rejects_non_rfc1918_or_noncanonical_address(
     mock_push.assert_not_called()
 
 
+@pytest.mark.usefixtures("assigned_clients")
 def test_create_restricted_network_rejects_identical_clients(
     client: TestClient,
 ):
@@ -588,6 +704,7 @@ def test_create_restricted_network_rejects_identical_clients(
     mock_push.assert_not_called()
 
 
+@pytest.mark.usefixtures("assigned_clients")
 def test_create_restricted_network_rejects_invalid_private_network(
     client: TestClient,
 ):
@@ -615,6 +732,7 @@ def test_create_restricted_network_rejects_invalid_private_network(
     "sciaiot.ovpncp.utils.iptables.list_rules",
     return_value=["DROP all -- anywhere anywhere"],
 )
+@pytest.mark.usefixtures("assigned_clients")
 def test_create_restricted_network_command_failure_is_safe(
     mock_list_rules,
     mock_apply_rules,
@@ -640,12 +758,13 @@ def test_create_restricted_network_command_failure_is_safe(
     mock_apply_rules.assert_called_once()
 
 
+@pytest.mark.usefixtures("connected_clients")
 def test_close_connection(client: TestClient):
     response = client.put(
         "/clients/test_client_1/connections",
         json={
             "remote_address": "10.8.0.2",
-            "disconnected_time": datetime.now(timezone.utc).isoformat(),
+            "disconnected_time": datetime.now(UTC).isoformat(),
         },
     )
     assert response.status_code == 404
@@ -658,7 +777,7 @@ def test_close_connection(client: TestClient):
         "/clients/test_client_1/connections",
         json={
             "remote_address": "172.205.176.207:60374",
-            "disconnected_time": datetime.now(timezone.utc).isoformat(),
+            "disconnected_time": datetime.now(UTC).isoformat(),
         },
     )
     assert response.status_code == 200
@@ -670,7 +789,7 @@ def test_close_connection(client: TestClient):
         "/clients/test_client_2/connections",
         json={
             "remote_address": "172.205.176.208:60374",
-            "disconnected_time": datetime.now(timezone.utc).isoformat(),
+            "disconnected_time": datetime.now(UTC).isoformat(),
         },
     )
     assert response.status_code == 200
@@ -678,6 +797,7 @@ def test_close_connection(client: TestClient):
 
 @patch("sciaiot.ovpncp.utils.openvpn.pull_client_routes")
 @patch("sciaiot.ovpncp.utils.iptables.drop_rules")
+@pytest.mark.usefixtures("restricted_networks")
 def test_drop_restricted_network(
     mock_drop_rules, mock_pull_client_routes, client: TestClient
 ):
@@ -727,6 +847,7 @@ def test_drop_restricted_network(
 
 
 @patch("sciaiot.ovpncp.utils.openvpn.unassign_client_ip")
+@pytest.mark.usefixtures("assigned_clients")
 def test_unassign_virtual_address(mock_unassign_client_ip, client: TestClient):
     response = client.delete("/clients/test_client_2/unassign-ip")
     assert response.status_code == 204
@@ -743,6 +864,7 @@ def test_unassign_virtual_address(mock_unassign_client_ip, client: TestClient):
     mock_unassign_client_ip.assert_called_with("test_client_2")
 
 
+@pytest.mark.usefixtures("connected_clients")
 def test_get_client(client: TestClient):
     response = client.get("/clients/test_client_1")
     assert response.status_code == 200
@@ -759,6 +881,7 @@ def test_get_client(client: TestClient):
     "sciaiot.ovpncp.utils.openvpn.package_client_cert",
     return_value="/opt/ovpncp/certs/test_client_1.zip",
 )
+@pytest.mark.usefixtures("seeded_clients")
 def test_package_client_cert(mock_package_client_cert, client: TestClient):
     response = client.put("/clients/test_client_1/package-cert")
     assert response.status_code == 204
@@ -770,6 +893,7 @@ def test_package_client_cert(mock_package_client_cert, client: TestClient):
 
 
 @patch("builtins.open", new_callable=mock_open, read_data=b"file content in bytes")
+@pytest.mark.usefixtures("seeded_clients")
 def test_download_client_cert(mock_open, client: TestClient):
     response = client.get("/clients/test_client_1/download-cert")
     assert response.status_code == 200
@@ -784,6 +908,7 @@ def test_download_client_cert(mock_open, client: TestClient):
 
 
 @patch("builtins.open", side_effect=OSError("local archive unavailable"))
+@pytest.mark.usefixtures("seeded_clients")
 def test_download_client_cert_uses_azure_without_local_archive(
     mock_open,
     client: TestClient,
@@ -817,6 +942,7 @@ def test_download_client_cert_uses_azure_without_local_archive(
 
 
 @patch("builtins.open")
+@pytest.mark.usefixtures("seeded_clients")
 def test_download_client_cert_failure_is_safe(
     mock_open,
     client: TestClient,
@@ -838,6 +964,7 @@ def test_download_client_cert_failure_is_safe(
 
 
 @patch("sciaiot.ovpncp.utils.openvpn.renew_client_cert", return_value=cert_details)
+@pytest.mark.usefixtures("seeded_clients")
 def test_renew_client(mock_renew_client_cert, client: TestClient):
     response = client.put("/clients/test_client_1/renew-cert")
     assert response.status_code == 200
@@ -852,6 +979,7 @@ def test_renew_client(mock_renew_client_cert, client: TestClient):
 
 
 @patch("sciaiot.ovpncp.utils.openvpn.renew_client_cert", return_value={})
+@pytest.mark.usefixtures("seeded_clients")
 def test_renew_client_rejects_empty_certificate(
     mock_renew_client_cert, client: TestClient
 ):
@@ -871,6 +999,7 @@ def test_renew_client_rejects_empty_certificate(
 )
 @patch("sciaiot.ovpncp.utils.openvpn.revoke_client")
 @patch("sciaiot.ovpncp.utils.openvpn.generate_crl")
+@pytest.mark.usefixtures("seeded_clients")
 def test_revoke_client_rejects_unsuccessful_result(
     mock_generate_crl,
     mock_revoke_client,
@@ -890,6 +1019,7 @@ def test_revoke_client_rejects_unsuccessful_result(
 
 @patch("sciaiot.ovpncp.utils.openvpn.revoke_client", return_value=True)
 @patch("sciaiot.ovpncp.utils.openvpn.generate_crl", return_value=True)
+@pytest.mark.usefixtures("seeded_clients")
 def test_revoke_client(mock_generate_crl, mock_revoke_client, client: TestClient):
     response = client.put("/clients/test_client_1/revoke")
     assert response.status_code == 200
@@ -905,6 +1035,7 @@ def test_revoke_client(mock_generate_crl, mock_revoke_client, client: TestClient
 @patch("sciaiot.ovpncp.utils.openvpn.list_client_certs")
 @patch("sciaiot.ovpncp.utils.openvpn.read_client_cert")
 @patch("sciaiot.ovpncp.utils.openvpn.read_client_ip")
+@pytest.mark.usefixtures("initialized_server")
 def test_import_clients(
     mock_read_ip, mock_read_cert, mock_list_certs, client: TestClient
 ):
@@ -914,14 +1045,14 @@ def test_import_clients(
         {
             "issued_by": "CA",
             "issued_to": "existing_client_1",
-            "issued_on": datetime.now(timezone.utc),
-            "expires_on": datetime.now(timezone.utc),
+            "issued_on": datetime.now(UTC),
+            "expires_on": datetime.now(UTC),
         },
         {
             "issued_by": "CA",
             "issued_to": "existing_client_2",
-            "issued_on": datetime.now(timezone.utc),
-            "expires_on": datetime.now(timezone.utc),
+            "issued_on": datetime.now(UTC),
+            "expires_on": datetime.now(UTC),
         },
     ]
     mock_read_ip.side_effect = ["10.8.0.11", None]
@@ -950,8 +1081,8 @@ def test_import_clients(
         {
             "issued_by": "CA",
             "issued_to": "existing_client_2",
-            "issued_on": datetime.now(timezone.utc),
-            "expires_on": datetime.now(timezone.utc),
+            "issued_on": datetime.now(UTC),
+            "expires_on": datetime.now(UTC),
         }
     ]
     mock_read_ip.side_effect = ["10.8.0.12"]
@@ -1022,6 +1153,7 @@ def test_import_clients(
         ),
     ],
 )
+@pytest.mark.usefixtures("seeded_clients")
 def test_certificate_operation_failures_hide_sensitive_details(
     method: str,
     path: str,

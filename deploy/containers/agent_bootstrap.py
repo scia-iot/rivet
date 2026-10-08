@@ -99,7 +99,7 @@ def main() -> None:
             bootstrap()
         else:
             raise ValueError("Unsupported bootstrap arguments")
-    except (OSError, RuntimeError, KeyError, ValueError):
+    except OSError, RuntimeError, KeyError, ValueError:
         print(
             "Agent privilege bootstrap failed; check the image and Compose "
             "user/capability configuration.",

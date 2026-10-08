@@ -60,13 +60,19 @@ class TargetSpec(StrictModel):
 
 
 class ContainerTargetSpec(TargetSpec):
-    """Pinned Phase 6 image and one explicit OpenSSL transition policy."""
+    """Reviewed immutable image and one explicit OpenSSL transition policy."""
 
-    image_digest: Literal[
-        "sha256:5027eba02fbb4872c1b9c1ff8f084d41431dd671870ee7f48ba03877683253fa"
-    ]
+    image_digest: str
     openssl_transition: Literal["3.0.13-to-3.5.7"] | None = None
     target_device: str
+
+    @pydantic.field_validator("image_digest")
+    @classmethod
+    def validate_image_digest(cls, value: str) -> str:
+        """Require an exact lowercase SHA-256 digest selected by the operator."""
+        if re.fullmatch(r"sha256:[a-f0-9]{64}", value) is None:
+            raise ValueError("reviewed immutable image digest required")
+        return value
 
 
 class Entry(StrictModel):

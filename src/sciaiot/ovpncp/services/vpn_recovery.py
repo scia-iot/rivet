@@ -29,7 +29,7 @@ class BackgroundSettings:
     reconcile: bool = False
 
     @classmethod
-    def from_environment(cls) -> "BackgroundSettings":
+    def from_environment(cls) -> BackgroundSettings:
         """Accept only 0/1 values so a typo cannot silently change behavior."""
         values = []
         for name in ("OVPNCP_VPN_EVENTS", "OVPNCP_VPN_RECONCILE"):

@@ -33,7 +33,7 @@ class BackendSettings:
     peer_uid: int | None = None
 
     @classmethod
-    def from_environment(cls) -> "BackendSettings":
+    def from_environment(cls) -> BackendSettings:
         """Validate all supplied settings before selecting an implementation."""
         backend = os.environ.get("OVPNCP_VPN_BACKEND", "host")
         if backend not in {"host", "agent", "shadow"}:

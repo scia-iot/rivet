@@ -1,25 +1,16 @@
 # First-party container images
 
-All four AMD64 images tagged `phase5-hardening-20260924` are cached on
-`sciaiot-openvpn` in `faureciaiot-b8c8fwavbhdudve2.azurecr.io`. Inspection and
-initial runtime checks pass. The disposable UDP/CCD, allow/deny, replay and
-agent outage/restart test also passes against these rebuilt digests. The
-extended three-client credential lifecycle and HTTP API outage rehearsal
-passed on 2026-09-27.
-Updated scans/SBOMs confirm removal of the packaging/XML payloads, with no
-critical or secret findings. Remaining high findings have an
-[applicability review](container-vulnerability-review.md) with unresolved paths.
-The operator deferred provenance and signing handoff; portable builds and
-functional verification continue. P5 implementation is complete with release
-verification deferred: finish vulnerability review before the GHCR release,
-and verify provenance/signing with that release. Migration has not occurred. See [verification evidence](container-image-verification.md).
+Build all four images from the reviewed source revision and publish them to
+your chosen registry. Record the resulting immutable digests for deployment;
+the private images used for earlier verification are not release artifacts.
+The [verification evidence](container-image-verification.md) records completed
+runtime, VPN, migration and recovery checks. Those results apply to the tested
+artifacts and do not replace checks of a new release.
 
-Phase 6 completed on 2026-09-30 using a newly built agent for actual host/bridge
-verification. The earlier hardening agent lacks the corrected TUN-scoped grant
-and Docker forwarding-policy proof. The corrected image is local to the test
-host; rebuild/publish from this tree for other deployments and refresh release
-evidence for those resulting digests. See the
-[deployment status](container-deployment.md).
+Release verification remains deferred: refresh scans and finish the
+[vulnerability review](container-vulnerability-review.md), then generate and
+verify provenance and signatures with the GHCR release. See the
+[deployment reference](container-deployment.md) for runtime requirements.
 
 Use the repository root as the build context. Dockerfiles live in
 `deploy/openvpn`, `deploy/agent`, `deploy/api`, and `deploy/nginx`. Compose build
@@ -36,7 +27,7 @@ provider-specific example, not a project requirement.
 ## Build locally and push to your registry
 
 Install Docker with Buildx and Compose in your own build environment. The
-remote target is x86_64: retain `OVPNCP_PLATFORM=linux/amd64` even on Apple
+validated platform is x86_64: use `OVPNCP_PLATFORM=linux/amd64` even on Apple
 Silicon. Docker Desktop can cross-build using emulation; a native amd64
 Buildx worker is faster. This does not require installing Docker inside this
 coding workspace. Do not run the host-network VPN stack on your Mac.
@@ -73,24 +64,25 @@ Capture the pushed manifest digests using `docker buildx imagetools inspect`
 for each of the four tags. Set `OVPNCP_OPENVPN_IMAGE`, `OVPNCP_AGENT_IMAGE`,
 `OVPNCP_API_IMAGE`, and `OVPNCP_WEB_IMAGE` to complete `registry/repository@sha256:…`
 references in the deployment environment. Supply those references and build
-logs for the next remote verification step. Do not begin migration yet.
+logs for verification on the selected target before migration.
 
 ## Build sequentially on Azure
 
 From the repository root, with Azure CLI authenticated to the subscription
-containing `faureciaiot`, these commands build remotely and push each result.
+containing your registry, these commands build remotely and push each result.
 No local Docker daemon or Entra build arguments are needed.
 
 ```bash
 set -e
-TAG="phase5-$(date -u +%Y%m%d%H%M%S)"
-az acr build --registry faureciaiot --platform linux/amd64 \
+: "${OVPNCP_ACR_NAME:?Set OVPNCP_ACR_NAME to your Azure registry resource name}"
+TAG="build-$(date -u +%Y%m%d%H%M%S)"
+az acr build --registry "$OVPNCP_ACR_NAME" --platform linux/amd64 \
   --image "ovpncp-openvpn:${TAG}" --file deploy/openvpn/Dockerfile .
-az acr build --registry faureciaiot --platform linux/amd64 \
+az acr build --registry "$OVPNCP_ACR_NAME" --platform linux/amd64 \
   --image "ovpncp-agent:${TAG}" --file deploy/agent/Dockerfile .
-az acr build --registry faureciaiot --platform linux/amd64 \
+az acr build --registry "$OVPNCP_ACR_NAME" --platform linux/amd64 \
   --image "ovpncp-api:${TAG}" --file deploy/api/Dockerfile .
-az acr build --registry faureciaiot --platform linux/amd64 \
+az acr build --registry "$OVPNCP_ACR_NAME" --platform linux/amd64 \
   --image "ovpncp-web:${TAG}" --file deploy/nginx/Dockerfile .
 ```
 

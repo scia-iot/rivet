@@ -244,8 +244,10 @@ pinned `vpn_event.sh`. Use a separate root-owned mode-0700 parent for retained
 evidence. Invoke `python3 -m tests.integration.phase7_container_rehearsal`
 through the bounded guard with `--input-dir`, `--private-parent`, and immutable
 `--openvpn-image`, `--agent-image`, and `--api-image` references. The runner
-requires the OpenVPN and agent references to equal the capability record and
-the API reference to match the reviewed digest.
+requires all three image references to equal the independently reviewed
+`image_refs` entries in the capability record. Use immutable digest references
+under your chosen registry or namespace; no image from an earlier testing
+environment is required.
 
 The runner imports and semantically verifies the M0 bundle into a private
 Compose VPN mount generation. It connects one indexed valid client with
@@ -276,7 +278,7 @@ It is not part of ordinary pytest execution. See the
 completed host checks and [native deployment](../../docs/native-deployment.md)
 for the supported installation layout.
 
-The 2026-10-07 coordinated Compose restore on `sciaiot-openvpn` separately
+The 2026-10-07 coordinated Compose restore on the approved test host separately
 verified encrypted VPN/API/agent/deployment state, restored into fresh
 directories while original state was unavailable. Its scope and limits are
 recorded in the [architecture plan](../../docs/container-architecture-upgrade-plan.md#coordinated-compose-recovery-verification--2026-10-07).

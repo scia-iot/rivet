@@ -1,7 +1,7 @@
 """VPN client deletion lifecycle tests."""
 
 from collections.abc import Generator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -50,13 +50,13 @@ def deletion_context_fixture() -> Generator[tuple[TestClient, Session, Client]]:
                     client_id=client.id,
                     issued_by="test-ca",
                     issued_to=client.name,
-                    issued_on=datetime(2026, 1, 1, tzinfo=timezone.utc),
-                    expires_on=datetime(2027, 1, 1, tzinfo=timezone.utc),
+                    issued_on=datetime(2026, 1, 1, tzinfo=UTC),
+                    expires_on=datetime(2027, 1, 1, tzinfo=UTC),
                 ),
                 Connection(
                     client_id=client.id,
                     remote_address="198.51.100.5",
-                    connected_time=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                    connected_time=datetime(2026, 1, 2, tzinfo=UTC),
                 ),
                 UserClient(user_id=user.id, client_id=client.id),
             ]

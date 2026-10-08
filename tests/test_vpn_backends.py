@@ -1,5 +1,7 @@
 """Application adapters and durable workflow regression tests."""
 
+from datetime import UTC
+
 import pytest
 
 from sciaiot.ovpncp.adapters.vpn.fake import FakeVpnControl
@@ -241,7 +243,7 @@ def test_privileged_imports_are_confined_to_approved_boundaries():
 
 def test_same_pending_network_has_one_business_completion(fake_api):
     """Two callers joining one intent cannot commit two network rows."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from sqlmodel import Session, select
 
@@ -266,7 +268,7 @@ def test_same_pending_network_has_one_business_completion(fake_api):
         "source_virtual_address": "10.8.0.2",
         "destination_virtual_address": "10.8.0.3",
         "private_network_addresses": "",
-        "start_time": datetime.now(timezone.utc),
+        "start_time": datetime.now(UTC),
     }
     with Session(engine) as first_session, Session(engine) as second_session:
         first, second = RestrictedNetwork(**values), RestrictedNetwork(**values)

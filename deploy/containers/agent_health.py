@@ -23,7 +23,7 @@ def main() -> None:
             or not response.result.ready
         ):
             raise SystemExit(1)
-    except (ControlError, OSError, ValueError):
+    except ControlError, OSError, ValueError:
         raise SystemExit(1) from None
 
 

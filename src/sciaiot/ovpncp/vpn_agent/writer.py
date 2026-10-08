@@ -181,7 +181,7 @@ class MutationVpnControl(ReadOnlyVpnControl):
                 if FAMILIES[request.command.kind] in self.settings.mutation_families:
                     try:
                         self._apply(request, time.monotonic() + 30)
-                    except (ControlError, OSError, ValueError):
+                    except ControlError, OSError, ValueError:
                         # Retain the original evidence and fence on uncertainty.
                         pass
             self.journal.expire()
@@ -268,7 +268,7 @@ class MutationVpnControl(ReadOnlyVpnControl):
         while not self._stopped.is_set():
             try:
                 self.reconcile()
-            except (ControlError, OSError, ValueError):
+            except ControlError, OSError, ValueError:
                 pass
             self._stopped.wait(1)
 
@@ -341,6 +341,6 @@ class MutationVpnControl(ReadOnlyVpnControl):
                 )
                 if healthy and unchanged:
                     return
-            except (ControlError, OSError, ValueError):
+            except ControlError, OSError, ValueError:
                 pass
             time.sleep(min(0.05, bounded.remaining(deadline)))

@@ -24,7 +24,6 @@ from tests.integration import vpn_container_rehearsal as phase6
 REPO = pathlib.Path(__file__).resolve().parents[2]
 HOOK = REPO / "deploy/containers/vpn_event.sh"
 MIGRATION = REPO / "src/sciaiot/ovpncp/migration"
-PINNED_API = "sha256:147c9e43e45baa15ee8da946ee7a68df38c7edce5f9f4bbac7e2bcd478cca20f"
 
 
 def _private_dir(path: pathlib.Path) -> None:
@@ -70,11 +69,10 @@ class Rehearsal(phase6.Rehearsal):
         for role, value in self.images.items():
             phase6.validate_image(value, role)
         capabilities = json.loads((input_dir / "capabilities.json").read_text())
-        if (
-            capabilities.get("image_refs", {}).get("openvpn") != openvpn
-            or capabilities.get("image_refs", {}).get("agent") != agent
-            or not api.endswith(f"/ovpncp-api@{PINNED_API}")
-        ):
+        references = (
+            capabilities.get("image_refs") if isinstance(capabilities, dict) else None
+        )
+        if not isinstance(references, dict) or references != self.images:
             raise ValueError(
                 "Image references differ from observed capability evidence."
             )

@@ -10,7 +10,7 @@ from sciaiot.ovpncp.application.vpn_control import schemas as s
 from sciaiot.ovpncp.application.vpn_control.errors import ControlError
 from sciaiot.ovpncp.vpn_agent import access_mutations, bounded, network
 from sciaiot.ovpncp.vpn_agent.writer import MutationVpnControl
-from tests.test_vpn_agent import request, settings
+from tests.support.agent import request, settings
 
 
 def configured_control(tmp_path: Path, protocol: int = 201) -> MutationVpnControl:

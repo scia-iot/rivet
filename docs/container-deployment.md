@@ -1,57 +1,32 @@
 # Container deployment reference
 
-Status: the operator-approved testing server `fdsadmin@sciaiot-openvpn`
-was migrated to the four-container deployment on 2026-10-02. The approved
-repaired VPN copy passed import verification with no unexplained drift;
-unchanged-client connectivity and CCD assignment passed. The original source
-files are preserved and legacy services are stopped. Phase 6 is complete;
-Phase 7 migration is complete. Coordinated Compose recovery passed on this
-host on 2026-10-07: encrypted VPN, API, agent and deployment state restored
-into fresh directories with the original bind-mounted state unavailable.
-All four services became healthy in 96.7 seconds; database contents, protected
-files, operation history, revocation, a nonempty owned route and unchanged
-client connectivity were verified. VM-loss/off-host recovery, production RPO
-acceptance and host/Docker restart checks remain operator responsibilities.
+This reference deploys four services on a dedicated Linux host. Select the
+host, registry, immutable image digests, private state root, public VPN
+endpoint and runtime credentials for each deployment. No named testing host
+or private image registry is required by the repository.
 
-The test deployment reuses the existing Entra settings and privately mounted
-optional storage credential. Its API database is fresh, populated from three
-active VPN clients with one active fixed-address assignment. Legacy users,
-device links, grants and archives were not copied. Its container UI replaces
-the existing IPv4 port-80 listener; the reference Compose default remains
-loopback. No Azure network changes were made. Browser sign-in and the external
-Azure UDP path still require end-to-end verification.
+The reference topology, migration and coordinated same-host Compose recovery
+have passed verification. The recovery drill restored encrypted VPN, API,
+agent and deployment state into fresh directories with original state
+unavailable; four services became healthy in 96.7 seconds and unchanged-client
+connectivity passed. See the [phase evidence](container-architecture-upgrade-plan.md)
+for scope and limitations. VM-loss/off-host recovery, production RPO,
+host/Docker restart, real browser sign-in and external UDP ingress require
+verification in the selected deployment environment.
 
-Private release/state/evidence live at
-`/var/lib/ovpncp-phase7-deployment`; the Compose manifest is
-`release/compose.json`. After the recovery drill, VPN/API state is under
-`/var/lib/ovpncp-verification-20261006/recovered-final`; the manifest contains
-the authoritative bind paths. Encrypted artifacts and private verification
-results are retained in that verification directory. The original state is
-retained separately and is not required by the running deployment.
-`ovpncp-containers.service` owns ordered startup. This test release overrides
-all container restart policies to `no` so Docker cannot restart OpenVPN before
-the deployment controller prepares and checks the owned firewall baseline.
-Use `sudo systemctl restart ovpncp-containers.service` for this deployment's
-lifecycle and inspect container health with the retained Compose manifest.
-The oneshot service orders startup; it does not automatically restart a
-container that later exits. A real host reboot and Docker-daemon restart have
-not yet been verified. Do not substitute the raw
-reference Compose restart policy without reviewing that startup ordering.
+Build and publish current images using the [portable build guide](container-builds.md).
+Earlier privately cached verification images are not deployable release
+references. Refresh vulnerability scans and complete release review, signing
+and provenance checks before the deferred GHCR release.
 
-Updated image scans have no critical or secret findings. High-finding review
-is deferred until before the GHCR release; signing/provenance verification is
-grouped with that release by the operator. These deferred release checks do
-not block architecture phase progression. See the detailed
-[phase evidence](container-architecture-upgrade-plan.md).
-
-The actual-topology proof uses the corrected agent built from this tree,
-`ovpncp.local/ovpncp-agent@sha256:ed2acbab21303bc49afbac419cdc1f7dcb67e4cb01336124c3ed611a87f6d82f`.
-That image exists only on the test host. Build and publish the corrected agent
-for other targets; the earlier hardening agent does not include the Docker
-forwarding-policy compatibility fix. Existing owned access rules without both
-TUN selectors require explicit stopped-writer upgrade review, as described in
-[the agent guide](vpn-agent.md). See the
-[phase evidence](container-architecture-upgrade-plan.md).
+Own startup ordering in the deployment: establish and verify the scoped VPN
+firewall baseline before OpenVPN accepts traffic. A previous test deployment
+used a private systemd controller and disabled Docker automatic restarts;
+that controller is not a repository-provided installation script. Review the
+reference restart policies against your startup mechanism and verify reboot
+and Docker-daemon restart behavior. Existing owned access rules without both
+TUN selectors require explicit stopped-writer upgrade review as described in
+[the agent guide](vpn-agent.md).
 
 ## Topology and prerequisites
 
@@ -78,7 +53,7 @@ with host, VPN and client routes. If changed, update the bridge, both static
 addresses and `OVPNCP_PROXY_IP` together. The API trusts forwarded headers only
 from that Nginx address. The bridge permits outbound Entra/storage connections;
 it is not an air-gapped network. A deployment-owned reverse proxy terminates
-public TLS (Azure Application Gateway in the existing deployment). Bind HTTP
+public TLS. Bind HTTP
 to a reviewed private host address only after limiting ingress to the trusted
 gateway subnet; never publish this backend directly to the Internet.
 

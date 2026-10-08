@@ -67,3 +67,13 @@ sciaiot = ["**/*.yml", "**/*.sh"]
 pythonpath = [
     "src"
 ]
+
+[tool.mypy]
+exclude = ["^build/"]
+
+[tool.ruff.per-file-target-version]
+"tests/integration/vpn_container_rehearsal.py" = "py312"
+"tests/integration/compose_phase6_rehearsal.py" = "py312"
+"tests/integration/compose_phase6_host_rehearsal.py" = "py312"
+"tests/integration/phase7_container_rehearsal.py" = "py312"
+"deploy/containers/prepare_state.py" = "py312"

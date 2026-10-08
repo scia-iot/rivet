@@ -3,7 +3,7 @@
 import hashlib
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import Engine, and_, delete, or_, update
@@ -22,7 +22,7 @@ from sciaiot.ovpncp.data.vpn_events import (
     SessionBinding,
 )
 
-EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 def timestamp(value: int) -> datetime:
@@ -98,7 +98,7 @@ class EventConsumer:
                     owner is None
                     or owner.name != item.client
                     or previous.remote_address != remote
-                    or previous.connected_time.replace(tzinfo=timezone.utc)
+                    or previous.connected_time.replace(tzinfo=UTC)
                     != timestamp(item.connected_at)
                 ):
                     raise ControlError(ErrorCode.INTEGRITY)
@@ -155,10 +155,7 @@ class EventConsumer:
             if connection.disconnected_time is None:
                 connection.disconnected_time = disconnected
                 session.add(connection)
-            elif (
-                connection.disconnected_time.replace(tzinfo=timezone.utc)
-                != disconnected
-            ):
+            elif connection.disconnected_time.replace(tzinfo=UTC) != disconnected:
                 raise ControlError(ErrorCode.INTEGRITY)
         binding.uncertain = False
         session.add(binding)
@@ -357,7 +354,7 @@ class EventConsumer:
 
     def purge(self, now: datetime | None = None) -> None:
         """Bound acknowledged history retention without removing pending evidence."""
-        cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=90)
+        cutoff = (now or datetime.now(UTC)) - timedelta(days=90)
         try:
             with Session(self.engine) as session:
                 cursor = self._cursor(session)

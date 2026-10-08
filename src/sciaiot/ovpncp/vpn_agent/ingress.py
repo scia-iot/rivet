@@ -114,7 +114,7 @@ class Ingress:
                 connection, _ = self.listener.accept()
             except TimeoutError:
                 continue
-            except (OSError, ControlError):
+            except OSError, ControlError:
                 self.dirty = True
                 self.stopped.wait(0.1)
                 continue

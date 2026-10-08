@@ -12,7 +12,7 @@ def main() -> None:
         metadata = Path("/run/openvpn/management.sock").lstat()
         if not stat.S_ISSOCK(metadata.st_mode):
             raise ValueError
-    except (OSError, ValueError):
+    except OSError, ValueError:
         raise SystemExit(1) from None
 
 

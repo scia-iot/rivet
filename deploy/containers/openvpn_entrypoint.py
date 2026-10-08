@@ -38,7 +38,7 @@ def main() -> None:
                 "/var/lib/ovpn-agent/projection/server.conf",
             ],
         )
-    except (OSError, ValueError):
+    except OSError, ValueError:
         raise SystemExit("OpenVPN startup failed; check runtime grants.") from None
 
 

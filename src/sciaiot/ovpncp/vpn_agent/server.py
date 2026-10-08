@@ -118,7 +118,7 @@ class UnixAgentServer:
             with connection:
                 try:
                     self.handle(connection)
-                except (ControlError, OSError, ValueError, UnicodeError):
+                except ControlError, OSError, ValueError, UnicodeError:
                     # Malformed/unauthenticated requests have no trusted ID.
                     pass
 

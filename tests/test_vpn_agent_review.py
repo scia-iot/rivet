@@ -7,7 +7,7 @@ import pytest
 
 from sciaiot.ovpncp.application.vpn_control.errors import ControlError
 from sciaiot.ovpncp.vpn_agent.management import Management
-from tests.test_vpn_agent import settings
+from tests.support.agent import settings
 
 
 @pytest.mark.parametrize(

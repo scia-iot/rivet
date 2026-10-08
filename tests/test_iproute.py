@@ -4,13 +4,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from sciaiot.ovpncp.utils import iproute
-
-mocked_routes = """10.8.0.0/24 proto kernel scope link src 10.8.0.1
-192.168.1.0/24 via 10.8.0.1
-"""
+from tests.support.api import MOCKED_ROUTES
 
 
-@patch("subprocess.run", return_value=MagicMock(stdout=mocked_routes))
+@patch("subprocess.run", return_value=MagicMock(stdout=MOCKED_ROUTES))
 def test_list_routes(mock_run):
     shell_command = ["ip", "route", "show", "dev", "tun0"]
     routes = iproute.list("tun0")

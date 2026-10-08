@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
@@ -25,52 +25,20 @@ from sciaiot.ovpncp.utils.openvpn import (
     unassign_client_ip,
     validate_name,
 )
-
-server_config_lines = """
-port 1194
-proto udp
-dev tun
-ca ca.crt
-cert server.crt
-key server.key
-dh dh2048.pem
-data-ciphers-fallback AES-256-CBC
-topology subnet
-server 10.8.0.0 255.255.255.0
-ifconfig-pool-persist /var/log/openvpn/ipp.txt
-client-config-dir ccd
-ccd-exclusive
-keepalive 10 120
-persist-key
-persist-tun
-status /var/log/openvpn/openvpn-status.log
-log         /var/log/openvpn/openvpn.log
-verb 3
-explicit-exit-notify 1
-client-connect /opt/ovpncp/client-connect.sh
-client-disconnect /opt/ovpncp/client-disconnect.sh
-script-security 2
-"""
+from tests.support.api import SERVER_CONFIG_LINES, SERVER_STATUS_ACTIVE
 
 
-@patch("builtins.open", new_callable=mock_open, read_data=server_config_lines)
+@patch("builtins.open", new_callable=mock_open, read_data=SERVER_CONFIG_LINES)
 def test_get_server_config(mock_open):
     configs = get_server_config()
     assert configs is not None
-    # Adjust count if server_config_lines was simplified
+    # Adjust count if the sample server configuration was simplified
     # assert len(configs) == 23
 
     mock_open.assert_called_with("/etc/openvpn/server.conf", "r")
 
 
-server_status_active = """
-● openvpn@server.service - OpenVPN connection to server
-    Loaded: loaded (/usr/lib/systemd/system/openvpn@.service; enabled; preset: enabled)
-    Active: active (running) since Mon 2025-01-13 08:15:17 UTC; 15s ago
-    """
-
-
-@patch("subprocess.run", return_value=MagicMock(stdout=server_status_active))
+@patch("subprocess.run", return_value=MagicMock(stdout=SERVER_STATUS_ACTIVE))
 def test_get_status_active(mock_run):
     status = get_status()
     assert status is not None
@@ -157,8 +125,8 @@ MIIDXTCCAkWgAwIBAgIJALb2Z6Z6Z6Z6MA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
 @patch("cryptography.x509.load_pem_x509_certificate")
 def test_read_client_cert_success(mock_load_cert, mock_open):
     mock_cert = MagicMock()
-    mock_cert.not_valid_before_utc = datetime.now(timezone.utc)
-    mock_cert.not_valid_after_utc = datetime.now(timezone.utc) + timedelta(days=365)
+    mock_cert.not_valid_before_utc = datetime.now(UTC)
+    mock_cert.not_valid_after_utc = datetime.now(UTC) + timedelta(days=365)
     mock_cert.subject.get_attributes_for_oid.return_value = [
         MagicMock(value="client_name")
     ]

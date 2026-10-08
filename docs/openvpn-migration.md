@@ -122,14 +122,17 @@ reviewed DH parameters, and CCD entries. The CA private key never enters this
 projection. The source's complete PKI remains in the
 agent-private mount. The source pool file maps to the daemon-owned pool mount.
 
-The only proposed cross-version allowance is OpenVPN 2.6.19 and Easy-RSA
+The supported cross-version allowance is OpenVPN 2.6.19 and Easy-RSA
 3.1.7 on both sides, with source OpenSSL 3.0.13 and target OpenSSL 3.5.7 in
-the pinned Phase 6 OpenVPN image. This is an explicit compatibility policy,
-not an assertion that the versions are equivalent. It must be paired with
+an operator-selected immutable OpenVPN image. This is an explicit
+compatibility policy, not an assertion that the versions are equivalent.
+It must be paired with
 target-side validation of the imported CA/server/client keys, chains and CRL,
 an unchanged-client connection, and target Easy-RSA issue/revoke/CRL tests.
-Any other version pair, image digest, missing option/cipher, or failed target
-crypto operation is rejected. The policy does not alter source key or
+Matching supported source and target versions require no OpenSSL transition;
+the helper selects the reviewed transition only when that version change is
+needed. Other version pairs, unreviewed images, missing options/ciphers, and
+failed target crypto operations are rejected. The policy does not alter source key or
 certificate bytes and does not permit an unreviewed option transformation.
 
 An inconsistent legacy source must be reconciled in an isolated, audited copy
@@ -162,8 +165,13 @@ the private source descriptor as needed:
 ```
 
 The container policy is a strict extension of the M0 target policy. Its
-`image_digest` must equal the pinned Phase 6 OpenVPN image digest, and
-`target_device` must be an operator-reviewed numbered TUN device such as
+`image_digest` must be a lowercase `sha256:` digest with exactly 64 hexadecimal
+characters, copied from the selected OpenVPN image's immutable reference. The
+operator must bind the policy to independently observed capabilities of that
+image; a valid digest string alone is not compatibility evidence. No historical
+testing image is built into the model. The exact supported version and hook
+contracts still apply. `target_device` must be an operator-reviewed numbered
+TUN device such as
 `tun9`. The adapter transforms source `dev tun` into that exact device, adds
 `dev-type tun`, `disable-dco`, service identity, management/status paths and
 private runtime log handling, then renders the same configuration in the
@@ -175,6 +183,15 @@ hook replacement maps to the pinned image's
 `bd29220d58469db027654ff9a5468f61f5c81d877511da1e28f04dc0fe31edb3`.
 Check this hash against the actual cached image file before import. The
 adapter refuses any other replacement hash or path.
+
+For the opt-in container rehearsal, `capabilities.json` must contain the
+reviewed immutable references for all three roles under `image_refs`:
+`openvpn`, `agent`, and `api`. Each reference uses
+`<registry-or-namespace>/ovpncp-<role>@sha256:<64-lowercase-hex-digits>`.
+The runner requires exact agreement with its `--openvpn-image`,
+`--agent-image`, and `--api-image` arguments before creating rehearsal state.
+Tags, missing roles and mismatched evidence are rejected. Private registry
+authentication and capability observations are supplied by the operator.
 
 With the encrypted M0 bundle, private key file and protected container policy,
 the non-interactive sequence is:

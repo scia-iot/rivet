@@ -6,8 +6,7 @@ import time
 from pathlib import Path
 
 from sciaiot.ovpncp.vpn_agent.management import Management
-from tests.test_vpn_agent import settings
-from tests.test_vpn_agent_runtime import STATUS
+from tests.support.agent import STATUS, settings
 
 
 def test_disconnect_inspects_exact_session_on_same_socket_and_reload_is_controlled(

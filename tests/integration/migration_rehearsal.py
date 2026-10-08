@@ -501,7 +501,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except OSError, ValueError, subprocess.SubprocessError:
         print(
             '{"error":"rehearsal_failed","detail":"Review prerequisites and private disposable logs."}',
             file=sys.stderr,
@@ -513,7 +513,7 @@ def main(argv: list[str] | None = None) -> int:
             if failed and args.failure_evidence_dir is not None:
                 try:
                     rehearsal.retain_failure_evidence(args.failure_evidence_dir)
-                except (MigrationError, OSError):
+                except MigrationError, OSError:
                     print('{"error":"failure_evidence_unavailable"}', file=sys.stderr)
 
 

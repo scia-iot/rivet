@@ -1,7 +1,7 @@
 import os
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Barrier
 from unittest.mock import patch
@@ -59,8 +59,8 @@ def identity_client_fixture() -> Generator[TestClient]:
                 return_value={
                     "issued_by": "test-ca",
                     "issued_to": "test-client",
-                    "issued_on": datetime(2026, 1, 1, tzinfo=timezone.utc),
-                    "expires_on": datetime(2027, 1, 1, tzinfo=timezone.utc),
+                    "issued_on": datetime(2026, 1, 1, tzinfo=UTC),
+                    "expires_on": datetime(2027, 1, 1, tzinfo=UTC),
                 },
             ),
             TestClient(app) as test_client,

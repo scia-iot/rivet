@@ -1,8 +1,8 @@
 # Native Python installation plan
 
-This plan tracks support for a future non-container Linux release. The
-`sciaiot-openvpn` native rehearsal used a frozen private copy of test state;
-the prior Compose service was restored after native cleanup.
+This plan tracks support for a future non-container Linux release. The native
+rehearsal used a frozen private copy of state on an approved test host; the
+prior Compose service was restored after native cleanup.
 
 ## Package boundary
 
@@ -57,7 +57,7 @@ the prior Compose service was restored after native cleanup.
 ## Verification
 
 - Focused native/deployment suite: 45 passed. The complete local suite
-  passed 931 tests at 90% total coverage; new application modules: native API
+  passed 961 tests at 90% total coverage; new application modules: native API
   86%, firewall 84%, asset exporter 92%.
 - Isolated source distribution to wheel build and separate clean agent/API
   virtual-environment installs passed `pip check`, isolated imports,
@@ -65,16 +65,15 @@ the prior Compose service was restored after native cleanup.
   FastAPI, SQLModel, Uvicorn or `python-jose`. The installed API answered an
   unauthenticated `/me` request with the expected HTTP 401 and temporary
   SQLite state.
-- Changed Python files pass Ruff format and lint. `mypy --exclude '^build/' .`
-  passed 159 source files. Plain `mypy .` is blocked by a generated `build/lib`
-  duplicate of `sciaiot`; retain that directory because it predates this
-  task and may contain user artifacts.
-- Full `ruff format --check .` and `ruff check .` still fail in unrelated
-  existing files under `deploy/containers`, `src/sciaiot/ovpncp` and `tests`.
-  Representative paths are `deploy/containers/agent_bootstrap.py`,
-  `src/sciaiot/ovpncp/recovery_set.py`, and `tests/test_vpn_events.py`.
-  Broad formatting/lint consolidation belongs to the later source/test
-  cleanup task.
+- Repository-wide `ruff format --check .` and `ruff check .` pass after
+  source/test consolidation. `mypy .` passes 167 files; configuration excludes
+  generated `build/` output while retaining the existing artifacts. Host-only
+  deployment tools retain their documented Python 3.12 syntax; application
+  code requires Python 3.14. API tests pass in both normal and reverse order
+  using disposable per-test databases.
+- The full coverage run emitted 29 SQLite `ResourceWarning`s. Isolated API
+  and identity runs did not reproduce them; their allocation source remains
+  unresolved. No warnings were suppressed.
 - `CI=true npm run build:runtime` passed from `frontend/` with the
   deployment-neutral browser bundle and runtime `/api` configuration.
 - The local rehearsal helper in `tests/integration/native_host_rehearsal.py`

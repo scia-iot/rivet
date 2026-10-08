@@ -9,7 +9,7 @@ import hashlib
 import ipaddress
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -279,7 +279,7 @@ class HostVpnControl(FakeVpnControl):
                 private_network_addresses=",".join(
                     item.removesuffix("/32") for item in intent.private_networks
                 ),
-                start_time=datetime.now(timezone.utc),
+                start_time=datetime.now(UTC),
             )
             rules = network.iptable_rules()
             if network.private_network_addresses:

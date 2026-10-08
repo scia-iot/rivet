@@ -56,7 +56,7 @@ class ReadOnlyVpnControl:
             raise ControlError(ErrorCode.UNAVAILABLE) from None
 
     def open_archive(self, request: s.Request) -> archive.ArchiveStream:
-        """Phase 3 never packages or exposes credential bytes."""
+        """Keep credential packaging unavailable on the read-only control."""
         raise ControlError(ErrorCode.UNAVAILABLE)
 
     def _health(self, deadline: float) -> s.HealthResult:

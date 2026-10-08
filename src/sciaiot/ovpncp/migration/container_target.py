@@ -338,7 +338,7 @@ def _layout(
 
 
 def validate_policy(state: Snapshot, policy: ContainerTargetSpec) -> dict[str, object]:
-    """Validate the pinned image policy and complete Compose file mapping."""
+    """Validate reviewed image capability policy and Compose file mapping."""
     files, _ = _layout(state, policy)
     return {
         "valid": True,

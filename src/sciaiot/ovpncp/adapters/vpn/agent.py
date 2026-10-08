@@ -192,7 +192,7 @@ class AgentVpnControl:
         except TimeoutError:
             connection.close()
             raise ControlError(ErrorCode.TIMEOUT) from None
-        except (OSError, ValueError, UnicodeError):
+        except OSError, ValueError, UnicodeError:
             connection.close()
             raise ControlError(ErrorCode.UNAVAILABLE) from None
 

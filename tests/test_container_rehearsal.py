@@ -11,10 +11,21 @@ from tests.integration import vpn_container_rehearsal as rehearsal
 
 def test_image_requires_repository_digest() -> None:
     """Tags, shell text and wrong repositories cannot select mutable images."""
-    for invalid in ("agent:latest", "agent@sha256:abc", ";id", "../agent"):
+    for invalid in (
+        "agent:latest",
+        "agent@sha256:abc",
+        ";id",
+        "../agent",
+        "registry.example/team/ovpncp-agent:latest",
+        "registry.example/../ovpncp-agent@sha256:" + "a" * 64,
+    ):
         with pytest.raises(ValueError):
             rehearsal.validate_image(invalid, "agent")
     rehearsal.validate_image("example.test/ovpncp-agent@sha256:" + "a" * 64, "agent")
+    rehearsal.validate_image(
+        "registry.example:5000/team/vpn/ovpncp-agent@sha256:" + "b" * 64,
+        "agent",
+    )
 
 
 def test_namespace_refuses_host_and_reused_namespace() -> None:

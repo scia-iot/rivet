@@ -1,6 +1,6 @@
 """Private API delivery receipts, session bindings and exact acknowledgement intent."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import BigInteger, Column, Text
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
@@ -28,9 +28,7 @@ class EventReceipt(SQLModel, table=True):
         sa_column=Column(Text().with_variant(MEDIUMTEXT(), "mysql"), nullable=False)
     )
     applied: bool = False
-    received_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc), index=True
-    )
+    received_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)
 
 
 class SessionBinding(SQLModel, table=True):
@@ -50,6 +48,4 @@ class EventAcknowledgement(SQLModel, table=True):
     response_json: str | None = Field(
         default=None, sa_column=Column(Text, nullable=True)
     )
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc), index=True
-    )
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC), index=True)

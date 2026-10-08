@@ -1,3 +1,8 @@
+"""Persisted server, address, client, certificate, and connection models."""
+
+# SQLModel resolves these relationship names at mapper configuration time.
+# ruff: noqa: UP037, UP045
+
 from datetime import datetime
 from typing import Optional
 

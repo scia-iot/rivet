@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -89,7 +89,7 @@ def create_restricted_network(
         destination_name=destination.name,
         destination_virtual_address=destination.virtual_address.ip,
         private_network_addresses=request.private_network_addresses or "",
-        start_time=datetime.now(timezone.utc),
+        start_time=datetime.now(UTC),
     )
 
     try:
@@ -172,7 +172,7 @@ def drop_restricted_network(
         control = VpnService(session)
         control.network(network, False)
 
-        network.end_time = datetime.now(timezone.utc)
+        network.end_time = datetime.now(UTC)
         session.add(network)
         session.flush()
         control.finish(resource_id=str(network.id))

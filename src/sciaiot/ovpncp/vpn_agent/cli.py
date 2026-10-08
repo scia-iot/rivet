@@ -14,7 +14,7 @@ def main() -> None:
             signal.signal(signal.SIGTERM, lambda *_: server.shutdown())
             signal.signal(signal.SIGINT, lambda *_: server.shutdown())
             server.serve_forever()
-    except (OSError, ValueError):
+    except OSError, ValueError:
         raise SystemExit(
             "Private VPN agent unavailable; check deployment configuration."
         ) from None

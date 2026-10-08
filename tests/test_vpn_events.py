@@ -1,7 +1,7 @@
 """Durable API event ingestion without privileged operations or live services."""
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -100,7 +100,7 @@ def test_event_commit_precedes_ack_and_replay_is_deduplicated(consumer):
         assert len(rows) == 1
         assert rows[0].remote_address == "[2001:db8::1]:1194"
         assert rows[0].connected_time == datetime.fromtimestamp(
-            1_700_000_000, timezone.utc
+            1_700_000_000, UTC
         ).replace(microsecond=123456, tzinfo=None)
         assert rows[0].disconnected_time.microsecond == 123458
     assert len(control.acks) == 1
@@ -201,7 +201,7 @@ def test_reused_database_connection_id_cannot_close_another_client(consumer):
                 id=identity,
                 client_id=other.id,
                 remote_address="192.0.2.2:1234",
-                connected_time=datetime(2025, 1, 1, tzinfo=timezone.utc),
+                connected_time=datetime(2025, 1, 1, tzinfo=UTC),
             )
         )
         session.commit()
@@ -313,7 +313,7 @@ def test_retention_removes_only_old_acknowledged_history(consumer):
     connected = event()
     control.events = [connected, event(2, "disconnect", connected.session)]
     worker.run_once()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     with Session(engine) as session:
         for row in session.exec(select(EventReceipt)).all():
             row.received_at = now - timedelta(days=91)
@@ -361,7 +361,7 @@ def test_retention_preserves_active_history_with_uncertain_alias(consumer):
             )
         )
         session.commit()
-    worker.purge(datetime.now(timezone.utc))
+    worker.purge(datetime.now(UTC))
     with Session(engine) as session:
         assert len(session.exec(select(Connection)).all()) == 1
 
@@ -411,7 +411,7 @@ def test_ack_retention_keeps_pending_but_prunes_old_completed(consumer):
     worker.run_once()
     with Session(engine) as session:
         completed = session.exec(select(EventAcknowledgement)).one()
-        completed.created_at = datetime.now(timezone.utc) - timedelta(days=91)
+        completed.created_at = datetime.now(UTC) - timedelta(days=91)
         session.add(completed)
         pending = EventAcknowledgement(
             id=str(uuid.uuid4()),

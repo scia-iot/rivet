@@ -12,7 +12,6 @@ import json
 import os
 import pathlib
 import re
-from typing import Literal
 
 from cryptography import x509
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
@@ -31,11 +30,6 @@ from sciaiot.ovpncp.migration.models import (
     parse_model,
 )
 
-PINNED_OPENVPN: Literal[
-    "sha256:5027eba02fbb4872c1b9c1ff8f084d41431dd671870ee7f48ba03877683253fa"
-] = "sha256:5027eba02fbb4872c1b9c1ff8f084d41431dd671870ee7f48ba03877683253fa"
-PINNED_AGENT = "sha256:ed2acbab21303bc49afbac419cdc1f7dcb67e4cb01336124c3ed611a87f6d82f"
-
 
 def _state(input_dir: pathlib.Path):
     key = filesystem.read_file(input_dir / "migration.key", 32)
@@ -51,18 +45,37 @@ def _private_json(path: pathlib.Path, value: object) -> None:
     filesystem.write_private(path, json.dumps(value, sort_keys=True).encode())
 
 
+def _image_digest(value: object, role: str) -> str:
+    """Validate a reviewed role-specific OCI reference and return its digest."""
+    registry = r"[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]+)?"
+    namespace = r"(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*"
+    pattern = rf"{registry}{namespace}/ovpncp-{role}@sha256:[a-f0-9]{{64}}"
+    if not isinstance(value, str) or re.fullmatch(pattern, value) is None:
+        raise MigrationError("pinned image capability evidence mismatch")
+    return value.rsplit("@", 1)[1]
+
+
 def policy(input_dir: pathlib.Path, output: pathlib.Path) -> None:
     """Bind independently observed image capabilities to authenticated hooks."""
     state = _state(input_dir)
     capabilities = json.loads(
         filesystem.read_file(input_dir / "capabilities.json", 65536)
     )
-    openvpn = capabilities["image_refs"]["openvpn"]
-    agent = capabilities["image_refs"]["agent"]
+    references = (
+        capabilities.get("image_refs") if isinstance(capabilities, dict) else None
+    )
+    if not isinstance(references, dict) or set(references) != {
+        "openvpn",
+        "agent",
+        "api",
+    }:
+        raise MigrationError("pinned image capability evidence mismatch")
+    digests = {
+        role: _image_digest(references[role], role)
+        for role in ("openvpn", "agent", "api")
+    }
     if (
-        not openvpn.endswith(f"/ovpncp-openvpn@{PINNED_OPENVPN}")
-        or not agent.endswith(f"/ovpncp-agent@{PINNED_AGENT}")
-        or capabilities["versions"]
+        capabilities["versions"]
         != {"openvpn": "2.6.19", "easyrsa": "3.1.7", "openssl": "3.5.7"}
         or capabilities["hook_sha256"] != container_target.HOOK_SHA256
         or capabilities["explicit_fallback_option_probe"] is not True
@@ -81,9 +94,13 @@ def policy(input_dir: pathlib.Path, output: pathlib.Path) -> None:
     ):
         raise MigrationError("invalid observed capability lists")
     policy = ContainerTargetSpec(
-        image_digest=PINNED_OPENVPN,
+        image_digest=digests["openvpn"],
         versions=capabilities["versions"],
-        openssl_transition="3.0.13-to-3.5.7",
+        openssl_transition=(
+            None
+            if state.manifest.versions == capabilities["versions"]
+            else "3.0.13-to-3.5.7"
+        ),
         target_device="tun0",
         serial_policy=state.manifest.serial_policy,
         supported_options=sorted(
@@ -132,7 +149,7 @@ def client(input_dir: pathlib.Path, output: pathlib.Path) -> None:
             or statuses.get(str(cert.serial_number)) != "V"
             or not (
                 cert.not_valid_before_utc
-                <= datetime.datetime.now(datetime.timezone.utc)
+                <= datetime.datetime.now(datetime.UTC)
                 <= cert.not_valid_after_utc
             )
         ):
@@ -190,7 +207,7 @@ def restore_policy(
     first_policy: pathlib.Path,
     output: pathlib.Path,
 ) -> None:
-    """Bind the new authenticated checkpoint hooks to the same pinned image."""
+    """Bind checkpoint hooks to the first policy's reviewed image digest."""
     del input_dir
     state = bundle.open_bundle(
         filesystem.read_file(checkpoint, 144 * 1024 * 1024),
@@ -287,7 +304,7 @@ def main() -> None:
             )
         else:
             check_rollback(args.work / "restore", args.work / "prior-digest")
-    except (OSError, ValueError, KeyError, TypeError):
+    except OSError, ValueError, KeyError, TypeError:
         raise SystemExit("Phase 7 helper failed; review private inputs.") from None
     print(json.dumps({"phase7_helper": args.command, "passed": True}))
 

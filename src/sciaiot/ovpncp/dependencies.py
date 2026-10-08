@@ -62,11 +62,11 @@ def init_scripts():
             logger.info(f"Made script {path} executable.")
 
 
-vpn_control: "VpnControl | None" = None
+vpn_control: VpnControl | None = None
 
 
 @lru_cache(maxsize=1)
-def _configured_vpn_control() -> "VpnControl":
+def _configured_vpn_control() -> VpnControl:
     """Build only the explicitly configured local VPN implementation."""
     from sciaiot.ovpncp.adapters.vpn.settings import BackendSettings
 
@@ -85,6 +85,6 @@ def _configured_vpn_control() -> "VpnControl":
     return HostVpnControl(archive_directory=certs_directory)
 
 
-def get_vpn_control() -> "VpnControl":
+def get_vpn_control() -> VpnControl:
     """Return the configured backend or an explicitly injected test port."""
     return vpn_control if vpn_control is not None else _configured_vpn_control()

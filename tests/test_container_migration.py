@@ -9,6 +9,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+from pydantic import ValidationError
 
 from sciaiot.ovpncp.migration import bundle, container_target, source, target
 from sciaiot.ovpncp.migration.cli import main
@@ -18,7 +19,6 @@ from sciaiot.ovpncp.migration.models import (
     Replacement,
     SourceSpec,
 )
-from tests.test_migration import legacy as legacy  # noqa: PLC0414
 
 
 @pytest.fixture
@@ -34,11 +34,33 @@ def policy(legacy):
         serial_policy=legacy[1].serial_policy,
         supported_options=sorted(source.PLAIN_OPTIONS | source.FILE_OPTIONS),
         supported_ciphers=["AES-256-GCM", "AES-128-GCM"],
-        image_digest=(
-            "sha256:5027eba02fbb4872c1b9c1ff8f084d41431dd671870ee7f48ba03877683253fa"
-        ),
+        image_digest="sha256:" + "a" * 64,
         target_device="tun9",
     )
+
+
+def test_container_policy_accepts_reviewed_digest_without_historical_pin(
+    policy: ContainerTargetSpec,
+) -> None:
+    """Any immutable digest may be bound to separately reviewed evidence."""
+    alternate = ContainerTargetSpec.model_validate(
+        {**policy.model_dump(), "image_digest": "sha256:" + "b" * 64}
+    )
+    assert alternate.image_digest == "sha256:" + "b" * 64
+
+
+@pytest.mark.parametrize(
+    "digest",
+    ["latest", "sha256:" + "g" * 64, "sha256:" + "a" * 63, "sha256:" + "a" * 64 + "\n"],
+)
+def test_container_policy_rejects_nonimmutable_digest(
+    policy: ContainerTargetSpec, digest: str
+) -> None:
+    """Policy parsing rejects tags and malformed image identities."""
+    with pytest.raises(ValidationError):
+        ContainerTargetSpec.model_validate(
+            {**policy.model_dump(), "image_digest": digest}
+        )
 
 
 @pytest.fixture

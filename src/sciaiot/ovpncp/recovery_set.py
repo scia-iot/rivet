@@ -138,7 +138,7 @@ def _sqlite_backup(path: pathlib.Path) -> bytes:
             return filesystem.read_file(backup_path, MAX_FILE_BYTES)
     except RecoveryError:
         raise
-    except (OSError, sqlite3.Error, ValueError):
+    except OSError, sqlite3.Error, ValueError:
         raise RecoveryError("API SQLite backup failed") from None
 
 
@@ -152,7 +152,7 @@ def _capture_files(root: pathlib.Path) -> tuple[dict[str, bytes], dict[str, obje
         directories[role] = _metadata(path, role, directory=True)
         try:
             names, folders = filesystem.tree(path, MAX_FILES)
-        except (OSError, ValueError):
+        except OSError, ValueError:
             raise RecoveryError("unsafe recovery source tree") from None
         for name in folders:
             directories[f"{role}/{name}"] = _metadata(path / name, role, directory=True)
@@ -173,7 +173,7 @@ def _capture_files(root: pathlib.Path) -> tuple[dict[str, bytes], dict[str, obje
                     in {"api-data/ovpncp.db", "vpn-journal/operations.sqlite3"}
                     else filesystem.read_file(path / name, MAX_FILE_BYTES)
                 )
-            except (OSError, ValueError):
+            except OSError, ValueError:
                 raise RecoveryError(
                     "recovery source changed or cannot be read"
                 ) from None
@@ -221,7 +221,7 @@ def _fingerprint(root: pathlib.Path) -> dict[str, tuple[int, ...]]:
                     info.st_uid,
                     info.st_gid,
                 )
-    except (OSError, ValueError):
+    except OSError, ValueError:
         raise RecoveryError("unsafe or changing recovery source") from None
     return observed
 
@@ -256,7 +256,7 @@ def capture(
             info = os.fstat(descriptor)
             if info.st_uid != os.geteuid() or info.st_mode & 0o077:
                 raise RecoveryError("private recovery source root required")
-    except (OSError, ValueError):
+    except OSError, ValueError:
         raise RecoveryError("private recovery source root required") from None
     before = _fingerprint(root)
     files, metadata = _capture_files(root)
@@ -265,7 +265,7 @@ def capture(
     manifest: dict[str, object] = {
         "schema": 1,
         "generation": generation,
-        "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "captured_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "m0_sha256": m0_sha256,
         "image_digests": image_digests,
         **metadata,
@@ -280,7 +280,7 @@ def capture(
                 entry.size = len(data)
                 entry.mode = 0o600
                 tar.addfile(entry, io.BytesIO(data))
-    except (OSError, ValueError, tarfile.TarError):
+    except OSError, ValueError, tarfile.TarError:
         raise RecoveryError("recovery archive cannot be encoded") from None
     plain = stream.getvalue()
     if len(plain) > MAX_TOTAL_BYTES + 4 * 1024 * 1024:
@@ -439,7 +439,7 @@ def open_set(
         plain = AESGCM(key).decrypt(
             data[offset : offset + 12], data[offset + 12 :], MAGIC
         )
-    except (InvalidTag, ValueError):
+    except InvalidTag, ValueError:
         raise RecoveryError("recovery authentication failed") from None
     files: dict[str, bytes] = {}
     manifest: dict[str, Any] | None = None
@@ -473,7 +473,7 @@ def open_set(
                     files[name] = content
                 else:
                     raise RecoveryError("unexpected recovery archive member")
-    except (OSError, UnicodeError, json.JSONDecodeError, tarfile.TarError):
+    except OSError, UnicodeError, json.JSONDecodeError, tarfile.TarError:
         raise RecoveryError("invalid recovery archive") from None
     if not isinstance(manifest, dict):
         raise RecoveryError("missing recovery manifest")
@@ -498,7 +498,7 @@ def restore(
             parent = os.fstat(descriptor)
             if parent.st_uid != os.geteuid() or parent.st_mode & 0o077:
                 raise RecoveryError("private recovery destination parent required")
-    except (OSError, ValueError):
+    except OSError, ValueError:
         raise RecoveryError("private recovery destination parent required") from None
     destination.mkdir(mode=0o700)
     try:
@@ -515,5 +515,5 @@ def restore(
             role = pathlib.PurePosixPath(name).parts[0]
             os.chown(path, *ROLE_IDENTITIES[role], follow_symlinks=False)
             path.chmod(snapshot.manifest["files"][name]["mode"])
-    except (OSError, ValueError):
+    except OSError, ValueError:
         raise RecoveryError("recovery staging failed; inspect private target") from None

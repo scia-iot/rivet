@@ -1,6 +1,6 @@
 """Operator bootstrap keeps imported VPN identities aligned with a fresh API."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -60,7 +60,7 @@ def _configuration() -> dict[str, object]:
 
 def _discoveries():
     """Return one active assigned client and one revoked identity."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return [
         (
             "kept_client",

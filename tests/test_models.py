@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlmodel import Session
 
@@ -13,7 +13,7 @@ def test_connection_history_model(db_session: Session):
     db_session.commit()
     db_session.refresh(client)
 
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
     conn = Connection(
         client_id=client.id, remote_address="1.2.3.4", connected_time=start_time
     )
@@ -28,7 +28,7 @@ def test_connection_history_model(db_session: Session):
     assert conn.disconnected_time is None
 
     # Test updating disconnect time
-    end_time = datetime.now(timezone.utc)
+    end_time = datetime.now(UTC)
     conn.disconnected_time = end_time
     db_session.add(conn)
     db_session.commit()
@@ -41,12 +41,12 @@ def test_connection_relationship(db_session: Session):
     client = Client(name="test_rel_user")
     Connection(
         remote_address="1.1.1.1",
-        connected_time=datetime.now(timezone.utc),
+        connected_time=datetime.now(UTC),
         client=client,
     )
     Connection(
         remote_address="2.2.2.2",
-        connected_time=datetime.now(timezone.utc),
+        connected_time=datetime.now(UTC),
         client=client,
     )
 

@@ -51,7 +51,7 @@ def _bounded_json(data: bytes) -> dict[str, Any]:
             object_pairs_hook=_pairs,
             parse_constant=_constant,
         )
-    except (ValueError, UnicodeError, RecursionError):
+    except ValueError, UnicodeError, RecursionError:
         raise ControlError(ErrorCode.INVALID_INPUT) from None
     if not isinstance(value, dict):
         raise ControlError(ErrorCode.INVALID_INPUT)
@@ -69,7 +69,7 @@ def encode(message: schemas.Request | schemas.Response) -> bytes:
         data = message.model_dump_json().encode("utf-8")
         _bounded_json(data)
         type(message).model_validate_json(data)
-    except (pydantic.ValidationError, ValueError, TypeError):
+    except pydantic.ValidationError, ValueError, TypeError:
         raise ControlError(ErrorCode.INVALID_INPUT) from None
     return data
 

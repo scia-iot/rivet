@@ -16,7 +16,7 @@ from sciaiot.ovpncp.vpn_agent import event_hook
 from sciaiot.ovpncp.vpn_agent.events import EventSpool
 from sciaiot.ovpncp.vpn_agent.ingress import Ingress, session_identity
 from sciaiot.ovpncp.vpn_agent.journal import Journal
-from tests.test_vpn_agent import settings
+from tests.support.agent import settings
 
 
 @pytest.fixture

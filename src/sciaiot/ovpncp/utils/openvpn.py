@@ -11,10 +11,9 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.x509.oid import NameOID
 
-logger = logging.getLogger(__name__)
+from sciaiot.ovpncp.application import client_name
 
-CLIENT_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
-CLIENT_NAME_MAX_LENGTH = 255
+logger = logging.getLogger(__name__)
 
 status_pattern = re.compile(r"(.*?)Active: (.*?) since (.*?); (.*?) ago")
 client_pattern = re.compile(r"(\w+),(\d+\.\d+\.\d+\.\d+)")
@@ -24,12 +23,9 @@ openvpn_log_dir = "/var/log/openvpn"
 easyrsa_dir = f"{openvpn_dir}/easy-rsa"
 
 
-def is_valid_name(name: str) -> bool:
+def is_valid_name(name: object) -> bool:
     """Return whether a name is safe and fits persisted entity limits."""
-    return (
-        0 < len(name) <= CLIENT_NAME_MAX_LENGTH
-        and CLIENT_NAME_PATTERN.fullmatch(name) is not None
-    )
+    return client_name.is_valid_name(name)
 
 
 def validate_name(name: str) -> None:
@@ -141,7 +137,7 @@ def read_client_cert(name: str) -> dict:
                 "issued_on": issued_on,
                 "expires_on": expires_on,
             }
-    except (IndexError, OSError, ValueError):
+    except IndexError, OSError, ValueError:
         logger.error(f"Failed to read certificate for client {name}.")
         return {}
 
