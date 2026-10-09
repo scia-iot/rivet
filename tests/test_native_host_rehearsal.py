@@ -7,8 +7,8 @@ from unittest import mock
 
 import pytest
 
-from sciaiot.ovpncp.migration import container_target
-from sciaiot.ovpncp.native_assets import export
+from sciaiot.rivet.migration import container_target
+from sciaiot.rivet.native_assets import export
 from tests.integration import native_host_rehearsal as host
 
 
@@ -18,8 +18,8 @@ def test_render_server_config_uses_installed_hook_and_reviewed_bind() -> None:
         Path(__file__).resolve().parents[1] / "deploy/containers/server.conf.example"
     ).read_text()
     actual = host.render_server_config(source, "198.51.100.22")
-    assert actual.count(str(host.AGENT_VENV / "bin/ovpncp-vpn-event")) == 2
-    assert "/usr/local/bin/ovpncp-vpn-event" not in actual
+    assert actual.count(str(host.AGENT_VENV / "bin/rivet-vpn-event")) == 2
+    assert "/usr/local/bin/rivet-vpn-event" not in actual
     assert "local 198.51.100.22\n" in actual
 
 
@@ -39,7 +39,7 @@ def test_render_server_config_accepts_quoted_m0_directives() -> None:
         )
     )
     actual = host.render_server_config(source, None)
-    assert actual.count(str(host.AGENT_VENV / "bin/ovpncp-vpn-event")) == 2
+    assert actual.count(str(host.AGENT_VENV / "bin/rivet-vpn-event")) == 2
     assert '"dev" "tun0"' in actual
 
 
@@ -149,11 +149,10 @@ def test_staging_uses_wheel_templates_and_public_runtime_ui(
     assert (host.ETC / "api.env").stat().st_mode & 0o777 == 0o600
     assert mock.call(host.ETC / "api.env", 0, 0) in chown.call_args_list
     agent = (host.ETC / "agent.env").read_text()
-    assert "OVPNCP_AGENT_MUTATIONS=assignments,pki,events,management" in agent
+    assert "RIVET_AGENT_MUTATIONS=assignments,pki,events,management" in agent
     assert "REPLACE_WITH_" not in agent
     assert (
-        b"window.__OVPNCP_CONFIG__"
-        in (host.FRONTEND / "runtime-config.js").read_bytes()
+        b"window.__RIVET_CONFIG__" in (host.FRONTEND / "runtime-config.js").read_bytes()
     )
     assert (host.FRONTEND / "current/index.html").read_text() == (
         ui / "index.html"

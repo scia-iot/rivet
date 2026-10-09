@@ -13,12 +13,12 @@ remain covered by the [deployment reference](container-deployment.md).
 ## Local builds
 
 Copy `deploy/container.env.example` to the ignored `deploy/container.env`.
-`OVPNCP_REGISTRY` is a registry host plus an optional namespace, for example
+`RIVET_REGISTRY` is a registry host plus an optional namespace, for example
 `ghcr.io/my-organization`, `docker.io/my-account`, or
 `registry.example.com/team`. Root-level repositories also work, such as
-`registry.example.com/ovpncp-api` when
-`OVPNCP_REGISTRY=registry.example.com`. It is an image naming prefix, not a URL. Choose
-`OVPNCP_IMAGE_TAG` for the build.
+`registry.example.com/rivet-api` when
+`RIVET_REGISTRY=registry.example.com`. It is an image naming prefix, not a URL. Choose
+`RIVET_IMAGE_TAG` for the build.
 
 ```bash
 docker compose --env-file deploy/container.env \
@@ -68,13 +68,13 @@ Each successful build uploads `container-COMPONENT-RUN_ID` for seven days:
 A pull-request build uses GitHub's merge revision. The OCI archive is a build
 artifact; plain `docker load` support depends on the engine's image store.
 For example, an installed OCI-aware `skopeo` can import it locally with
-`skopeo copy oci-archive:image.oci.tar docker-daemon:ovpncp-api:review`.
+`skopeo copy oci-archive:image.oci.tar docker-daemon:rivet-api:review`.
 Artifacts consume GitHub storage; large builds may need a higher account quota.
 
 Publishing requires a manual **Container builds** dispatch with `publish=true`
 on the repository's default branch. A separate job obtains package-write
 permission only after every nonpublishing build succeeds. It rebuilds the same
-revision and publishes `ovpncp-COMPONENT:sha-FULL_SHA`; it does not deploy. A
+revision and publishes `rivet-COMPONENT:sha-FULL_SHA`; it does not deploy. A
 manual dispatch on any other branch still builds but skips publishing.
 
 Repository configuration:

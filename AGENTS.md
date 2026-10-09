@@ -7,7 +7,7 @@ instruction files.
 
 ## Project Purpose
 
-`ovpncp` is an API-driven OpenVPN control panel for restricted IoT and edge
+`rivet` is an API-driven OpenVPN control panel for restricted IoT and edge
 networks. It manages VPN clients, certificate packaging and distribution,
 fixed IP assignments, routes, and fine-grained `iptables` access rules.
 
@@ -30,12 +30,12 @@ unless the task explicitly calls for them.
 
 ## Repository Layout
 
-- `src/sciaiot/ovpncp/`: application package
-- `src/sciaiot/ovpncp/routes/`: FastAPI route handlers
-- `src/sciaiot/ovpncp/data/`: persistence models and database behavior
-- `src/sciaiot/ovpncp/middlewares/`: Azure security and storage integrations
-- `src/sciaiot/ovpncp/utils/`: OpenVPN, firewall, routing, and logging helpers
-- `src/sciaiot/ovpncp/scripts/`: OpenVPN connection hook scripts
+- `src/sciaiot/rivet/`: application package
+- `src/sciaiot/rivet/routes/`: FastAPI route handlers
+- `src/sciaiot/rivet/data/`: persistence models and database behavior
+- `src/sciaiot/rivet/middlewares/`: Azure security and storage integrations
+- `src/sciaiot/rivet/utils/`: OpenVPN, firewall, routing, and logging helpers
+- `src/sciaiot/rivet/scripts/`: OpenVPN connection hook scripts
 - `tests/`: pytest test suite
 - `pyproject.toml`: package metadata and pytest configuration
 - `requirements*.txt`: runtime and development dependencies
@@ -137,7 +137,7 @@ Use focused tests while developing, then run the complete quality checks:
 ruff format --check .
 ruff check .
 mypy .
-pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing
+pytest --cov=src/sciaiot/rivet --cov-report=term-missing
 ```
 
 Use `ruff format .` to apply formatting. Target more than 80% coverage for new

@@ -162,7 +162,7 @@ describe('device-user portal', () => {
       screen.getByText(/keep the credential archive private/i),
     ).toBeVisible()
     expect(
-      screen.getByText(/openvpn --config ovpncp-client\.ovpn --ca ca\.crt/),
+      screen.getByText(/openvpn --config rivet-client\.ovpn --ca ca\.crt/),
     ).toBeVisible()
     expect(
       screen.getByText(/--cert <client-name>\.crt --key <client-name>\.key/),
@@ -302,7 +302,7 @@ describe('device-user portal', () => {
     expect(click).toHaveBeenCalledOnce()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:shared-profile')
     expect(
-      document.querySelector('a[download="ovpncp-client.ovpn"]'),
+      document.querySelector('a[download="rivet-client.ovpn"]'),
     ).toBeNull()
     expect(
       screen.getAllByRole('button', {

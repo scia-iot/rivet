@@ -10,9 +10,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 ENTRYPOINT = ROOT / "deploy/containers/web_entrypoint.sh"
 VALID = {
-    "OVPNCP_UI_ENTRA_TENANT_ID": "11111111-1111-4111-8111-111111111111",
-    "OVPNCP_UI_ENTRA_CLIENT_ID": "22222222-2222-4222-8222-222222222222",
-    "OVPNCP_UI_ENTRA_API_SCOPE": (
+    "RIVET_UI_ENTRA_TENANT_ID": "11111111-1111-4111-8111-111111111111",
+    "RIVET_UI_ENTRA_CLIENT_ID": "22222222-2222-4222-8222-222222222222",
+    "RIVET_UI_ENTRA_API_SCOPE": (
         "api://33333333-3333-4333-8333-333333333333/access_as_user"
     ),
 }
@@ -34,22 +34,20 @@ def test_settings_change_without_rebuilding() -> None:
     """One image emits different public config for different deployments."""
     first = render(VALID)
     assert first.returncode == 0, first.stderr
-    prefix = "window.__OVPNCP_CONFIG__ = "
+    prefix = "window.__RIVET_CONFIG__ = "
     assert first.stdout.startswith(prefix)
     settings = json.loads(first.stdout.removeprefix(prefix).rstrip(";\n"))
     assert settings == {
-        "tenantId": VALID["OVPNCP_UI_ENTRA_TENANT_ID"],
-        "clientId": VALID["OVPNCP_UI_ENTRA_CLIENT_ID"],
-        "apiScope": VALID["OVPNCP_UI_ENTRA_API_SCOPE"],
+        "tenantId": VALID["RIVET_UI_ENTRA_TENANT_ID"],
+        "clientId": VALID["RIVET_UI_ENTRA_CLIENT_ID"],
+        "apiScope": VALID["RIVET_UI_ENTRA_API_SCOPE"],
     }
-    alternate = dict(
-        VALID, OVPNCP_UI_ENTRA_CLIENT_ID=VALID["OVPNCP_UI_ENTRA_TENANT_ID"]
-    )
+    alternate = dict(VALID, RIVET_UI_ENTRA_CLIENT_ID=VALID["RIVET_UI_ENTRA_TENANT_ID"])
     second = render(alternate)
     assert second.returncode == 0
     assert second.stdout != first.stdout
     https_scope = render(
-        dict(VALID, OVPNCP_UI_ENTRA_API_SCOPE="https://api.example/access")
+        dict(VALID, RIVET_UI_ENTRA_API_SCOPE="https://api.example/access")
     )
     assert https_scope.returncode == 0
 
@@ -67,14 +65,14 @@ def test_missing_settings_fail_startup(missing: str) -> None:
 @pytest.mark.parametrize(
     ("name", "value"),
     [
-        ("OVPNCP_UI_ENTRA_TENANT_ID", "common"),
-        ("OVPNCP_UI_ENTRA_CLIENT_ID", VALID["OVPNCP_UI_ENTRA_CLIENT_ID"] + "\nunsafe"),
-        ("OVPNCP_UI_ENTRA_API_SCOPE", 'api://example/x"};alert(1);//'),
-        ("OVPNCP_UI_ENTRA_API_SCOPE", "api://example/x\ninvalid"),
-        ("OVPNCP_UI_ENTRA_API_SCOPE", "https://user:secret@example/x"),
-        ("OVPNCP_UI_ENTRA_API_SCOPE", "http://example/x"),
-        ("OVPNCP_UI_ENTRA_API_SCOPE", "api://example/"),
-        ("OVPNCP_UI_ENTRA_API_SCOPE", "api://example/" + "x" * 2048),
+        ("RIVET_UI_ENTRA_TENANT_ID", "common"),
+        ("RIVET_UI_ENTRA_CLIENT_ID", VALID["RIVET_UI_ENTRA_CLIENT_ID"] + "\nunsafe"),
+        ("RIVET_UI_ENTRA_API_SCOPE", 'api://example/x"};alert(1);//'),
+        ("RIVET_UI_ENTRA_API_SCOPE", "api://example/x\ninvalid"),
+        ("RIVET_UI_ENTRA_API_SCOPE", "https://user:secret@example/x"),
+        ("RIVET_UI_ENTRA_API_SCOPE", "http://example/x"),
+        ("RIVET_UI_ENTRA_API_SCOPE", "api://example/"),
+        ("RIVET_UI_ENTRA_API_SCOPE", "api://example/" + "x" * 2048),
     ],
 )
 def test_invalid_values_are_rejected_without_echoing(name: str, value: str) -> None:
@@ -105,7 +103,7 @@ def test_image_build_is_independent_of_entra_values() -> None:
     assert set(runtime["services"]["web"]["environment"]) == set(VALID)
     config = (ROOT / "deploy/nginx/container.conf").read_text()
     assert "location = /runtime-config.js" in config
-    assert "alias /tmp/ovpncp-runtime-config.js;" in config
+    assert "alias /tmp/rivet-runtime-config.js;" in config
     assert 'default "no-store";' in config
 
 
@@ -115,7 +113,7 @@ def test_startup_writes_private_config_then_executes(tmp_path: Path) -> None:
     destination = tmp_path / "runtime-config"
     launcher = tmp_path / "entrypoint.sh"
     launcher.write_text(
-        ENTRYPOINT.read_text().replace("/tmp/ovpncp-runtime-config", str(destination))
+        ENTRYPOINT.read_text().replace("/tmp/rivet-runtime-config", str(destination))
     )
     result = subprocess.run(
         ["/bin/sh", str(launcher), "/usr/bin/true"],

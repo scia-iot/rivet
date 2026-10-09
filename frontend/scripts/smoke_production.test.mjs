@@ -63,7 +63,7 @@ test('smokes static and protected API boundaries', async () => {
   const requestedUrls = []
 
   await smokeProductionDeployment(
-    'https://ovpncp.example.test',
+    'https://rivet.example.test',
     productionFetch(requestedUrls),
   )
 

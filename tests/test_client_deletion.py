@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from sciaiot.ovpncp.data.identity import AccessGrant, Device, User, UserClient
-from sciaiot.ovpncp.data.server import Cert, Client, Connection, VirtualAddress
-from sciaiot.ovpncp.dependencies import get_session
-from sciaiot.ovpncp.main import app
+from sciaiot.rivet.data.identity import AccessGrant, Device, User, UserClient
+from sciaiot.rivet.data.server import Cert, Client, Connection, VirtualAddress
+from sciaiot.rivet.dependencies import get_session
+from sciaiot.rivet.main import app
 
 
 @pytest.fixture(name="deletion_context")
@@ -72,11 +72,11 @@ def deletion_context_fixture() -> Generator[tuple[TestClient, Session, Client]]:
 
         app.dependency_overrides[get_session] = get_session_override
         with (
-            patch("sciaiot.ovpncp.main.create_app_directory"),
-            patch("sciaiot.ovpncp.main.create_tables"),
-            patch("sciaiot.ovpncp.main.init_scripts"),
+            patch("sciaiot.rivet.main.create_app_directory"),
+            patch("sciaiot.rivet.main.create_tables"),
+            patch("sciaiot.rivet.main.init_scripts"),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+                "sciaiot.rivet.middlewares.azure_security.validate_token",
                 return_value={
                     "iss": "https://login.example/tenant/v2.0",
                     "sub": "service-object-id",
@@ -84,10 +84,10 @@ def deletion_context_fixture() -> Generator[tuple[TestClient, Session, Client]]:
                     "roles": ["ServiceAdmin"],
                 },
             ),
-            patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
-            patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+            patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
+            patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+                "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
                 "ServiceAdmin",
             ),
             TestClient(app) as test_client,
@@ -107,13 +107,13 @@ def test_delete_revoked_client_cleans_relations_and_detaches_device(
     client_id = deleted.id
     staged = MagicMock()
     with patch(
-        "sciaiot.ovpncp.utils.openvpn.stage_client_file_removal",
+        "sciaiot.rivet.utils.openvpn.stage_client_file_removal",
         return_value=staged,
     ) as stage:
         response = test_client.delete(f"/clients/{deleted.name}")
 
     assert response.status_code == 204
-    stage.assert_called_once_with(deleted.name, "/opt/ovpncp/certs")
+    stage.assert_called_once_with(deleted.name, "/opt/rivet/certs")
     staged.discard.assert_called_once_with()
     staged.restore.assert_not_called()
     assert session.exec(select(Client).where(Client.id == client_id)).first() is None
@@ -137,7 +137,7 @@ def test_delete_discard_failure_keeps_success_and_safe_guidance(
     staged.discard.side_effect = OSError(sensitive)
     with (
         patch(
-            "sciaiot.ovpncp.utils.openvpn.stage_client_file_removal",
+            "sciaiot.rivet.utils.openvpn.stage_client_file_removal",
             return_value=staged,
         ),
         caplog.at_level("ERROR"),
@@ -145,7 +145,7 @@ def test_delete_discard_failure_keeps_success_and_safe_guidance(
         response = test_client.delete(f"/clients/{client.name}")
 
     assert response.status_code == 204
-    assert ".ovpncp-delete-* artifacts" in caplog.text
+    assert ".rivet-delete-* artifacts" in caplog.text
     assert sensitive not in caplog.text
 
 
@@ -159,7 +159,7 @@ def test_revoked_client_cannot_receive_virtual_address(
     session.commit()
     address = session.exec(select(VirtualAddress)).one()
 
-    with patch("sciaiot.ovpncp.utils.openvpn.assign_client_ip") as assign:
+    with patch("sciaiot.rivet.utils.openvpn.assign_client_ip") as assign:
         response = test_client.put(
             f"/clients/{client.name}/assign-ip",
             json={"ip": address.ip},
@@ -183,7 +183,7 @@ def test_delete_active_client_returns_actionable_problem(
     client.revoked = False
     session.add(client)
     session.commit()
-    with patch("sciaiot.ovpncp.utils.openvpn.stage_client_file_removal") as stage:
+    with patch("sciaiot.rivet.utils.openvpn.stage_client_file_removal") as stage:
         response = test_client.delete(f"/clients/{client.name}")
 
     assert response.status_code == 409
@@ -201,7 +201,7 @@ def test_delete_cleanup_failure_preserves_database(
     """Filesystem staging failure leaves all persisted client state intact."""
     test_client, session, client = deletion_context
     with patch(
-        "sciaiot.ovpncp.utils.openvpn.stage_client_file_removal",
+        "sciaiot.rivet.utils.openvpn.stage_client_file_removal",
         side_effect=OSError("/private/client.key"),
     ):
         response = test_client.delete(f"/clients/{client.name}")
@@ -227,7 +227,7 @@ def test_delete_database_failure_restores_staged_files_and_records(
     staged = MagicMock()
     with (
         patch(
-            "sciaiot.ovpncp.utils.openvpn.stage_client_file_removal",
+            "sciaiot.rivet.utils.openvpn.stage_client_file_removal",
             return_value=staged,
         ),
         patch.object(session, "commit", side_effect=RuntimeError("db failed")),
@@ -264,14 +264,14 @@ def test_import_skips_names_revoked_in_ca_index(
     session.commit()
     with (
         patch(
-            "sciaiot.ovpncp.utils.openvpn.list_client_certs",
+            "sciaiot.rivet.utils.openvpn.list_client_certs",
             return_value=[deleted.name],
         ),
         patch(
-            "sciaiot.ovpncp.utils.openvpn.client_is_revoked",
+            "sciaiot.rivet.utils.openvpn.client_is_revoked",
             return_value=True,
         ),
-        patch("sciaiot.ovpncp.utils.openvpn.read_client_cert") as read_cert,
+        patch("sciaiot.rivet.utils.openvpn.read_client_cert") as read_cert,
     ):
         response = test_client.post("/clients/import")
 

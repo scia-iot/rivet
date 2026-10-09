@@ -32,7 +32,7 @@ def validate_image(value: str, role: str) -> None:
     registry = r"[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]+)?"
     namespace = r"(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*"
     if not re.fullmatch(
-        rf"{registry}{namespace}/ovpncp-{re.escape(role)}@sha256:[a-f0-9]{{64}}",
+        rf"{registry}{namespace}/rivet-{re.escape(role)}@sha256:[a-f0-9]{{64}}",
         value,
     ):
         raise ValueError("A reviewed repository digest is required.")
@@ -176,7 +176,7 @@ class Rehearsal:
         self.token = uuid.uuid4().hex[:12]
         self.containers: list[str] = []
         self.namespaces: dict[str, int] = {}
-        self.root = Path(tempfile.mkdtemp(prefix=f"ovpncp-p6-{self.token}-"))
+        self.root = Path(tempfile.mkdtemp(prefix=f"rivet-p6-{self.token}-"))
         self.state = self.root / "state"
 
     def command(
@@ -229,7 +229,7 @@ class Rehearsal:
         """Track names before launch so timeouts cannot orphan known objects."""
         if not re.fullmatch(r"[a-z0-9-]+", role):
             raise ValueError("Invalid disposable container role.")
-        name = f"ovpncp-p6-{self.token}-{role}"
+        name = f"rivet-p6-{self.token}-{role}"
         if network != "none" and network not in {
             f"container:{item}" for item in self.containers
         }:
@@ -244,7 +244,7 @@ class Rehearsal:
                 "--name",
                 name,
                 "--label",
-                f"ovpncp.rehearsal={self.token}",
+                f"rivet.rehearsal={self.token}",
                 "--network",
                 network,
                 "--read-only",
@@ -297,7 +297,7 @@ class Rehearsal:
         if (
             not info["State"]["Running"]
             or info["HostConfig"]["NetworkMode"] != "none"
-            or info["Config"]["Labels"]["ovpncp.rehearsal"] != self.token
+            or info["Config"]["Labels"]["rivet.rehearsal"] != self.token
         ):
             raise RuntimeError("Disposable container attestation failed.")
         pid = info["State"]["Pid"]
@@ -587,14 +587,14 @@ verb 0
         }
         options = ["--user=0:65532", "--group-add=65531", *caps]
         for key, value in paths.items():
-            options.append(f"--env=OVPNCP_AGENT_{key}={value}")
+            options.append(f"--env=RIVET_AGENT_{key}={value}")
         options.extend(
             [
-                "--env=OVPNCP_MANAGEMENT_SOCKET=/run/openvpn/management.sock",
-                "--env=OVPNCP_MANAGEMENT_UID=0",
-                "--env=OVPNCP_MANAGEMENT_GID=65532",
-                "--env=OVPNCP_OPENVPN_UID=65530",
-                "--env=OVPNCP_API_UID=65531",
+                "--env=RIVET_MANAGEMENT_SOCKET=/run/openvpn/management.sock",
+                "--env=RIVET_MANAGEMENT_UID=0",
+                "--env=RIVET_MANAGEMENT_GID=65532",
+                "--env=RIVET_OPENVPN_UID=65530",
+                "--env=RIVET_API_UID=65531",
             ]
         )
         for source, target, readonly in (
@@ -656,10 +656,10 @@ assert status["NoNewPrivs"].strip() == "1"
 assert not Path("/dev/net/tun").exists()
 assert not Path("/var/lib/ovpn-agent").exists()
 assert not Path("/run/openvpn/management.sock").exists()
-from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control import wire
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError, ErrorCode
+from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control import wire
+from sciaiot.rivet.application.vpn_control.errors import ControlError, ErrorCode
 adapter = AgentVpnControl('/run/ovpn-agent/agent.sock', peer_uid=65532)
 def query(command):
     return adapter.execute(s.Request(request_id=str(uuid.uuid4()), command=command)).result
@@ -876,12 +876,12 @@ print(json.dumps({{'mutation': 'passed'}}))
     def start_http_api(self) -> str:
         """Start the actual unprivileged API with synthetic public Entra settings."""
         settings = {
-            "OVPNCP_VPN_BACKEND": "agent",
-            "OVPNCP_AGENT_SOCKET": "/run/ovpn-agent/agent.sock",
-            "OVPNCP_AGENT_UID": "65532",
-            "OVPNCP_VPN_EVENTS": "0",
-            "OVPNCP_VPN_RECONCILE": "0",
-            "OVPNCP_PROXY_IP": "172.30.250.2",
+            "RIVET_VPN_BACKEND": "agent",
+            "RIVET_AGENT_SOCKET": "/run/ovpn-agent/agent.sock",
+            "RIVET_AGENT_UID": "65532",
+            "RIVET_VPN_EVENTS": "0",
+            "RIVET_VPN_RECONCILE": "0",
+            "RIVET_PROXY_IP": "172.30.250.2",
             "AZURE_ENTRAID_TENANT_ID": "11111111-1111-4111-8111-111111111111",
             "AZURE_ENTRAID_APP_CLIENT_ID": "22222222-2222-4222-8222-222222222222",
             "AZURE_ENTRAID_USER_ROLE": "device_user",
@@ -890,7 +890,7 @@ print(json.dumps({{'mutation': 'passed'}}))
         }
         options = [
             "--user=65531:65531",
-            "--tmpfs=/opt/ovpncp:rw,noexec,nosuid,nodev,size=32m,mode=0700,uid=65531,gid=65531",
+            "--tmpfs=/opt/rivet:rw,noexec,nosuid,nodev,size=32m,mode=0700,uid=65531,gid=65531",
             *self.mount("agent-socket", "/run/ovpn-agent", readonly=True),
         ]
         options.extend(f"--env={key}={value}" for key, value in settings.items())
@@ -1163,7 +1163,7 @@ print(json.dumps({'ccd_sessions': 'passed'}))
             try:
                 info = json.loads(self.docker("inspect", name))[0]
                 if info["Config"]["Labels"].get(
-                    "ovpncp.rehearsal"
+                    "rivet.rehearsal"
                 ) != self.token or not re.fullmatch(r"[a-f0-9]{64}", info["Id"]):
                     raise RuntimeError("Cleanup object ownership mismatch.")
                 self.docker("rm", "--force", info["Id"])

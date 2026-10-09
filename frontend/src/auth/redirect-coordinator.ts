@@ -6,7 +6,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 import { apiScopes, loginRequest } from '@/auth/config'
 
-const REDIRECT_GUARD_KEY = 'ovpncp.authentication.redirect'
+const REDIRECT_GUARD_KEY = 'rivet.authentication.redirect'
 
 function claimRedirectGuard(): boolean {
   if (sessionStorage.getItem(REDIRECT_GUARD_KEY) === 'pending') {

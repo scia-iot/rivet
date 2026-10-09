@@ -21,8 +21,8 @@ from typing import BinaryIO
 
 from cryptography import x509
 
-from sciaiot.ovpncp.migration import bundle, filesystem, source, target
-from sciaiot.ovpncp.migration.models import MigrationError, SourceSpec, TargetSpec
+from sciaiot.rivet.migration import bundle, filesystem, source, target
+from sciaiot.rivet.migration.models import MigrationError, SourceSpec, TargetSpec
 
 
 class Rehearsal:
@@ -35,7 +35,7 @@ class Rehearsal:
             raise MigrationError("reviewed Easy-RSA executable is unavailable")
         self.network = network
         self.version = version
-        self.root = pathlib.Path(tempfile.mkdtemp(prefix="ovpncp-migration-rehearsal-"))
+        self.root = pathlib.Path(tempfile.mkdtemp(prefix="rivet-migration-rehearsal-"))
         self.source = self.root / "source"
         self.source.mkdir(mode=0o700)
         self.log = self.root / "commands.log"
@@ -440,7 +440,7 @@ def require_isolation() -> None:
         raise MigrationError(
             "private propagation and distinct /run and /tmp tmpfs mounts required"
         )
-    marker = pathlib.Path("/run/ovpncp-disposable-runner")
+    marker = pathlib.Path("/run/rivet-disposable-runner")
     info = marker.stat(follow_symlinks=False)
     if (
         not stat.S_ISREG(info.st_mode)

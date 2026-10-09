@@ -7,14 +7,14 @@ const runtime = {
 }
 
 afterEach(() => {
-  delete window.__OVPNCP_CONFIG__
+  delete window.__RIVET_CONFIG__
   vi.unstubAllEnvs()
   vi.resetModules()
 })
 
 describe('runtime authentication configuration', () => {
   it('uses runtime values and prevents build-time bypass and API overrides', async () => {
-    window.__OVPNCP_CONFIG__ = runtime
+    window.__RIVET_CONFIG__ = runtime
     vi.stubEnv('VITE_AUTH_DISABLED', 'true')
     vi.stubEnv('VITE_ENTRA_API_SCOPE', 'api://build-api/access')
     vi.stubEnv('VITE_API_BASE_URL', 'https://other.example/api')
@@ -49,7 +49,7 @@ describe('runtime authentication configuration', () => {
     vi.stubEnv('VITE_ENTRA_TENANT_ID', runtime.tenantId)
     vi.stubEnv('VITE_ENTRA_CLIENT_ID', runtime.clientId)
     vi.stubEnv('VITE_ENTRA_API_SCOPE', runtime.apiScope)
-    window.__OVPNCP_CONFIG__ = value
+    window.__RIVET_CONFIG__ = value
     const config = await import('./config')
     expect(config.isAuthenticationDisabled).toBe(false)
     expect(config.isAuthenticationConfigured).toBe(false)
@@ -58,7 +58,7 @@ describe('runtime authentication configuration', () => {
   })
 
   it('rejects malformed runtime data without falling back to local bypass', async () => {
-    window.__OVPNCP_CONFIG__ = null
+    window.__RIVET_CONFIG__ = null
     vi.stubEnv('VITE_AUTH_DISABLED', 'true')
     const config = await import('./config')
     expect(config.isAuthenticationDisabled).toBe(false)

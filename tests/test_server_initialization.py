@@ -7,13 +7,13 @@ from fastapi import HTTPException
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from sciaiot.ovpncp import dependencies
-from sciaiot.ovpncp.data.server import Server, VirtualAddress
-from sciaiot.ovpncp.routes.server import (
+from sciaiot.rivet import dependencies
+from sciaiot.rivet.data.server import Server, VirtualAddress
+from sciaiot.rivet.routes.server import (
     ServerInitializationRequest,
     init_server,
 )
-from sciaiot.ovpncp.services.client_config import ClientConfigGenerationError
+from sciaiot.rivet.services.client_config import ClientConfigGenerationError
 
 
 @pytest.fixture(name="session")
@@ -67,7 +67,7 @@ def test_commit_failure_restores_profile_and_rolls_back_rows(
     with (
         patch.object(dependencies, "client_config_path", str(target)),
         patch(
-            "sciaiot.ovpncp.routes.server.openvpn.get_server_config",
+            "sciaiot.rivet.routes.server.openvpn.get_server_config",
             return_value=server_config(),
         ),
         patch.object(session, "commit", side_effect=OSError("commit failed")),
@@ -97,11 +97,11 @@ def test_profile_install_failure_persists_no_server_rows(
     with (
         patch.object(dependencies, "client_config_path", str(target)),
         patch(
-            "sciaiot.ovpncp.routes.server.openvpn.get_server_config",
+            "sciaiot.rivet.routes.server.openvpn.get_server_config",
             return_value=server_config(),
         ),
         patch(
-            "sciaiot.ovpncp.routes.server.replace_client_config",
+            "sciaiot.rivet.routes.server.replace_client_config",
             side_effect=ClientConfigGenerationError,
         ),
         pytest.raises(HTTPException) as caught,

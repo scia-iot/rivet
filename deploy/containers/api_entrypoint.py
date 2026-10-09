@@ -33,7 +33,7 @@ def load_secret(path: Path) -> str:
 
 def configure() -> str:
     """Require agent isolation, explicit authentication, and a narrow proxy IP."""
-    if os.environ.get("OVPNCP_VPN_BACKEND") != "agent":
+    if os.environ.get("RIVET_VPN_BACKEND") != "agent":
         raise ValueError("Container requires agent backend.")
     for name in (
         "AZURE_ENTRAID_TENANT_ID",
@@ -44,7 +44,7 @@ def configure() -> str:
     ):
         if not os.environ.get(name, "").strip():
             raise ValueError("Container requires complete authentication settings.")
-    proxy = str(ipaddress.IPv4Address(os.environ["OVPNCP_PROXY_IP"]))
+    proxy = str(ipaddress.IPv4Address(os.environ["RIVET_PROXY_IP"]))
     for name in SECRET_NAMES:
         location = os.environ.get(f"{name}_FILE")
         if location is not None:
@@ -62,7 +62,7 @@ def main() -> None:
     try:
         proxy = configure()
         uvicorn.run(
-            "sciaiot.ovpncp.main:app",
+            "sciaiot.rivet.main:app",
             host="0.0.0.0",
             port=8000,
             root_path="/api",

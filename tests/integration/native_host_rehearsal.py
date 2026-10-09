@@ -24,11 +24,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from sciaiot.ovpncp import native_firewall
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.native_assets import export
-from sciaiot.ovpncp.vpn_agent import access_mutations, bounded, network
-from sciaiot.ovpncp.vpn_agent import files as agent_files
+from sciaiot.rivet import native_firewall
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.native_assets import export
+from sciaiot.rivet.vpn_agent import access_mutations, bounded, network
+from sciaiot.rivet.vpn_agent import files as agent_files
 
 AGENT_UID = 65532
 API_UID = 65531
@@ -38,10 +38,10 @@ CONTROL_GID = 65531
 RUN_ID = re.compile(r"[a-f0-9]{12}\Z")
 SOURCE_NAMES = ("vpn-pki", "vpn-ccd", "vpn-projection")
 UNIT_NAMES = (
-    "ovpncp-forward-policy.service",
-    "ovpncp-openvpn.service",
-    "ovpncp-vpn-agent.service",
-    "ovpncp.service",
+    "rivet-forward-policy.service",
+    "rivet-openvpn.service",
+    "rivet-agent.service",
+    "rivet.service",
 )
 TENANT = "11111111-1111-4111-8111-111111111111"
 API_APP = "22222222-2222-4222-8222-222222222222"
@@ -49,23 +49,23 @@ SPA_APP = "33333333-3333-4333-8333-333333333333"
 SCOPE = f"api://{API_APP}/access_as_user"
 CANARY_NAME = re.compile(r"native-[a-f0-9]{12}\Z")
 
-API_STATE = Path("/opt/ovpncp")
+API_STATE = Path("/opt/rivet")
 AGENT_STATE = Path("/var/lib/ovpn-agent")
 OPENVPN_STATE = Path("/var/lib/openvpn")
-ETC = Path("/etc/ovpncp")
+ETC = Path("/etc/rivet")
 SYSTEMD = Path("/etc/systemd/system")
-TMPFILES = Path("/etc/tmpfiles.d/ovpncp.conf")
-FRONTEND = Path("/srv/ovpncp/frontend")
-NGINX = Path("/etc/nginx/conf.d/ovpncp.conf")
-API_VENV = Path("/usr/local/lib/ovpncp/api-venv")
-AGENT_VENV = Path("/usr/local/lib/ovpncp/agent-venv")
+TMPFILES = Path("/etc/tmpfiles.d/rivet.conf")
+FRONTEND = Path("/srv/rivet/frontend")
+NGINX = Path("/etc/nginx/conf.d/rivet.conf")
+API_VENV = Path("/usr/local/lib/rivet/api-venv")
+AGENT_VENV = Path("/usr/local/lib/rivet/agent-venv")
 
 AGENT_PROBE = """
 import json
 import sys
 import uuid
-from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
-from sciaiot.ovpncp.application.vpn_control import schemas as s
+from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s
 control = AgentVpnControl('/run/ovpn-agent/agent.sock', peer_uid=65532)
 health = control.execute(s.Request(request_id=str(uuid.uuid4()),
     command=s.Health())).result
@@ -85,8 +85,8 @@ import json
 import sys
 import time
 import uuid
-from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
-from sciaiot.ovpncp.application.vpn_control import schemas as s, wire
+from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s, wire
 control = AgentVpnControl('/run/ovpn-agent/agent.sock', peer_uid=65532)
 action, name, address = sys.argv[1:]
 if action == 'assign':
@@ -177,8 +177,8 @@ def _chown_tree(path: Path, uid: int, gid: int) -> None:
 
 def render_server_config(raw: str, bind_ip: str | None) -> str:
     """Point copied OpenVPN hooks at the installed native entry point."""
-    old = "/usr/local/bin/ovpncp-vpn-event"
-    new = str(AGENT_VENV / "bin/ovpncp-vpn-event")
+    old = "/usr/local/bin/rivet-vpn-event"
+    new = str(AGENT_VENV / "bin/rivet-vpn-event")
     if raw.count(old) != 2 or raw.count("--agent-uid 65532") != 2:
         raise ValueError("Copied server configuration has unexpected hooks.")
     result = raw.replace(old, new)
@@ -313,8 +313,8 @@ def _stage_config(assets: Path, run_id: str, ui_dist: Path) -> list[Path]:
     agent_env = agent_env.replace("REPLACE_WITH_OPENVPN_UID", str(OPENVPN_UID))
     agent_env = agent_env.replace("REPLACE_WITH_API_UID", str(API_UID))
     agent_env = agent_env.replace(
-        "OVPNCP_AGENT_MUTATIONS=",
-        "OVPNCP_AGENT_MUTATIONS=assignments,pki,events,management",
+        "RIVET_AGENT_MUTATIONS=",
+        "RIVET_AGENT_MUTATIONS=assignments,pki,events,management",
     )
     api_env = (assets / "api.env.example").read_text()
     api_env = api_env.replace("REPLACE_WITH_AGENT_UID", str(AGENT_UID))
@@ -329,7 +329,7 @@ def _stage_config(assets: Path, run_id: str, ui_dist: Path) -> list[Path]:
         target = SYSTEMD / name
         _owned_file(target, (assets / name).read_bytes(), 0, 0, 0o644)
         installed.append(target)
-    _owned_file(TMPFILES, (assets / "ovpncp.conf").read_bytes(), 0, 0, 0o644)
+    _owned_file(TMPFILES, (assets / "rivet.conf").read_bytes(), 0, 0, 0o644)
     installed.append(TMPFILES)
     public_parent = FRONTEND.parent
     if public_parent.exists():
@@ -353,9 +353,9 @@ def _stage_config(assets: Path, run_id: str, ui_dist: Path) -> list[Path]:
     current.symlink_to(release)
     public_env = os.environ.copy()
     public_env.update(
-        OVPNCP_UI_ENTRA_TENANT_ID=TENANT,
-        OVPNCP_UI_ENTRA_CLIENT_ID=SPA_APP,
-        OVPNCP_UI_ENTRA_API_SCOPE=SCOPE,
+        RIVET_UI_ENTRA_TENANT_ID=TENANT,
+        RIVET_UI_ENTRA_CLIENT_ID=SPA_APP,
+        RIVET_UI_ENTRA_API_SCOPE=SCOPE,
     )
     result = subprocess.run(
         [str(assets / "web-config.sh")],
@@ -370,7 +370,7 @@ def _stage_config(assets: Path, run_id: str, ui_dist: Path) -> list[Path]:
     nginx = (
         (assets / "nginx.conf.template")
         .read_text()
-        .replace("${OVPNCP_FRONTEND_ROOT}", str(current))
+        .replace("${RIVET_FRONTEND_ROOT}", str(current))
     )
     if "${" in nginx:
         raise ValueError("Nginx template still has placeholders.")
@@ -463,7 +463,7 @@ def _manifest(run_root: Path) -> dict[str, object]:
 def start(run_root: Path) -> None:
     """Start only the staged native units in dependency order."""
     _manifest(run_root)
-    for name in ("ovpncp-openvpn", "ovpncp-vpn-agent", "ovpncp", "nginx"):
+    for name in ("rivet-openvpn", "rivet-agent", "rivet", "nginx"):
         _command("/usr/bin/systemctl", "start", name, timeout=90)
 
 
@@ -493,12 +493,12 @@ def _header(headers: dict[str, str], name: str) -> str:
 def verify(run_root: Path, client: str = "") -> dict[str, object]:
     """Verify native process, socket, firewall, API and UI boundaries."""
     _manifest(run_root)
-    for name in ("ovpncp-openvpn", "ovpncp-vpn-agent", "ovpncp", "nginx"):
+    for name in ("rivet-openvpn", "rivet-agent", "rivet", "nginx"):
         _command("/usr/bin/systemctl", "is-active", "--quiet", name)
     for name, uid, cap in (
-        ("ovpncp", API_UID, 0),
-        ("ovpncp-vpn-agent", AGENT_UID, 1 << 12),
-        ("ovpncp-openvpn", OPENVPN_UID, None),
+        ("rivet", API_UID, 0),
+        ("rivet-agent", AGENT_UID, 1 << 12),
+        ("rivet-openvpn", OPENVPN_UID, None),
     ):
         pid = int(_command("/usr/bin/systemctl", "show", "-P", "MainPID", name))
         if pid <= 1 or Path(f"/proc/{pid}").stat().st_uid != uid:
@@ -550,7 +550,7 @@ def verify(run_root: Path, client: str = "") -> dict[str, object]:
         raise RuntimeError("Nginx API proxy did not preserve denial.")
     html, _ = _http("/", 200)
     config, headers = _http("/runtime-config.js", 200)
-    if b"/assets/" not in html or b"window.__OVPNCP_CONFIG__" not in config:
+    if b"/assets/" not in html or b"window.__RIVET_CONFIG__" not in config:
         raise RuntimeError("Native UI artifact or runtime config is missing.")
     if "no-store" not in _header(headers, "Cache-Control"):
         raise RuntimeError("Native UI runtime config is cacheable.")
@@ -601,7 +601,7 @@ def mutate(
 def cleanup(run_root: Path) -> None:
     """Stop native units and remove only marker-owned test files and state."""
     manifest = _manifest(run_root)
-    for name in ("nginx", "ovpncp", "ovpncp-vpn-agent", "ovpncp-openvpn"):
+    for name in ("nginx", "rivet", "rivet-agent", "rivet-openvpn"):
         _command("/usr/bin/systemctl", "stop", name, timeout=90)
     for root in (API_STATE, AGENT_STATE, OPENVPN_STATE):
         if (root / ".native-rehearsal").read_text() != run_root.name:

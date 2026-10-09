@@ -29,7 +29,7 @@ export default defineConfig(({ mode }) => ({
       '/api': {
         target:
           mode === 'e2e'
-            ? process.env.OVPNCP_E2E_API_TARGET ||
+            ? process.env.RIVET_E2E_API_TARGET ||
               DEFAULT_API_PROXY_TARGET
             : DEFAULT_API_PROXY_TARGET,
         changeOrigin: true,

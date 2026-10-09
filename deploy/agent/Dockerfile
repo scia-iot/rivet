@@ -26,9 +26,9 @@ RUN python -m pip uninstall --yes pip \
     && rm -rf /usr/local/lib/python3.14/ensurepip \
     && python -c "import importlib.util; assert all(importlib.util.find_spec(name) is None for name in ('pip', 'ensurepip'))"
 COPY --from=dependencies /usr/share/easy-rsa /usr/share/easy-rsa
-COPY src/sciaiot/ovpncp/application /opt/agent/sciaiot/ovpncp/application
-COPY src/sciaiot/ovpncp/vpn_agent /opt/agent/sciaiot/ovpncp/vpn_agent
-COPY src/sciaiot/ovpncp/adapters/vpn/settings.py /opt/agent/sciaiot/ovpncp/adapters/vpn/settings.py
+COPY src/sciaiot/rivet/application /opt/agent/sciaiot/rivet/application
+COPY src/sciaiot/rivet/vpn_agent /opt/agent/sciaiot/rivet/vpn_agent
+COPY src/sciaiot/rivet/adapters/vpn/settings.py /opt/agent/sciaiot/rivet/adapters/vpn/settings.py
 COPY deploy/containers/agent_health.py /opt/agent/agent_health.py
 COPY deploy/containers/agent_bootstrap.py /opt/agent/agent_bootstrap.py
 USER 0:65532

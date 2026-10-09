@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sciaiot.ovpncp.utils import iproute
+from sciaiot.rivet.utils import iproute
 from tests.support.api import MOCKED_ROUTES
 
 
@@ -75,7 +75,7 @@ def test_delete_route_does_not_log_route(mock_run, caplog):
 
 
 def test_validate_ip_or_net():
-    from sciaiot.ovpncp.utils.iproute import validate_ip_or_net
+    from sciaiot.rivet.utils.iproute import validate_ip_or_net
 
     validate_ip_or_net("1.2.3.4")
     validate_ip_or_net("1.2.3.4/24")
@@ -84,7 +84,7 @@ def test_validate_ip_or_net():
 
 
 def test_validate_dev():
-    from sciaiot.ovpncp.utils.iproute import validate_dev
+    from sciaiot.rivet.utils.iproute import validate_dev
 
     validate_dev("tun0")
     validate_dev("eth0")

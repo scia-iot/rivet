@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(() => {
-  delete window.__OVPNCP_CONFIG__
+  delete window.__RIVET_CONFIG__
   vi.unstubAllEnvs()
   vi.resetModules()
 })

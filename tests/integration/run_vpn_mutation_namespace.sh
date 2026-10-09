@@ -36,7 +36,7 @@ if [ -d /etc/openvpn ]; then
     mount -t tmpfs -o mode=0700,size=1m,nosuid,nodev,noexec tmpfs /etc/openvpn
     mount -o remount,ro /etc/openvpn
 fi
-printf '%s\n' 'DISPOSABLE OPENVPN MIGRATION NAMESPACE' > /run/ovpncp-disposable-runner
+printf '%s\n' 'DISPOSABLE OPENVPN MIGRATION NAMESPACE' > /run/rivet-disposable-runner
 # Per-process limits and the caller's outer timeout bound the test workload.
 ulimit -c 0
 ulimit -n 256

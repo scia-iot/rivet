@@ -73,7 +73,8 @@ export function AppShell() {
       <header className="border-b bg-background">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 lg:px-8">
           <div>
-            <p className="text-lg font-semibold tracking-tight">ovpncp</p>
+            <p className="text-lg font-semibold tracking-tight">Rivet</p>
+            <p className="text-xs text-muted-foreground">from SCIA IoT</p>
             <p className="text-xs text-muted-foreground">OpenVPN control panel</p>
           </div>
           <AuthControls />

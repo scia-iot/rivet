@@ -15,15 +15,15 @@ from unittest import mock
 
 from sqlmodel import Session, SQLModel, create_engine
 
-from sciaiot.ovpncp import dependencies
-from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.services.client_config import (
+from sciaiot.rivet import dependencies
+from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.services.client_config import (
     render_client_config,
     replace_client_config,
 )
-from sciaiot.ovpncp.services.vpn import VpnService, get_server_config
+from sciaiot.rivet.services.vpn import VpnService, get_server_config
 
 LIBC = ctypes.CDLL(None)
 

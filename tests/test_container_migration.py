@@ -11,9 +11,9 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from pydantic import ValidationError
 
-from sciaiot.ovpncp.migration import bundle, container_target, source, target
-from sciaiot.ovpncp.migration.cli import main
-from sciaiot.ovpncp.migration.models import (
+from sciaiot.rivet.migration import bundle, container_target, source, target
+from sciaiot.rivet.migration.cli import main
+from sciaiot.rivet.migration.models import (
     ContainerTargetSpec,
     MigrationError,
     Replacement,
@@ -434,8 +434,9 @@ def test_container_generation_exports_as_m0_recovery_bundle(
     ).read_bytes()
 
 
+@pytest.mark.parametrize("legacy_hook", [False, True])
 def test_container_hook_checkpoint_preserves_exact_replacement(
-    legacy, policy, local_identity, tmp_path, monkeypatch
+    legacy, policy, local_identity, tmp_path, monkeypatch, legacy_hook
 ):
     """A target checkpoint accepts only its reviewed runtime hook command."""
     root, original = legacy
@@ -494,10 +495,22 @@ def test_container_hook_checkpoint_preserves_exact_replacement(
         versions=target_versions,
         serial_policy=allowed.serial_policy,
     )
+    expected_hash = container_target.HOOK_SHA256
+    if legacy_hook:
+        # An old stopped deployment is a valid source, never a new target.
+        reviewed.write_bytes(
+            reviewed.read_bytes().replace(b"sciaiot.rivet", b"sciaiot.ovpncp")
+        )
+        monkeypatch.setattr(container_target, "LEGACY_HOOK", str(reviewed))
+        legacy_command = container_target.HOOK_COMMAND + " "
+        monkeypatch.setattr(container_target, "LEGACY_HOOK_COMMAND", legacy_command)
+        generated = projection / "server.conf"
+        generated.write_text(
+            generated.read_text().replace(container_target.HOOK_COMMAND, legacy_command)
+        )
+        expected_hash = container_target.LEGACY_HOOK_SHA256
     checkpoint = source.capture(checkpoint_spec, writers_frozen=True)
-    assert set(checkpoint.manifest.hooks) == {
-        f"client-connect:{container_target.HOOK_SHA256}"
-    }
+    assert set(checkpoint.manifest.hooks) == {f"client-connect:{expected_hash}"}
     restored = allowed.model_copy(
         update={
             "openssl_transition": None,
@@ -513,3 +526,7 @@ def test_container_hook_checkpoint_preserves_exact_replacement(
         checkpoint, second, restored, apply=True, target_stopped=True
     )
     assert container_target.verify(checkpoint, second, restored)["matches"]
+
+    reviewed.write_bytes(b"#!/bin/sh\nexit 0\n")
+    with pytest.raises(MigrationError, match="hook hash mismatch"):
+        source.capture(checkpoint_spec, writers_frozen=True)

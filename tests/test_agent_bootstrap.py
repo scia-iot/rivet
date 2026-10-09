@@ -44,7 +44,7 @@ def test_bootstrap_drops_identity_before_ambient_and_exec(monkeypatch, health) -
             module.sys.executable,
             [module.sys.executable, "/opt/agent/agent_health.py"]
             if health
-            else [module.sys.executable, "-m", "sciaiot.ovpncp.vpn_agent.cli"],
+            else [module.sys.executable, "-m", "sciaiot.rivet.vpn_agent.cli"],
         ),
     ]
 

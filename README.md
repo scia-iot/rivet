@@ -1,4 +1,11 @@
-# OpenVPN Control Panel for Restricted Network
+# Rivet from SCIA IoT
+
+An OpenVPN control plane for restricted IoT and edge networks.
+
+Rivet was previously named `ovpncp`. See the
+[rename and upgrade guide](docs/rivet-rename.md) before updating an existing
+installation. Python packages are `sciaiot-rivet` and
+`sciaiot-rivet-agent`; the CLI commands are `rivet` and `rivet-agent`.
 
 [![Tests](https://github.com/scia-iot/ovpncp/actions/workflows/tests.yml/badge.svg)](https://github.com/scia-iot/ovpncp/actions/workflows/tests.yml)
 [![CodeQL Advanced](https://github.com/scia-iot/ovpncp/actions/workflows/codeql.yml/badge.svg)](https://github.com/scia-iot/ovpncp/actions/workflows/codeql.yml)
@@ -24,7 +31,7 @@ python -m pip install -r requirements-dev.txt
 ruff format --check .
 ruff check .
 mypy .
-pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing
+pytest --cov=src/sciaiot/rivet --cov-report=term-missing
 ```
 
 ## Local full-stack development
@@ -55,7 +62,7 @@ npm run dev
 
 ## OpenVPN migration
 
-The `ovpncp-migrate` CLI provides inventory, authenticated encrypted export,
+The `rivet-migrate` CLI provides inventory, authenticated encrypted export,
 validation, offline import, verification, and rollback for reviewed OpenVPN
 and Easy-RSA state. See the [migration guide](docs/openvpn-migration.md) for
 supported configurations, mutation-freeze requirements, and recovery commands.
@@ -65,8 +72,8 @@ the CLI does not migrate the backend or UI.
 ## Installation
 
 Python 3.14 or newer is required. A native installation uses the same
-versioned wheel in two environments: `ovpncp[api]` runs FastAPI as an
-unprivileged user, while plain `ovpncp` runs the separate VPN agent and
+versioned wheel in two environments: `sciaiot-rivet[api]` runs FastAPI as an
+unprivileged user, while `sciaiot-rivet-agent` runs the separate VPN agent and
 OpenVPN event hook. Add `azure`, `mysql` or `postgres` to the API extra only
 when those integrations are used. The browser UI is a separate static build
 served by Nginx; it is not included in the Python wheel.
@@ -294,7 +301,7 @@ and `/users`. Deleting a device does not delete or revoke its OpenVPN client.
 ### Configure Required Authentication with Microsoft Entra ID
 
 Register the API in Microsoft Entra ID and set these five required backend
-environment variables before starting ovpncp:
+environment variables before starting Rivet:
 
 1. `AZURE_ENTRAID_TENANT_ID` - the tenant ID containing the API registration.
 
@@ -357,7 +364,7 @@ interactive administrator role.
 Initialize the server from the Server page with an explicit reachable VPN
 hostname or IP address. The backend derives the shared credential-free profile
 from the active `server.conf` and atomically writes it to
-`/opt/ovpncp/client.ovpn`; `OVPNCP_CLIENT_CONFIG_PATH` can override that
+`/opt/rivet/client.ovpn`; `RIVET_CLIENT_CONFIG_PATH` can override that
 absolute service-writable path. Existing deployments can generate or refresh
 the profile from **Server > Shared client profile** or
 `PUT /server/client-config`. The endpoint is never inferred from an HTTP or
@@ -369,7 +376,7 @@ To connect, place it beside the extracted client ZIP, replace
 `<client-name>` in the command, and run:
 
 ~~~shell
-openvpn --config ovpncp-client.ovpn --ca ca.crt \
+openvpn --config rivet-client.ovpn --ca ca.crt \
   --cert <client-name>.crt --key <client-name>.key
 ~~~
 
@@ -418,7 +425,8 @@ curl -X POST http://REMOTE_HOST/clients -H "Authorization: Bearer $ACCESS_TOKEN"
 
 1. Create a storage account on Azure Portal.
 
-2. Create a container named `ovpncp` on the storage account.
+2. Create a container named `ovpncp` on the storage account. This storage
+   identifier remains stable so existing certificate archives stay accessible.
 
 3. Obtain the access key and set it to the `AZURE_STORAGE_CONNECTION_STRING`
 
@@ -427,7 +435,7 @@ curl -X POST http://REMOTE_HOST/clients -H "Authorization: Bearer $ACCESS_TOKEN"
 The API defaults to the legacy `host` backend. Phase 2 adds a typed agent
 client and isolated fake for tests; it does not start an agent service. See
 [VPN backend configuration and recovery](docs/vpn-backends.md) before setting
-`OVPNCP_VPN_BACKEND=agent`, its socket path, and trusted peer UID.
+`RIVET_VPN_BACKEND=agent`, its socket path, and trusted peer UID.
 
 Read-only agent and opt-in legacy shadow comparison are documented in
 [VPN agent operation](docs/vpn-agent.md). Production defaults to the host

@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.vpn_agent import event_hook
-from sciaiot.ovpncp.vpn_agent.events import EventSpool
-from sciaiot.ovpncp.vpn_agent.ingress import Ingress, session_identity
-from sciaiot.ovpncp.vpn_agent.journal import Journal
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.vpn_agent import event_hook
+from sciaiot.rivet.vpn_agent.events import EventSpool
+from sciaiot.rivet.vpn_agent.ingress import Ingress, session_identity
+from sciaiot.rivet.vpn_agent.journal import Journal
 from tests.support.agent import settings
 
 
@@ -46,7 +46,7 @@ def test_fast_connect_disconnect_hooks_need_no_api(
         sys,
         "argv",
         [
-            "ovpncp-vpn-event",
+            "rivet-vpn-event",
             "--socket",
             configured.event_socket,
             "--management-socket",
@@ -115,7 +115,7 @@ def test_missing_agent_hook_returns_success_and_marks_gap(
         sys,
         "argv",
         [
-            "ovpncp-vpn-event",
+            "rivet-vpn-event",
             "--socket",
             str(path),
             "--management-socket",

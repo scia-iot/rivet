@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.vpn_agent import access_mutations, bounded, network
-from sciaiot.ovpncp.vpn_agent.writer import MutationVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.vpn_agent import access_mutations, bounded, network
+from sciaiot.rivet.vpn_agent.writer import MutationVpnControl
 from tests.support.agent import request, settings
 
 
@@ -31,7 +31,7 @@ def configured_control(tmp_path: Path, protocol: int = 201) -> MutationVpnContro
 def test_owned_route_reconciles_after_command_before_inventory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
 
     control = configured_control(tmp_path)
     route = s.ManagedRoute(
@@ -178,7 +178,7 @@ def firewall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Model an atomic filter-table restore while preserving foreign rules."""
     import shlex
 
-    from sciaiot.ovpncp.vpn_agent import files
+    from sciaiot.rivet.vpn_agent import files
 
     control = configured_control(tmp_path)
     control.settings.ccd_path.mkdir()
@@ -255,7 +255,7 @@ def firewall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def test_paired_access_pushes_and_remove_preserve_foreign_firewall(firewall) -> None:
     import time
 
-    from sciaiot.ovpncp.vpn_agent import files, network
+    from sciaiot.rivet.vpn_agent import files, network
 
     control, state, commands, intent, foreign = firewall
     ensure = request(s.SetAccess(intent=intent, present=True))

@@ -71,10 +71,10 @@ def test_secret_reader_rejects_unsafe_files(tmp_path: Path) -> None:
 
 def test_api_startup_requires_authentication_and_agent(monkeypatch) -> None:
     configure = _entrypoint("api_entrypoint")["configure"]
-    monkeypatch.setenv("OVPNCP_VPN_BACKEND", "host")
+    monkeypatch.setenv("RIVET_VPN_BACKEND", "host")
     with pytest.raises(ValueError):
         configure()
-    monkeypatch.setenv("OVPNCP_VPN_BACKEND", "agent")
+    monkeypatch.setenv("RIVET_VPN_BACKEND", "agent")
     for name in (
         "AZURE_ENTRAID_TENANT_ID",
         "AZURE_ENTRAID_APP_CLIENT_ID",
@@ -93,12 +93,12 @@ def test_api_startup_requires_authentication_and_agent(monkeypatch) -> None:
         "AZURE_ENTRAID_SERVICE_ADMIN_ROLE",
     ):
         monkeypatch.setenv(name, "configured")
-    monkeypatch.setenv("OVPNCP_PROXY_IP", "172.30.250.2")
+    monkeypatch.setenv("RIVET_PROXY_IP", "172.30.250.2")
     assert configure() == "172.30.250.2"
-    monkeypatch.setenv("OVPNCP_PROXY_IP", "*")
+    monkeypatch.setenv("RIVET_PROXY_IP", "*")
     with pytest.raises(ValueError):
         configure()
-    monkeypatch.setenv("OVPNCP_PROXY_IP", "172.30.250.2")
+    monkeypatch.setenv("RIVET_PROXY_IP", "172.30.250.2")
     monkeypatch.setenv("AZURE_STORAGE_CONNECTION_STRING_FILE", "/tmp/secret")
     with pytest.raises(ValueError):
         configure()
@@ -133,7 +133,7 @@ def test_openvpn_preflight_checks_owner_mode_and_type(monkeypatch) -> None:
 def test_agent_probe_requires_ready(monkeypatch, ready: bool) -> None:
     from types import SimpleNamespace
 
-    from sciaiot.ovpncp.application.vpn_control import schemas
+    from sciaiot.rivet.application.vpn_control import schemas
 
     module = _entrypoint("agent_health")
     monkeypatch.setattr(module["Settings"], "from_environment", lambda: None)
@@ -273,7 +273,7 @@ def test_api_startup_validates_before_importing_application(monkeypatch) -> None
     run = Mock()
     monkeypatch.setattr(module["uvicorn"], "run", run)
     main()
-    assert run.call_args.args == ("sciaiot.ovpncp.main:app",)
+    assert run.call_args.args == ("sciaiot.rivet.main:app",)
     assert run.call_args.kwargs["forwarded_allow_ips"] == "172.30.250.2"
     assert run.call_args.kwargs["access_log"] is False
     run.reset_mock()
@@ -325,7 +325,7 @@ def test_nginx_container_preserves_proxy_and_spa_boundaries() -> None:
     assert "location = /api" in config
     assert config.count("proxy_set_header X-Forwarded-For $remote_addr;") == 2
     assert config.count("proxy_set_header X-Forwarded-Proto https;") == 2
-    assert config.count("proxy_pass http://ovpncp_api/;") == 2
+    assert config.count("proxy_pass http://rivet_api/;") == 2
     assert "location / {\n        try_files $uri /index.html;" in config
     assert "access_log off;" in config
     assert "error_log /dev/null crit;" in config

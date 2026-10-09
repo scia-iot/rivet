@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface Window {
-  __OVPNCP_CONFIG__?: unknown
+  __RIVET_CONFIG__?: unknown
 }
 
 interface ImportMetaEnv {

@@ -6,11 +6,11 @@ from datetime import UTC, datetime
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from sciaiot.ovpncp.adapters.vpn.fake import FakeVpnControl
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError, ErrorCode
-from sciaiot.ovpncp.data.server import Client, Connection
-from sciaiot.ovpncp.services.vpn_events import EventConsumer
+from sciaiot.rivet.adapters.vpn.fake import FakeVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError, ErrorCode
+from sciaiot.rivet.data.server import Client, Connection
+from sciaiot.rivet.services.vpn_events import EventConsumer
 
 
 def event(sequence=1, kind="connect", session=None):
@@ -62,7 +62,7 @@ class Events(FakeVpnControl):
             )
         if isinstance(command, s.AckEvents):
             with Session(self.engine) as session:
-                from sciaiot.ovpncp.data.vpn_events import EventCursor, EventReceipt
+                from sciaiot.rivet.data.vpn_events import EventCursor, EventReceipt
 
                 assert session.get(EventCursor, 1).after >= command.through
                 assert session.exec(select(EventReceipt)).first() is not None
@@ -115,7 +115,7 @@ def test_lost_ack_reply_uses_original_id_after_restart(consumer):
     EventConsumer(engine, control).run_once()
     assert len(control.acks) == 1
     with Session(engine) as session:
-        from sciaiot.ovpncp.data.vpn_events import EventCursor
+        from sciaiot.rivet.data.vpn_events import EventCursor
 
         assert session.get(EventCursor, 1).acknowledged == 1
         assert len(session.exec(select(Connection)).all()) == 1
@@ -176,7 +176,7 @@ def test_gap_reconciles_active_snapshot_without_inventing_disconnect_time(consum
     control.sessions = ()
     worker.run_once()
     with Session(engine) as session:
-        from sciaiot.ovpncp.data.vpn_events import EventReceipt, SessionBinding
+        from sciaiot.rivet.data.vpn_events import EventReceipt, SessionBinding
 
         assert len(session.exec(select(EventReceipt)).all()) == 2
         assert session.exec(select(SessionBinding)).one().uncertain
@@ -279,7 +279,7 @@ def test_unknown_clients_do_not_starve_later_imported_receipts(consumer):
     worker, _control, engine = consumer
     import hashlib
 
-    from sciaiot.ovpncp.data.vpn_events import EventReceipt
+    from sciaiot.rivet.data.vpn_events import EventReceipt
 
     with Session(engine) as session:
         for index in range(101):
@@ -308,7 +308,7 @@ def test_retention_removes_only_old_acknowledged_history(consumer):
     worker, control, engine = consumer
     from datetime import timedelta
 
-    from sciaiot.ovpncp.data.vpn_events import EventReceipt
+    from sciaiot.rivet.data.vpn_events import EventReceipt
 
     connected = event()
     control.events = [connected, event(2, "disconnect", connected.session)]
@@ -344,7 +344,7 @@ def test_distinct_sessions_in_same_second_keep_separate_history(consumer):
 
 
 def test_retention_preserves_active_history_with_uncertain_alias(consumer):
-    from sciaiot.ovpncp.data.vpn_events import SessionBinding
+    from sciaiot.rivet.data.vpn_events import SessionBinding
 
     worker, control, engine = consumer
     connected = event()
@@ -368,8 +368,8 @@ def test_retention_preserves_active_history_with_uncertain_alias(consumer):
 
 @pytest.mark.parametrize("corruption", ["identity", "command", "through"])
 def test_acknowledgement_invariants_checked_before_recovery(consumer, corruption):
-    from sciaiot.ovpncp.application.vpn_control import wire
-    from sciaiot.ovpncp.data.vpn_events import EventAcknowledgement
+    from sciaiot.rivet.application.vpn_control import wire
+    from sciaiot.rivet.data.vpn_events import EventAcknowledgement
 
     worker, control, engine = consumer
     control.events = [event()]
@@ -404,7 +404,7 @@ def test_acknowledgement_invariants_checked_before_recovery(consumer, corruption
 def test_ack_retention_keeps_pending_but_prunes_old_completed(consumer):
     from datetime import timedelta
 
-    from sciaiot.ovpncp.data.vpn_events import EventAcknowledgement, EventCursor
+    from sciaiot.rivet.data.vpn_events import EventAcknowledgement, EventCursor
 
     worker, control, engine = consumer
     control.events = [event()]

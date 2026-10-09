@@ -18,13 +18,13 @@ import time
 import traceback
 import uuid
 
-from sciaiot.ovpncp.adapters.vpn import shadow
-from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
-from sciaiot.ovpncp.adapters.vpn.host import HostVpnControl
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError, ErrorCode
-from sciaiot.ovpncp.migration import filesystem, target
-from sciaiot.ovpncp.utils import openvpn
+from sciaiot.rivet.adapters.vpn import shadow
+from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
+from sciaiot.rivet.adapters.vpn.host import HostVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError, ErrorCode
+from sciaiot.rivet.migration import filesystem, target
+from sciaiot.rivet.utils import openvpn
 from tests.integration import migration_rehearsal as fixture
 
 
@@ -277,15 +277,15 @@ verb 3
         )
         env = dict(os.environ)
         env.update(
-            OVPNCP_AGENT_CONFIG=str(config),
-            OVPNCP_AGENT_PKI=str(pki),
-            OVPNCP_AGENT_CCD=str(ccd),
-            OVPNCP_MANAGEMENT_SOCKET=str(runtime / "management.sock"),
-            OVPNCP_MANAGEMENT_UID="0",
-            OVPNCP_MANAGEMENT_GID="0",
-            OVPNCP_API_UID="0",
-            OVPNCP_AGENT_SOCKET=str(control / "agent.sock"),
-            OVPNCP_AGENT_OWNERSHIP=str(ownership),
+            RIVET_AGENT_CONFIG=str(config),
+            RIVET_AGENT_PKI=str(pki),
+            RIVET_AGENT_CCD=str(ccd),
+            RIVET_MANAGEMENT_SOCKET=str(runtime / "management.sock"),
+            RIVET_MANAGEMENT_UID="0",
+            RIVET_MANAGEMENT_GID="0",
+            RIVET_API_UID="0",
+            RIVET_AGENT_SOCKET=str(control / "agent.sock"),
+            RIVET_AGENT_OWNERSHIP=str(ownership),
         )
         return control / "agent.sock", env
 
@@ -323,7 +323,7 @@ verb 3
         before_files = target._hash_tree(self.source)
         before_kernel = self.kernel_digest()
         agent = self.start(
-            "agent", [sys.executable, "-m", "sciaiot.ovpncp.vpn_agent"], env
+            "agent", [sys.executable, "-m", "sciaiot.rivet.vpn_agent"], env
         )
         adapter = AgentVpnControl(str(socket_path), peer_uid=0)
         end = time.monotonic() + 15

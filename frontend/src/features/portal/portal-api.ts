@@ -62,7 +62,7 @@ export function useSharedClientConfigDownload() {
     if (!(data instanceof Blob)) {
       throw new Error('The shared OpenVPN profile response was invalid.')
     }
-    triggerArchiveDownload(data, 'ovpncp-client.ovpn')
+    triggerArchiveDownload(data, 'rivet-client.ovpn')
   }, [client])
 }
 

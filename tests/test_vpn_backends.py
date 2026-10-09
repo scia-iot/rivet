@@ -4,16 +4,16 @@ from datetime import UTC
 
 import pytest
 
-from sciaiot.ovpncp.adapters.vpn.fake import FakeVpnControl
-from sciaiot.ovpncp.adapters.vpn.settings import BackendSettings
-from sciaiot.ovpncp.application.vpn_control import schemas as s
+from sciaiot.rivet.adapters.vpn.fake import FakeVpnControl
+from sciaiot.rivet.adapters.vpn.settings import BackendSettings
+from sciaiot.rivet.application.vpn_control import schemas as s
 from tests.vpn_control_conformance import request
 
 
 def test_default_backend_and_invalid_settings(monkeypatch):
-    monkeypatch.delenv("OVPNCP_VPN_BACKEND", raising=False)
+    monkeypatch.delenv("RIVET_VPN_BACKEND", raising=False)
     assert BackendSettings.from_environment().backend == "host"
-    monkeypatch.setenv("OVPNCP_VPN_BACKEND", "invalid")
+    monkeypatch.setenv("RIVET_VPN_BACKEND", "invalid")
     with pytest.raises(ValueError):
         BackendSettings.from_environment()
 
@@ -38,8 +38,8 @@ def fake_api(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from sqlmodel import Session, SQLModel, create_engine
 
-    from sciaiot.ovpncp import dependencies
-    from sciaiot.ovpncp.main import app
+    from sciaiot.rivet import dependencies
+    from sciaiot.rivet.main import app
 
     engine = create_engine(
         f"sqlite:///{tmp_path / 'api.db'}", connect_args={"check_same_thread": False}
@@ -57,7 +57,7 @@ def fake_api(tmp_path, monkeypatch):
             yield session
 
     app.dependency_overrides[dependencies.get_session] = session_override
-    from sciaiot.ovpncp.middlewares import azure_security
+    from sciaiot.rivet.middlewares import azure_security
 
     monkeypatch.setattr(azure_security, "USER_ROLE", "user")
     monkeypatch.setattr(azure_security, "ADMIN_ROLE", "admin")
@@ -65,7 +65,7 @@ def fake_api(tmp_path, monkeypatch):
     monkeypatch.setattr(azure_security, "APP_CLIENT_ID", "fixture-client")
     with (
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+            "sciaiot.rivet.middlewares.azure_security.validate_token",
             return_value={
                 "iss": "https://login.example/tenant/v2.0",
                 "sub": "service-id",
@@ -74,7 +74,7 @@ def fake_api(tmp_path, monkeypatch):
             },
         ),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
             "ServiceAdmin",
         ),
         patch(
@@ -92,7 +92,7 @@ def test_fake_api_lifecycle_network_routes_and_archives(fake_api):
     """Exercise every privileged public workflow through an in-process port."""
     from sqlmodel import Session, select
 
-    from sciaiot.ovpncp.data.vpn import VpnWorkflow
+    from sciaiot.rivet.data.vpn import VpnWorkflow
 
     client, control, engine = fake_api
     response = client.post("/server", json={"remote_host": "vpn.example.test"})
@@ -167,7 +167,7 @@ def test_lost_reply_retries_original_operation_after_database_restart(fake_api):
     """A lost write reply cannot issue a second certificate on HTTP retry."""
     from sqlmodel import Session, select
 
-    from sciaiot.ovpncp.data.vpn import VpnStep, VpnWorkflow
+    from sciaiot.rivet.data.vpn import VpnStep, VpnWorkflow
 
     client, control, engine = fake_api
     control.fault = "lost_reply"
@@ -209,7 +209,7 @@ def test_privileged_imports_are_confined_to_approved_boundaries():
     import ast
     from pathlib import Path
 
-    root = Path(__file__).parents[1] / "src/sciaiot/ovpncp"
+    root = Path(__file__).parents[1] / "src/sciaiot/rivet"
     privileged = {"openvpn", "iproute", "iptables", "subprocess"}
     for path in root.rglob("*.py"):
         relative = path.relative_to(root)
@@ -247,9 +247,9 @@ def test_same_pending_network_has_one_business_completion(fake_api):
 
     from sqlmodel import Session, select
 
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-    from sciaiot.ovpncp.data.network import RestrictedNetwork
-    from sciaiot.ovpncp.services.vpn import VpnService
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.data.network import RestrictedNetwork
+    from sciaiot.rivet.services.vpn import VpnService
 
     _, control, engine = fake_api
     from tests.vpn_control_conformance import client as metadata
@@ -296,8 +296,8 @@ def test_blocked_vpn_read_does_not_block_the_event_loop(monkeypatch):
     import asyncio
     import threading
 
-    from sciaiot.ovpncp import dependencies
-    from sciaiot.ovpncp.routes.server import get_service_health
+    from sciaiot.rivet import dependencies
+    from sciaiot.rivet.routes.server import get_service_health
 
     started, release = threading.Event(), threading.Event()
 
@@ -327,8 +327,8 @@ def test_blocked_vpn_read_does_not_block_the_event_loop(monkeypatch):
 
 def test_fake_access_rejects_unobserved_client_assignment():
     """The fake cannot hide invalid ownership/address assumptions in workflows."""
-    from sciaiot.ovpncp.application.vpn_control import wire
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.application.vpn_control import wire
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
     from tests.vpn_control_conformance import OID
 
     control = FakeVpnControl()
@@ -351,8 +351,8 @@ def test_fake_access_rejects_unobserved_client_assignment():
 
 def test_operation_capacity_refuses_before_effects():
     """Finite retained replay evidence is never silently evicted."""
-    from sciaiot.ovpncp.adapters.vpn.fake import FakeState
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.adapters.vpn.fake import FakeState
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
 
     control = FakeVpnControl(FakeState(max_operations=0))
     with pytest.raises(ControlError, match="exhausted"):
@@ -364,8 +364,8 @@ def test_agent_snapshots_reject_repeated_cursors_before_import(fake_api):
     """A protocol-valid but looping peer cannot retain an API worker forever."""
     from sqlmodel import Session
 
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-    from sciaiot.ovpncp.services.vpn import VpnService
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.services.vpn import VpnService
     from tests.vpn_control_conformance import client as metadata
 
     _, control, engine = fake_api
@@ -388,9 +388,9 @@ def test_agent_snapshots_reject_repeated_cursors_before_import(fake_api):
 
 def test_oversized_agent_pool_fails_before_enumeration():
     """A valid huge IPv4 network cannot allocate unbounded API memory."""
-    from sciaiot.ovpncp.adapters.vpn.fake import default_config
-    from sciaiot.ovpncp.routes.server import load_from_config
-    from sciaiot.ovpncp.services.vpn import config_projection
+    from sciaiot.rivet.adapters.vpn.fake import default_config
+    from sciaiot.rivet.routes.server import load_from_config
+    from sciaiot.rivet.services.vpn import config_projection
 
     config = default_config().model_copy(update={"network": "0.0.0.0/0"})
     with pytest.raises(ValueError, match="capacity"):
@@ -402,8 +402,8 @@ def test_journal_database_errors_are_redacted(fake_api, monkeypatch):
     from sqlalchemy.exc import OperationalError
     from sqlmodel import Session
 
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-    from sciaiot.ovpncp.services.vpn import VpnService
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.services.vpn import VpnService
 
     _, _, engine = fake_api
     with Session(engine) as session:

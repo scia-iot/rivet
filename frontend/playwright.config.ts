@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const port = 4173
-const controlledToken = process.env.OVPNCP_E2E_TOKEN?.trim()
+const controlledToken = process.env.RIVET_E2E_TOKEN?.trim()
 if (!controlledToken) {
   throw new Error('The controlled E2E token is required.')
 }
@@ -22,7 +22,7 @@ export default defineConfig({
       command: 'python e2e/support/controlled_api.py',
       env: {
         ...process.env,
-        OVPNCP_E2E_TOKEN: controlledToken,
+        RIVET_E2E_TOKEN: controlledToken,
       },
       reuseExistingServer: false,
       url: 'http://127.0.0.1:8765/__e2e/ready',
@@ -32,7 +32,7 @@ export default defineConfig({
         `npm run dev -- --mode e2e --host 127.0.0.1 --port ${port}`,
       env: {
         ...process.env,
-        OVPNCP_E2E_API_TARGET: 'http://127.0.0.1:8765',
+        RIVET_E2E_API_TARGET: 'http://127.0.0.1:8765',
         VITE_AUTH_DISABLED: 'false',
         VITE_E2E_ACCESS_TOKEN: controlledToken,
         VITE_E2E_AUTH_MODE: 'true',

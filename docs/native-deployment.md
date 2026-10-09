@@ -1,8 +1,8 @@
 # Native Linux installation from PyPI
 
 This is the supported systemd layout for future native releases on a dedicated
-Linux VPN host. Use one exact `ovpncp` release in two root-owned virtual
-environments: `ovpncp[api]` for the unprivileged HTTP API and plain `ovpncp`
+Linux VPN host. Use one exact `sciaiot-rivet` release in two root-owned virtual
+environments: `sciaiot-rivet[api]` for the unprivileged HTTP API and `sciaiot-rivet-agent`
 for the privileged VPN agent, OpenVPN event hook, migration CLI and scoped
 firewall boot guard. The Python wheel does not contain the browser UI. Nginx
 serves a separately built static UI and proxies `/api` to loopback FastAPI.
@@ -51,21 +51,22 @@ Install the exact release twice; an agent base install must not resolve
 FastAPI, SQLModel, Uvicorn, `python-jose` or Azure libraries. Add
 `[api,azure]`, `[api,mysql]` or `[api,postgres]` to the API environment when
 those integrations are used. The old `security` extra remains an API alias.
-Plain `pip install ovpncp` intentionally supports the agent, while invoking
-its `ovpncp` API command tells the operator to install `ovpncp[api]`.
+`pip install sciaiot-rivet-agent` selects the matching core release without
+API dependencies. Its `rivet` API command tells the operator to install
+`sciaiot-rivet[api]`. Do not install the unrelated PyPI package `rivet`.
 
 ```shell
-OVPNCP_VERSION='REPLACE_WITH_PUBLISHED_VERSION'
-sudo install -d -o root -g root -m 0755 /usr/local/lib/ovpncp
+RIVET_VERSION='REPLACE_WITH_PUBLISHED_VERSION'
+sudo install -d -o root -g root -m 0755 /usr/local/lib/rivet
 sudo sh -eu -c '
   umask 022
-  python3.14 -m venv /usr/local/lib/ovpncp/api-venv
-  python3.14 -m venv /usr/local/lib/ovpncp/agent-venv
-  /usr/local/lib/ovpncp/api-venv/bin/python -m pip install "ovpncp[api]==$1"
-  /usr/local/lib/ovpncp/agent-venv/bin/python -m pip install "ovpncp==$1"
-' sh "$OVPNCP_VERSION"
-sudo /usr/local/lib/ovpncp/api-venv/bin/python -m pip check
-sudo /usr/local/lib/ovpncp/agent-venv/bin/python -m pip check
+  python3.14 -m venv /usr/local/lib/rivet/api-venv
+  python3.14 -m venv /usr/local/lib/rivet/agent-venv
+  /usr/local/lib/rivet/api-venv/bin/python -m pip install "sciaiot-rivet[api]==$1"
+  /usr/local/lib/rivet/agent-venv/bin/python -m pip install "sciaiot-rivet-agent==$1"
+' sh "$RIVET_VERSION"
+sudo /usr/local/lib/rivet/api-venv/bin/python -m pip check
+sudo /usr/local/lib/rivet/agent-venv/bin/python -m pip check
 ```
 
 The release and both virtual environments remain root-owned and unwritable
@@ -73,7 +74,7 @@ by the API and agent. Use `umask 022` for this code installation so both
 service users can traverse the wheel and dependency directories; an inherited
 `umask 077` can leave the service unable to import the package. Private env
 and state files below use explicit restrictive modes. Do not put the venvs
-below `/opt/ovpncp` or
+below `/opt/rivet` or
 `/var/lib/ovpn-agent`, which are runtime state.
 
 ## Export and review deployment assets
@@ -85,38 +86,38 @@ reviewed copies. The exporter refuses existing files, symlinks and
 untrusted writable destinations; it does not modify system services.
 
 ```shell
-OVPNCP_TEMPLATES="$PWD/native-templates"
-/usr/local/lib/ovpncp/agent-venv/bin/ovpncp-export-native \
-  "$OVPNCP_TEMPLATES"
-sudo install -d -o root -g root -m 0755 /etc/ovpncp
-sudo install -m 0644 "$OVPNCP_TEMPLATES/ovpncp.conf" \
-  /etc/tmpfiles.d/ovpncp.conf
-sudo install -m 0644 "$OVPNCP_TEMPLATES"/*.service \
+RIVET_TEMPLATES="$PWD/native-templates"
+/usr/local/lib/rivet/agent-venv/bin/rivet-export-native \
+  "$RIVET_TEMPLATES"
+sudo install -d -o root -g root -m 0755 /etc/rivet
+sudo install -m 0644 "$RIVET_TEMPLATES/rivet.conf" \
+  /etc/tmpfiles.d/rivet.conf
+sudo install -m 0644 "$RIVET_TEMPLATES"/*.service \
   /etc/systemd/system/
 sudo install -o root -g root -m 0600 \
-  "$OVPNCP_TEMPLATES/api.env.example" /etc/ovpncp/api.env
+  "$RIVET_TEMPLATES/api.env.example" /etc/rivet/api.env
 sudo install -o root -g ovpn-runtime -m 0640 \
-  "$OVPNCP_TEMPLATES/agent.env.example" /etc/ovpncp/agent.env
-sudoedit /etc/ovpncp/api.env
-sudoedit /etc/ovpncp/agent.env
+  "$RIVET_TEMPLATES/agent.env.example" /etc/rivet/agent.env
+sudoedit /etc/rivet/api.env
+sudoedit /etc/rivet/agent.env
 ```
 
-Replace every `REPLACE_WITH_*` value. `OVPNCP_AGENT_UID` is the numeric
-`ovpn-agent` UID; `OVPNCP_API_UID` is the numeric `ovpn-api` UID;
-`OVPNCP_OPENVPN_UID` is the numeric `ovpn-openvpn` UID;
-`OVPNCP_MANAGEMENT_GID` is the numeric `ovpn-runtime` GID. The OpenVPN
+Replace every `REPLACE_WITH_*` value. `RIVET_AGENT_UID` is the numeric
+`ovpn-agent` UID; `RIVET_API_UID` is the numeric `ovpn-api` UID;
+`RIVET_OPENVPN_UID` is the numeric `ovpn-openvpn` UID;
+`RIVET_MANAGEMENT_GID` is the numeric `ovpn-runtime` GID. The OpenVPN
 management listener is created by the root-started process with that primary
-GID, so `OVPNCP_MANAGEMENT_UID=0`. Set exact Entra tenant/API UUIDs and role
+GID, so `RIVET_MANAGEMENT_UID=0`. Set exact Entra tenant/API UUIDs and role
 names. Missing authentication or an agent UID makes native API startup fail.
 Systemd reads the root-only API env file before dropping to `ovpn-api`; the
 agent's `ovpn-control` membership does not grant it access to API secrets.
 Keep database/storage credentials only in this protected file or a reviewed
-systemd credential source. Use `ovpncp[api,azure]` when Azure Blob Storage is
+systemd credential source. Use `sciaiot-rivet[api,azure]` when Azure Blob Storage is
 configured; the Entra token validator is always an API dependency.
 
 ## Provision isolated state
 
-The API owns only `/opt/ovpncp`, which holds SQLite by default, credential
+The API owns only `/opt/rivet`, which holds SQLite by default, credential
 archives and the generated shared client profile. Keep the API data tree
 mode 0750 and its `certs` directory mode 0700. Set
 `SQLALCHEMY_DATABASE_URI` in `api.env` for another database and protect its
@@ -124,8 +125,8 @@ credential. The API service masks the agent PKI, journal, OpenVPN directory
 and management/event sockets, and has no Linux capabilities.
 
 ```shell
-sudo install -d -o ovpn-api -g ovpn-control -m 0750 /opt/ovpncp
-sudo install -d -o ovpn-api -g ovpn-control -m 0700 /opt/ovpncp/certs
+sudo install -d -o ovpn-api -g ovpn-control -m 0750 /opt/rivet
+sudo install -d -o ovpn-api -g ovpn-control -m 0700 /opt/rivet/certs
 sudo install -d -o ovpn-agent -g ovpn-runtime -m 0750 \
   /var/lib/ovpn-agent
 sudo install -d -o ovpn-agent -g ovpn-runtime -m 0700 \
@@ -136,7 +137,7 @@ sudo install -d -o ovpn-agent -g ovpn-runtime -m 0750 \
   /var/lib/ovpn-agent/projection/ccd
 sudo install -d -o ovpn-openvpn -g ovpn-runtime -m 0770 \
   /var/lib/openvpn
-sudo systemd-tmpfiles --create /etc/tmpfiles.d/ovpncp.conf
+sudo systemd-tmpfiles --create /etc/tmpfiles.d/rivet.conf
 ```
 
 The `ovpn-openvpn` process can traverse only the projected runtime
@@ -164,7 +165,7 @@ Install and edit the reviewed `server.conf.example` into the projection:
 
 ```shell
 sudo install -o ovpn-agent -g ovpn-runtime -m 0640 \
-  "$OVPNCP_TEMPLATES/server.conf.example" \
+  "$RIVET_TEMPLATES/server.conf.example" \
   /var/lib/ovpn-agent/projection/server.conf
 sudoedit /var/lib/ovpn-agent/projection/server.conf
 sudo chown ovpn-agent:ovpn-runtime \
@@ -180,13 +181,13 @@ start until these reviewed artifacts exist. See
 [VPN agent operation](vpn-agent.md) and [migration](openvpn-migration.md)
 for the supported certificate and recovery contracts.
 Replace the bind address, VPN pool and hook `REPLACE_WITH_AGENT_UID` with the
-exact numeric identity. OpenVPN runs `ovpncp-vpn-event` from the absolute
+exact numeric identity. OpenVPN runs `rivet-vpn-event` from the absolute
 agent virtual environment path; it needs no checkout or `PYTHONPATH`.
 The agent keeps the projected CCD/CRL current after each enabled mutation.
 
 ## Safe startup and owned firewall
 
-The packaged `ovpncp-forward-policy.service` runs as `ovpn-agent` with only
+The packaged `rivet-forward-policy.service` runs as `ovpn-agent` with only
 `CAP_NET_ADMIN`. OpenVPN **requires** this one-shot unit in its startup
 transaction. It uses `iptables-nft-restore --noflush` to create only the
 agent-owned `OVPNCP_FORWARD` chain, first-position `tun0` ingress/egress
@@ -197,7 +198,7 @@ manifest; if they were lost after reboot, OpenVPN stays stopped until a
 reviewed recovery restores them. A foreign or partial owned chain also
 stops startup. Preserve the exact journal/ownership state for recovery.
 
-Set `OVPNCP_FIREWALL_DEVICE` to the same numbered TUN device in server
+Set `RIVET_FIREWALL_DEVICE` to the same numbered TUN device in server
 configuration; the guard parses the actual server configuration and rejects
 a mismatch. Review pre-existing FORWARD and NAT rules and ensure they do not
 bypass the two first-position anchors. Enable IPv4 forwarding and disable
@@ -209,8 +210,8 @@ printf '%s\n' 'net.ipv4.ip_forward = 1' \
   'net.ipv4.conf.all.send_redirects = 0' \
   'net.ipv4.conf.default.send_redirects = 0' \
   | sudo install -o root -g root -m 0644 /dev/stdin \
-      /etc/sysctl.d/90-ovpncp.conf
-sudo sysctl -p /etc/sysctl.d/90-ovpncp.conf
+      /etc/sysctl.d/90-rivet.conf
+sudo sysctl -p /etc/sysctl.d/90-rivet.conf
 ```
 
 The host firewall still owns VPN UDP ingress, broader LAN forwarding and
@@ -218,7 +219,7 @@ other system rules. The scoped anchor and terminal deny persist as the
 agent's reviewed ownership state; the guard recreates only the empty
 baseline after a clean reboot, before OpenVPN accepts traffic. When grants
 exist, restore the complete matching owned state through the reviewed
-recovery procedure before restarting OpenVPN. Enable `ovpncp-openvpn.service`
+recovery procedure before restarting OpenVPN. Enable `rivet-openvpn.service`
 instead of an unreviewed distro OpenVPN unit for the same configuration and
 disable any duplicate listener. On a manual OpenVPN restart, stop it first,
 then start the policy guard and OpenVPN together; verify the chain before
@@ -227,12 +228,12 @@ version, so monitor the guard and agent health after any restart.
 
 ```shell
 sudo systemctl daemon-reload
-sudo systemctl enable ovpncp-openvpn ovpncp-vpn-agent ovpncp
-sudo systemctl start ovpncp-forward-policy ovpncp-openvpn
-sudo systemctl start ovpncp-vpn-agent
-sudo systemctl start ovpncp
-sudo systemctl status ovpncp-forward-policy ovpncp-openvpn \
-  ovpncp-vpn-agent ovpncp
+sudo systemctl enable rivet-openvpn rivet-agent rivet
+sudo systemctl start rivet-forward-policy rivet-openvpn
+sudo systemctl start rivet-agent
+sudo systemctl start rivet
+sudo systemctl status rivet-forward-policy rivet-openvpn \
+  rivet-agent rivet
 sudo iptables-nft-save -t filter
 ```
 
@@ -240,8 +241,8 @@ The API's `After=`/`Wants=` ordering does not make VPN availability depend
 on the API process. Stop or restart the API independently. The OpenVPN hook
 records a producer gap if the agent is unavailable; reconcile events and
 agent journal before enabling background consumers. Start with
-`OVPNCP_AGENT_MUTATIONS=` empty, `OVPNCP_VPN_EVENTS=0` and
-`OVPNCP_VPN_RECONCILE=0`. Enable `assignments`, `routes`, `access`, `pki`,
+`RIVET_AGENT_MUTATIONS=` empty, `RIVET_VPN_EVENTS=0` and
+`RIVET_VPN_RECONCILE=0`. Enable `assignments`, `routes`, `access`, `pki`,
 `events` and `management` individually after reviewing ownership, projection,
 Easy-RSA, event socket, route protocol and rollback state. Allocate a unique
 route protocol before enabling route writes. See [VPN agent operation](vpn-agent.md)
@@ -253,40 +254,40 @@ The UI is not served by the wheel or API. Build a versioned static release
 from the matching source tag with Node 22.22.2+ or 24.15.0+, or deploy the
 matching verified UI release artifact. Use the runtime-configured Vite mode:
 it contains `/api` and no tenant-specific identifiers. Keep its files
-root-owned and readable to Nginx at `/srv/ovpncp/frontend/current`.
+root-owned and readable to Nginx at `/srv/rivet/frontend/current`.
 
 ```shell
 cd frontend
 npm ci
 npm run build:runtime
 sudo install -d -o root -g root -m 0755 \
-  "/srv/ovpncp/frontend/releases/${OVPNCP_VERSION}"
-sudo cp -a dist/. "/srv/ovpncp/frontend/releases/${OVPNCP_VERSION}/"
-sudo chown -R root:root "/srv/ovpncp/frontend/releases/${OVPNCP_VERSION}"
+  "/srv/rivet/frontend/releases/${RIVET_VERSION}"
+sudo cp -a dist/. "/srv/rivet/frontend/releases/${RIVET_VERSION}/"
+sudo chown -R root:root "/srv/rivet/frontend/releases/${RIVET_VERSION}"
 sudo chmod -R u=rwX,go=rX \
-  "/srv/ovpncp/frontend/releases/${OVPNCP_VERSION}"
-sudo ln -sfn "/srv/ovpncp/frontend/releases/${OVPNCP_VERSION}" \
-  /srv/ovpncp/frontend/current
+  "/srv/rivet/frontend/releases/${RIVET_VERSION}"
+sudo ln -sfn "/srv/rivet/frontend/releases/${RIVET_VERSION}" \
+  /srv/rivet/frontend/current
 ```
 
-Set the public `OVPNCP_UI_ENTRA_TENANT_ID`, `OVPNCP_UI_ENTRA_CLIENT_ID`
-and `OVPNCP_UI_ENTRA_API_SCOPE` to the reviewed SPA values and render
+Set the public `RIVET_UI_ENTRA_TENANT_ID`, `RIVET_UI_ENTRA_CLIENT_ID`
+and `RIVET_UI_ENTRA_API_SCOPE` to the reviewed SPA values and render
 `runtime-config.js` with the exported `web-config.sh`. This script validates
 UUIDs and scope characters before printing JavaScript. Keep the generated
 file outside the immutable UI release and serve it with `no-store`:
 
 ```shell
-OVPNCP_UI_ENTRA_TENANT_ID='REPLACE_WITH_TENANT_UUID' \
-OVPNCP_UI_ENTRA_CLIENT_ID='REPLACE_WITH_SPA_APP_UUID' \
-OVPNCP_UI_ENTRA_API_SCOPE='api://REPLACE_WITH_API_APP_UUID/access_as_user' \
-  "$OVPNCP_TEMPLATES/web-config.sh" \
+RIVET_UI_ENTRA_TENANT_ID='REPLACE_WITH_TENANT_UUID' \
+RIVET_UI_ENTRA_CLIENT_ID='REPLACE_WITH_SPA_APP_UUID' \
+RIVET_UI_ENTRA_API_SCOPE='api://REPLACE_WITH_API_APP_UUID/access_as_user' \
+  "$RIVET_TEMPLATES/web-config.sh" \
   | sudo install -o root -g root -m 0644 /dev/stdin \
-      /srv/ovpncp/frontend/runtime-config.js
-export OVPNCP_FRONTEND_ROOT=/srv/ovpncp/frontend/current
-envsubst '${OVPNCP_FRONTEND_ROOT}' \
-  < "$OVPNCP_TEMPLATES/nginx.conf.template" \
+      /srv/rivet/frontend/runtime-config.js
+export RIVET_FRONTEND_ROOT=/srv/rivet/frontend/current
+envsubst '${RIVET_FRONTEND_ROOT}' \
+  < "$RIVET_TEMPLATES/nginx.conf.template" \
   | sudo install -o root -g root -m 0644 /dev/stdin \
-      /etc/nginx/conf.d/ovpncp.conf
+      /etc/nginx/conf.d/rivet.conf
 sudo nginx -t
 sudo systemctl reload-or-restart nginx
 ```

@@ -50,7 +50,7 @@ work around a failed check with `privileged`, root API, or broader capabilities.
 
 The private bridge uses `172.30.250.0/28`, Nginx `.2`, API `.3`. Review overlap
 with host, VPN and client routes. If changed, update the bridge, both static
-addresses and `OVPNCP_PROXY_IP` together. The API trusts forwarded headers only
+addresses and `RIVET_PROXY_IP` together. The API trusts forwarded headers only
 from that Nginx address. The bridge permits outbound Entra/storage connections;
 it is not an air-gapped network. A deployment-owned reverse proxy terminates
 public TLS. Bind HTTP
@@ -90,7 +90,7 @@ must be inspected rather than retried over existing state.
 For a new disposable target, an operator can run:
 
 ```bash
-sudo python3 deploy/containers/prepare_state.py /srv/ovpncp
+sudo python3 deploy/containers/prepare_state.py /srv/rivet
 ```
 
 Do not run this command over a source installation or use it to prepare a
@@ -146,22 +146,22 @@ The disposable rehearsal applies all/default settings only in its isolated
 server namespace before creating TUN. See the
 [Linux kernel documentation](https://docs.kernel.org/networking/ip-sysctl.html).
 No startup script changes host forwarding/sysctls, installs NAT, or adopts
-foreign rules. Allocate `OVPNCP_AGENT_ROUTE_PROTOCOL` explicitly after checking
+foreign rules. Allocate `RIVET_AGENT_ROUTE_PROTOCOL` explicitly after checking
 existing route protocol use. Observation mode still requires a valid reviewed
 baseline for agent readiness; a healthy process alone does not prove readiness.
 
-Keep `OVPNCP_AGENT_MUTATIONS` empty initially. After disposable verification,
+Keep `RIVET_AGENT_MUTATIONS` empty initially. After disposable verification,
 enable `assignments`, `routes`, `access`, `pki`, `events`, `management` one family
-at a time with rollback evidence. Enable `OVPNCP_VPN_EVENTS=1` and
-`OVPNCP_VPN_RECONCILE=1` only at the corresponding reviewed stage. Neither
+at a time with rollback evidence. Enable `RIVET_VPN_EVENTS=1` and
+`RIVET_VPN_RECONCILE=1` only at the corresponding reviewed stage. Neither
 background consumer nor the agent is allowed to become a second source of truth.
 
 ## Deployment handoff
 
 Populate `deploy/container.env` with the four verified immutable image refs,
 matching Entra settings, private state root and allocated route protocol.
-The UI's runtime-only `OVPNCP_UI_ENTRA_TENANT_ID`,
-`OVPNCP_UI_ENTRA_CLIENT_ID` (SPA registration), and `OVPNCP_UI_ENTRA_API_SCOPE`
+The UI's runtime-only `RIVET_UI_ENTRA_TENANT_ID`,
+`RIVET_UI_ENTRA_CLIENT_ID` (SPA registration), and `RIVET_UI_ENTRA_API_SCOPE`
 are separate from the API's `AZURE_ENTRAID_*` settings. Nginx renders these
 public values at startup; the browser loads `/runtime-config.js` before auth
 initializes. The same web image can be promoted unchanged between environments.
@@ -212,17 +212,17 @@ keep the directory and referenced secret files private.
 
 ```bash
 umask 077
-OVPNCP_RELEASE_DIR=/absolute/private/release-001
-mkdir -m 700 "$OVPNCP_RELEASE_DIR"
-docker compose --project-name ovpncp --env-file deploy/container.env \
+RIVET_RELEASE_DIR=/absolute/private/release-001
+mkdir -m 700 "$RIVET_RELEASE_DIR"
+docker compose --project-name rivet --env-file deploy/container.env \
   -f deploy/compose.yml config --quiet
-docker compose --project-name ovpncp --env-file deploy/container.env \
+docker compose --project-name rivet --env-file deploy/container.env \
   -f deploy/compose.yml config --format json \
-  > "$OVPNCP_RELEASE_DIR/compose.json"
-docker compose --project-name ovpncp \
-  -f "$OVPNCP_RELEASE_DIR/compose.json" pull
-docker compose --project-name ovpncp \
-  -f "$OVPNCP_RELEASE_DIR/compose.json" create --no-build --pull never
+  > "$RIVET_RELEASE_DIR/compose.json"
+docker compose --project-name rivet \
+  -f "$RIVET_RELEASE_DIR/compose.json" pull
+docker compose --project-name rivet \
+  -f "$RIVET_RELEASE_DIR/compose.json" create --no-build --pull never
 ```
 
 Creation establishes the Docker bridge before services start. At this point,
@@ -233,11 +233,11 @@ terminal deny in place, before starting OpenVPN or enabling access mutations.
 Do not flush or adopt an existing administrator-owned chain. Then start:
 
 ```bash
-docker compose --project-name ovpncp \
-  -f "$OVPNCP_RELEASE_DIR/compose.json" \
+docker compose --project-name rivet \
+  -f "$RIVET_RELEASE_DIR/compose.json" \
   up --pull never --wait --wait-timeout 240
-docker compose --project-name ovpncp \
-  -f "$OVPNCP_RELEASE_DIR/compose.json" \
+docker compose --project-name rivet \
+  -f "$RIVET_RELEASE_DIR/compose.json" \
   ps --all --format '{{.Service}}: {{.State}} / {{.Health}}'
 ```
 
@@ -274,11 +274,11 @@ commands select only the API and web services; they do not perform a full-stack
 shutdown. Replace both example bundle paths with the retained private files.
 
 ```bash
-OVPNCP_PREVIOUS_BUNDLE=/absolute/private/release-001/compose.json
-OVPNCP_CANDIDATE_BUNDLE=/absolute/private/release-002/compose.json
-docker compose --project-name ovpncp -f "$OVPNCP_CANDIDATE_BUNDLE" config --quiet
-docker compose --project-name ovpncp -f "$OVPNCP_CANDIDATE_BUNDLE" pull api web
-docker compose --project-name ovpncp -f "$OVPNCP_CANDIDATE_BUNDLE" \
+RIVET_PREVIOUS_BUNDLE=/absolute/private/release-001/compose.json
+RIVET_CANDIDATE_BUNDLE=/absolute/private/release-002/compose.json
+docker compose --project-name rivet -f "$RIVET_CANDIDATE_BUNDLE" config --quiet
+docker compose --project-name rivet -f "$RIVET_CANDIDATE_BUNDLE" pull api web
+docker compose --project-name rivet -f "$RIVET_CANDIDATE_BUNDLE" \
   up --no-deps --force-recreate --pull never --wait --wait-timeout 240 api web
 ```
 
@@ -287,7 +287,7 @@ Confirm OpenVPN/agent IDs and PIDs stayed unchanged. If validation fails,
 restore the previous API/web bundle with the same selected-service command:
 
 ```bash
-docker compose --project-name ovpncp -f "$OVPNCP_PREVIOUS_BUNDLE" \
+docker compose --project-name rivet -f "$RIVET_PREVIOUS_BUNDLE" \
   up --no-deps --force-recreate --pull never --wait --wait-timeout 240 api web
 ```
 

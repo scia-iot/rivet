@@ -248,7 +248,7 @@ sanitization preserves public field shape while private path values have no
 meaning in the agent architecture; Phase 2 must add projection contract tests.
 
 Shared profile stays API-owned, credential-free, <=1 MiB, named
-`ovpncp-client.ovpn`, `application/x-openvpn-profile`, `Cache-Control: no-store`.
+`rivet-client.ovpn`, `application/x-openvpn-profile`, `Cache-Control: no-store`.
 Remote endpoint remains explicit validated API input; agent never chooses it.
 Certificate ZIP remains NAME.zip, application/zip, no-store. Optional Blob
 storage, cleanup, archive cache versions and all business ownership remain API

@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from sciaiot.ovpncp.migration.models import SourceSpec
+from sciaiot.rivet.migration.models import SourceSpec
 
 
 @pytest.fixture

@@ -4,8 +4,8 @@ import os
 import uuid
 from pathlib import Path
 
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.vpn_agent.settings import Settings
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.vpn_agent.settings import Settings
 
 STATUS = (
     "HEADER\tCLIENT_LIST\tCommon Name\tReal Address\tVirtual Address\t"

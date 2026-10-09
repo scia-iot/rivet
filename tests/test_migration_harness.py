@@ -4,7 +4,7 @@ import types
 
 import pytest
 
-from sciaiot.ovpncp.migration.models import MigrationError
+from sciaiot.rivet.migration.models import MigrationError
 from tests.integration import migration_rehearsal as harness
 
 

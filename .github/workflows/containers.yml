@@ -72,7 +72,7 @@ jobs:
       - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
       - name: Build AMD64 OCI image without publishing
         env:
-          IMAGE: ${{ needs.target.outputs.prefix }}/ovpncp-${{ matrix.component }}
+          IMAGE: ${{ needs.target.outputs.prefix }}/rivet-${{ matrix.component }}
           DOCKERFILE: ${{ matrix.dockerfile }}
           REVISION: ${{ github.sha }}
         run: |
@@ -145,7 +145,7 @@ jobs:
           password: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
       - name: Build and publish AMD64 image
         env:
-          IMAGE: ${{ needs.target.outputs.prefix }}/ovpncp-${{ matrix.component }}
+          IMAGE: ${{ needs.target.outputs.prefix }}/rivet-${{ matrix.component }}
           DOCKERFILE: ${{ matrix.dockerfile }}
           REVISION: ${{ github.sha }}
         run: |

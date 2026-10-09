@@ -21,8 +21,8 @@ status /var/log/openvpn/openvpn-status.log
 log         /var/log/openvpn/openvpn.log
 verb 3
 explicit-exit-notify 1
-client-connect /opt/ovpncp/client-connect.sh
-client-disconnect /opt/ovpncp/client-disconnect.sh
+client-connect /opt/rivet/client-connect.sh
+client-disconnect /opt/rivet/client-disconnect.sh
 script-security 2
 """
 

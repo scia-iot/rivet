@@ -5,11 +5,11 @@ import uuid
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from sciaiot.ovpncp.adapters.vpn.fake import FakeVpnControl
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control import wire
-from sciaiot.ovpncp.data.vpn import VpnStep, VpnWorkflow
-from sciaiot.ovpncp.services.vpn_recovery import BackgroundSettings, OperationRecovery
+from sciaiot.rivet.adapters.vpn.fake import FakeVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control import wire
+from sciaiot.rivet.data.vpn import VpnStep, VpnWorkflow
+from sciaiot.rivet.services.vpn_recovery import BackgroundSettings, OperationRecovery
 
 
 @pytest.fixture
@@ -69,7 +69,7 @@ def test_background_does_not_start_unsent_pki_with_short_deadline(recovery):
     assert control.state.generation == 0
 
 
-@pytest.mark.parametrize("name", ["OVPNCP_VPN_EVENTS", "OVPNCP_VPN_RECONCILE"])
+@pytest.mark.parametrize("name", ["RIVET_VPN_EVENTS", "RIVET_VPN_RECONCILE"])
 def test_background_flags_are_explicit_and_fail_closed(monkeypatch, name):
     monkeypatch.setenv(name, "maybe")
     with pytest.raises(ValueError):
@@ -80,7 +80,7 @@ def test_background_worker_stops_and_redacts_unexpected_failures(recovery, caplo
     import logging
     import time
 
-    from sciaiot.ovpncp.services.vpn_recovery import BackgroundWorker
+    from sciaiot.rivet.services.vpn_recovery import BackgroundWorker
 
     _, control, engine, _ = recovery
     worker = BackgroundWorker(engine, control, BackgroundSettings(events=True))
@@ -104,10 +104,10 @@ def test_background_worker_stops_and_redacts_unexpected_failures(recovery, caplo
 def test_read_only_api_lifespan_never_starts_agent_jobs(monkeypatch):
     import asyncio
 
-    from sciaiot.ovpncp import main
+    from sciaiot.rivet import main
 
-    monkeypatch.setenv("OVPNCP_VPN_BACKEND", "host")
-    monkeypatch.setenv("OVPNCP_VPN_EVENTS", "1")
+    monkeypatch.setenv("RIVET_VPN_BACKEND", "host")
+    monkeypatch.setenv("RIVET_VPN_EVENTS", "1")
     monkeypatch.setattr(main, "create_tables", lambda: None)
     monkeypatch.setattr(main, "create_app_directory", lambda: None)
     monkeypatch.setattr(main, "init_scripts", lambda: None)
@@ -128,11 +128,11 @@ def test_read_only_api_lifespan_never_starts_agent_jobs(monkeypatch):
 def test_agent_lifespan_starts_and_closes_only_enabled_jobs(monkeypatch):
     import asyncio
 
-    from sciaiot.ovpncp import main
+    from sciaiot.rivet import main
 
-    monkeypatch.setenv("OVPNCP_VPN_BACKEND", "agent")
-    monkeypatch.setenv("OVPNCP_AGENT_UID", "1000")
-    monkeypatch.setenv("OVPNCP_VPN_RECONCILE", "1")
+    monkeypatch.setenv("RIVET_VPN_BACKEND", "agent")
+    monkeypatch.setenv("RIVET_AGENT_UID", "1000")
+    monkeypatch.setenv("RIVET_VPN_RECONCILE", "1")
     monkeypatch.setattr(main, "create_tables", lambda: None)
     monkeypatch.setattr(main, "create_app_directory", lambda: None)
     monkeypatch.setattr(main, "get_vpn_control", FakeVpnControl)
@@ -163,10 +163,10 @@ def test_explicit_retry_can_replace_only_a_proven_pre_effect_failure(
 ):
     from sqlmodel import select
 
-    from sciaiot.ovpncp import dependencies
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-    from sciaiot.ovpncp.data.vpn import VpnStepAttempt
-    from sciaiot.ovpncp.services.vpn import VpnService
+    from sciaiot.rivet import dependencies
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.data.vpn import VpnStepAttempt
+    from sciaiot.rivet.services.vpn import VpnService
 
     _, control, engine, _ = recovery
     monkeypatch.setattr(dependencies, "vpn_control", control)
@@ -187,8 +187,8 @@ def test_explicit_retry_can_replace_only_a_proven_pre_effect_failure(
 
 
 def test_missing_operation_resubmit_must_match_original_request(recovery):
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-    from sciaiot.ovpncp.services.vpn_recovery import recover_response
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.services.vpn_recovery import recover_response
 
     _, original_control, _, original = recovery
 

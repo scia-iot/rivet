@@ -5,8 +5,8 @@ import pytest
 from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
-from sciaiot.ovpncp.main import app
-from sciaiot.ovpncp.middlewares.azure_security import (
+from sciaiot.rivet.main import app
+from sciaiot.rivet.middlewares.azure_security import (
     azure_security_middleware,
     get_token,
 )
@@ -14,15 +14,13 @@ from sciaiot.ovpncp.middlewares.azure_security import (
 client = TestClient(app)
 
 
-@patch("sciaiot.ovpncp.middlewares.azure_security.TENANT_ID", "mocked_tenant_id")
+@patch("sciaiot.rivet.middlewares.azure_security.TENANT_ID", "mocked_tenant_id")
+@patch("sciaiot.rivet.middlewares.azure_security.APP_CLIENT_ID", "mocked_app_client_id")
+@patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user")
+@patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin")
+@patch("sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
 @patch(
-    "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID", "mocked_app_client_id"
-)
-@patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user")
-@patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin")
-@patch("sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
-@patch(
-    "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+    "sciaiot.rivet.middlewares.azure_security.validate_token",
     return_value={"sub": "mocked_sub"},
 )
 def test_azure_security_middleware_success(mock_validate_token):
@@ -33,15 +31,13 @@ def test_azure_security_middleware_success(mock_validate_token):
     mock_validate_token.assert_called_once()
 
 
-@patch("sciaiot.ovpncp.middlewares.azure_security.TENANT_ID", "mocked_tenant_id")
+@patch("sciaiot.rivet.middlewares.azure_security.TENANT_ID", "mocked_tenant_id")
+@patch("sciaiot.rivet.middlewares.azure_security.APP_CLIENT_ID", "mocked_app_client_id")
+@patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user")
+@patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin")
+@patch("sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
 @patch(
-    "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID", "mocked_app_client_id"
-)
-@patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user")
-@patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin")
-@patch("sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
-@patch(
-    "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+    "sciaiot.rivet.middlewares.azure_security.validate_token",
     side_effect=HTTPException(status_code=401, detail="Mocked Exception"),
 )
 def test_azure_security_middleware_failure(mock_validate_token):
@@ -56,7 +52,7 @@ def test_azure_security_middleware_failure(mock_validate_token):
     }
 
 
-@patch("sciaiot.ovpncp.middlewares.azure_security.TENANT_ID", None)
+@patch("sciaiot.rivet.middlewares.azure_security.TENANT_ID", None)
 def test_azure_security_middleware_missing_env_error():
     # Verify that missing env vars now results in 500 error
     request = MagicMock(spec=Request)
@@ -78,7 +74,7 @@ def test_azure_security_middleware_missing_env_error():
 
 
 @patch(
-    "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+    "sciaiot.rivet.middlewares.azure_security.validate_token",
     return_value={"iss": "issuer", "sub": "subject", "roles": ["role"]},
 )
 def test_localhost_me_still_requires_authentication(mock_validate_token):
@@ -98,7 +94,7 @@ def test_localhost_me_still_requires_authentication(mock_validate_token):
     mock_validate_token.assert_called_once_with(request)
 
 
-@patch("sciaiot.ovpncp.middlewares.azure_security.validate_token")
+@patch("sciaiot.rivet.middlewares.azure_security.validate_token")
 def test_localhost_connection_hook_has_narrow_authentication_bypass(
     mock_validate_token,
 ):
@@ -121,7 +117,7 @@ def test_localhost_connection_hook_has_narrow_authentication_bypass(
     mock_validate_token.assert_not_called()
 
 
-@patch("sciaiot.ovpncp.middlewares.azure_security.validate_token")
+@patch("sciaiot.rivet.middlewares.azure_security.validate_token")
 def test_localhost_connection_hook_survives_the_production_root_path(
     mock_validate_token,
 ):
@@ -146,7 +142,7 @@ def test_localhost_connection_hook_survives_the_production_root_path(
 
 
 @patch(
-    "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+    "sciaiot.rivet.middlewares.azure_security.validate_token",
     return_value={"iss": "issuer", "sub": "subject", "roles": ["role"]},
 )
 def test_remote_peer_cannot_spoof_local_connection_hook(mock_validate_token):
@@ -184,14 +180,14 @@ def test_get_token_no_authorization_header():
     assert exc.value.status_code == 401
 
 
-@patch("sciaiot.ovpncp.middlewares.azure_security.TENANT_ID", "mocked_tenant_id")
+@patch("sciaiot.rivet.middlewares.azure_security.TENANT_ID", "mocked_tenant_id")
 @patch(
-    "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID",
+    "sciaiot.rivet.middlewares.azure_security.APP_CLIENT_ID",
     "mocked_app_client_id",
 )
-@patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user")
-@patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin")
-@patch("sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
+@patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user")
+@patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin")
+@patch("sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
 def test_blank_authorization_header_returns_problem_401():
     """Whitespace-only bearer input is a handled authentication failure."""
     request = MagicMock(spec=Request)
@@ -216,7 +212,7 @@ def test_blank_authorization_header_returns_problem_401():
 
 
 @patch(
-    "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+    "sciaiot.rivet.middlewares.azure_security.validate_token",
     side_effect=RuntimeError("secret-token stable-oauth-subject"),
 )
 def test_security_errors_do_not_log_token_or_subject(mock_validate_token, caplog):

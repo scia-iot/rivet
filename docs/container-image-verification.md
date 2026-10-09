@@ -1,5 +1,9 @@
 # Container image verification evidence
 
+All dated evidence below predates the Rivet rename. It applies to the
+original artifacts, not newly built Rivet images. Current source paths in
+examples use the new namespace; rebuild and reverify before release.
+
 These historical records describe verification on an operator-provisioned
 Linux host using immutable image digests. Host names, registry endpoints and
 private evidence locations are managed outside this repository. Each dated
@@ -105,7 +109,7 @@ Final local checks on 2026-09-24 passed:
 - `ruff format --check .` (157 files).
 - `ruff check .`.
 - `mypy --no-incremental --exclude '^build/' .` (138 source files).
-- `pytest --cov=src/sciaiot/ovpncp --cov=deploy/containers
+- `pytest --cov=src/sciaiot/rivet --cov=deploy/containers
   --cov-report=term-missing` (776 passed, 90% combined coverage).
 - `git diff --check`.
 
@@ -174,7 +178,7 @@ Local checks after the portability and harness changes on 2026-09-27 passed:
 
 - `ruff format --check .` (160 files) and `ruff check .`.
 - `mypy --no-incremental --exclude '^build/' .` (139 source files).
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`
   (799 passed, 90% application coverage).
 - Official checksum-verified actionlint v1.7.7 with `-shellcheck=` against
   `.github/workflows/containers.yml` (passed; ShellCheck was not run).
@@ -248,7 +252,7 @@ Local checks passed after these harness changes:
 - `ruff format --check .`: 163 files.
 - `ruff check .`.
 - `mypy --no-incremental --exclude '^build/' .`: 142 source files.
-- `pytest --cov=src/sciaiot/ovpncp --cov=deploy/containers
+- `pytest --cov=src/sciaiot/rivet --cov=deploy/containers
   --cov-report=term-missing`: 812 passed, 90% combined coverage.
 - Focused container/harness tests: 45 passed.
 
@@ -270,7 +274,7 @@ The runner reported cleanup passed. Source fingerprints were unchanged and
 all eleven stopped-host comparisons matched (links, addresses, IPv4/IPv6
 routes, rules and firewall, forwarding and both redirect settings). A second
 comparison passed before the maintenance guard restarted the source services;
-both `ovpncp.service` and `openvpn@server.service` were active afterward.
+both `rivet.service` and `openvpn@server.service` were active afterward.
 `maintenance-status.json`, `host-compose-result.json`, source-code hashes and
 private backup/inventory files retain the evidence. This failed preflight is
 not recorded as actual-topology success.
@@ -344,7 +348,7 @@ Local checks for the final implementation passed:
 - `ruff format --check .`: 165 files; `ruff check .` passed.
 - `mypy --exclude '^build/' .`: 144 source files. Plain `mypy .` encounters
   duplicate `sciaiot` packages in generated `build/lib`.
-- `pytest --cov=src/sciaiot/ovpncp --cov=deploy/containers
+- `pytest --cov=src/sciaiot/rivet --cov=deploy/containers
   --cov-report=term-missing`: 848 passed, 90% combined coverage.
 - Focused firewall/container checks: 120 passed; `git diff --check` passed.
 

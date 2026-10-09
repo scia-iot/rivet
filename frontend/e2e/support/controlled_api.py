@@ -9,7 +9,7 @@ import uvicorn
 
 def required_controlled_token() -> str:
     """Read the per-run credential and fail closed when it is absent."""
-    token = os.environ.get("OVPNCP_E2E_TOKEN", "").strip()
+    token = os.environ.get("RIVET_E2E_TOKEN", "").strip()
     if not token:
         raise RuntimeError("The controlled E2E token is required.")
     return token

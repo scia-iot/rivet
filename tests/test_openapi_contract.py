@@ -5,7 +5,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from sciaiot.ovpncp.main import app
+from sciaiot.rivet.main import app
 
 
 @app.get("/test-http-error", include_in_schema=False)
@@ -138,10 +138,10 @@ def test_openapi_generation_does_not_call_privileged_operations() -> None:
     app.openapi_schema = None
 
     with (
-        patch("sciaiot.ovpncp.utils.openvpn.get_status") as get_status,
-        patch("sciaiot.ovpncp.utils.openvpn.get_server_config") as get_config,
-        patch("sciaiot.ovpncp.utils.iptables.list_rules") as list_rules,
-        patch("sciaiot.ovpncp.utils.iproute.list") as list_routes,
+        patch("sciaiot.rivet.utils.openvpn.get_status") as get_status,
+        patch("sciaiot.rivet.utils.openvpn.get_server_config") as get_config,
+        patch("sciaiot.rivet.utils.iptables.list_rules") as list_rules,
+        patch("sciaiot.rivet.utils.iproute.list") as list_routes,
     ):
         app.openapi()
 
@@ -154,7 +154,7 @@ def test_openapi_generation_does_not_call_privileged_operations() -> None:
 def test_http_errors_are_rfc7807_problem_details() -> None:
     """Handled HTTP failures use the same safe problem-details contract."""
     with patch(
-        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+        "sciaiot.rivet.middlewares.azure_security.validate_token",
         return_value={"sub": "test-subject"},
     ):
         response = TestClient(app).get("/test-http-error")

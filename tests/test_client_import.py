@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from sciaiot.ovpncp.data.identity import Device
-from sciaiot.ovpncp.data.server import Client
-from sciaiot.ovpncp.dependencies import get_session
-from sciaiot.ovpncp.main import app
+from sciaiot.rivet.data.identity import Device
+from sciaiot.rivet.data.server import Client
+from sciaiot.rivet.dependencies import get_session
+from sciaiot.rivet.main import app
 
 
 @pytest.fixture(name="import_context")
@@ -32,11 +32,11 @@ def import_context_fixture() -> Generator[tuple[TestClient, Session]]:
 
         app.dependency_overrides[get_session] = get_session_override
         with (
-            patch("sciaiot.ovpncp.main.create_app_directory"),
-            patch("sciaiot.ovpncp.main.create_tables"),
-            patch("sciaiot.ovpncp.main.init_scripts"),
+            patch("sciaiot.rivet.main.create_app_directory"),
+            patch("sciaiot.rivet.main.create_tables"),
+            patch("sciaiot.rivet.main.init_scripts"),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+                "sciaiot.rivet.middlewares.azure_security.validate_token",
                 return_value={
                     "iss": "https://login.example/tenant/v2.0",
                     "sub": "service-object-id",
@@ -44,10 +44,10 @@ def import_context_fixture() -> Generator[tuple[TestClient, Session]]:
                     "roles": ["ServiceAdmin"],
                 },
             ),
-            patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
-            patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+            patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
+            patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+                "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
                 "ServiceAdmin",
             ),
             TestClient(app) as test_client,
@@ -98,14 +98,14 @@ def test_import_defaults_to_client_only_with_or_without_body(
     test_client, session = import_context
     with (
         patch(
-            "sciaiot.ovpncp.utils.openvpn.list_client_certs",
+            "sciaiot.rivet.utils.openvpn.list_client_certs",
             return_value=["client-only"],
         ),
         patch(
-            "sciaiot.ovpncp.utils.openvpn.read_client_cert",
+            "sciaiot.rivet.utils.openvpn.read_client_cert",
             return_value=certificate_details("client-only"),
         ),
-        patch("sciaiot.ovpncp.utils.openvpn.read_client_ip", return_value=None),
+        patch("sciaiot.rivet.utils.openvpn.read_client_ip", return_value=None),
     ):
         if request_body is None:
             response = test_client.post("/clients/import")
@@ -133,14 +133,14 @@ def test_import_can_create_matching_devices_idempotently(
 
     with (
         patch(
-            "sciaiot.ovpncp.utils.openvpn.list_client_certs",
+            "sciaiot.rivet.utils.openvpn.list_client_certs",
             return_value=names,
         ),
         patch(
-            "sciaiot.ovpncp.utils.openvpn.read_client_cert",
+            "sciaiot.rivet.utils.openvpn.read_client_cert",
             side_effect=read_certificate,
         ),
-        patch("sciaiot.ovpncp.utils.openvpn.read_client_ip", return_value=None),
+        patch("sciaiot.rivet.utils.openvpn.read_client_ip", return_value=None),
     ):
         first = test_client.post(
             "/clients/import",
@@ -227,7 +227,7 @@ def test_import_counts_name_and_link_conflicts_without_reassignment(
 
     with (
         patch(
-            "sciaiot.ovpncp.utils.openvpn.list_client_certs",
+            "sciaiot.rivet.utils.openvpn.list_client_certs",
             return_value=[
                 "already-linked",
                 "unlinked-name",
@@ -236,10 +236,10 @@ def test_import_counts_name_and_link_conflicts_without_reassignment(
             ],
         ),
         patch(
-            "sciaiot.ovpncp.utils.openvpn.read_client_cert",
+            "sciaiot.rivet.utils.openvpn.read_client_cert",
             side_effect=lambda name: certificate_details(name),
         ),
-        patch("sciaiot.ovpncp.utils.openvpn.read_client_ip", return_value=None),
+        patch("sciaiot.rivet.utils.openvpn.read_client_ip", return_value=None),
     ):
         response = test_client.post(
             "/clients/import",
@@ -266,15 +266,15 @@ def test_import_skips_invalid_names_and_unreadable_certificates(
     test_client, session = import_context
     overlong_name = "a" * 256
     with (
-        patch("sciaiot.ovpncp.utils.openvpn.read_client_cert") as read_certificate,
-        patch("sciaiot.ovpncp.utils.openvpn.read_client_ip") as read_ip,
+        patch("sciaiot.rivet.utils.openvpn.read_client_cert") as read_certificate,
+        patch("sciaiot.rivet.utils.openvpn.read_client_ip") as read_ip,
     ):
         read_certificate.side_effect = lambda name: (
             {} if name == "missing-cert" else certificate_details(name)
         )
         read_ip.return_value = None
         with patch(
-            "sciaiot.ovpncp.utils.openvpn.list_client_certs",
+            "sciaiot.rivet.utils.openvpn.list_client_certs",
             return_value=[
                 "valid-edge",
                 "../invalid",
@@ -316,14 +316,14 @@ def test_import_rolls_back_staged_clients_and_devices_on_failure(
     sensitive = "/private/easy-rsa/client.crt?token=secret"
     with (
         patch(
-            "sciaiot.ovpncp.utils.openvpn.list_client_certs",
+            "sciaiot.rivet.utils.openvpn.list_client_certs",
             return_value=["rollback-edge"],
         ),
         patch(
-            "sciaiot.ovpncp.utils.openvpn.read_client_cert",
+            "sciaiot.rivet.utils.openvpn.read_client_cert",
             return_value=certificate_details("rollback-edge"),
         ),
-        patch("sciaiot.ovpncp.utils.openvpn.read_client_ip", return_value=None),
+        patch("sciaiot.rivet.utils.openvpn.read_client_ip", return_value=None),
         patch.object(session, "commit", side_effect=RuntimeError(sensitive)),
     ):
         response = test_client.post(

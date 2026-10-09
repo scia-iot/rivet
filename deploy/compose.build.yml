@@ -1,31 +1,31 @@
 # Build/push only. Run from repository root with --env-file deploy/container.env.
-name: ovpncp-build
+name: rivet-build
 x-build: &build
   context: ..
 x-image: &image
-  platform: ${OVPNCP_PLATFORM:-linux/amd64}
+  platform: ${RIVET_PLATFORM:-linux/amd64}
 services:
   openvpn:
     <<: *image
-    image: ${OVPNCP_REGISTRY:?Set the registry host and optional namespace}/ovpncp-openvpn:${OVPNCP_IMAGE_TAG:-dev}
+    image: ${RIVET_REGISTRY:?Set the registry host and optional namespace}/rivet-openvpn:${RIVET_IMAGE_TAG:-dev}
     build:
       <<: *build
       dockerfile: deploy/openvpn/Dockerfile
   agent:
     <<: *image
-    image: ${OVPNCP_REGISTRY:?Set the registry host and optional namespace}/ovpncp-agent:${OVPNCP_IMAGE_TAG:-dev}
+    image: ${RIVET_REGISTRY:?Set the registry host and optional namespace}/rivet-agent:${RIVET_IMAGE_TAG:-dev}
     build:
       <<: *build
       dockerfile: deploy/agent/Dockerfile
   api:
     <<: *image
-    image: ${OVPNCP_REGISTRY:?Set the registry host and optional namespace}/ovpncp-api:${OVPNCP_IMAGE_TAG:-dev}
+    image: ${RIVET_REGISTRY:?Set the registry host and optional namespace}/rivet-api:${RIVET_IMAGE_TAG:-dev}
     build:
       <<: *build
       dockerfile: deploy/api/Dockerfile
   web:
     <<: *image
-    image: ${OVPNCP_REGISTRY:?Set the registry host and optional namespace}/ovpncp-web:${OVPNCP_IMAGE_TAG:-dev}
+    image: ${RIVET_REGISTRY:?Set the registry host and optional namespace}/rivet-web:${RIVET_IMAGE_TAG:-dev}
     build:
       <<: *build
       dockerfile: deploy/nginx/Dockerfile

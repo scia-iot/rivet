@@ -9,7 +9,7 @@ The initial API closure was resolved on CPython 3.14 using:
 
 ```sh
 python -m pip install --dry-run --ignore-installed --only-binary=:all: \
-  --report /tmp/ovpncp-image-deps.json \
+  --report /tmp/rivet-image-deps.json \
   cryptography==50.0.1 fastapi==0.141.1 PyYAML==6.0.3 sqlmodel==0.0.42 \
   uvicorn==0.52.4 python-jose==3.5.0 azure-storage-blob==12.30.1 \
   python-multipart==0.0.32 httpx==0.28.1 pydantic==2.13.5

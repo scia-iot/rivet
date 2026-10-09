@@ -75,7 +75,7 @@ repository's secret-safe logging rules.
 
 ## Prerequisites
 
-- Python 3.14 and a virtual environment under /opt/ovpncp/venv
+- Python 3.14 and a virtual environment under /opt/rivet/venv
 - Node.js 22.22.2+ or 24.15.0+
 - Nginx with HTTP and proxy modules
 - Azure Application Gateway, peering, and the restricted backend NSG rule
@@ -87,20 +87,20 @@ Run the following commands from the reviewed source checkout.
 ## Install and configure FastAPI
 
 ~~~shell
-sudo install -d -m 0700 /opt/ovpncp
-sudo python3.14 -m venv /opt/ovpncp/venv
-sudo /opt/ovpncp/venv/bin/python -m pip install --upgrade pip
-sudo /opt/ovpncp/venv/bin/python -m pip install '.[security]'
+sudo install -d -m 0700 /opt/rivet
+sudo python3.14 -m venv /opt/rivet/venv
+sudo /opt/rivet/venv/bin/python -m pip install --upgrade pip
+sudo /opt/rivet/venv/bin/python -m pip install '.[security]'
 
-sudo install -d -m 0750 /etc/ovpncp
-sudo install -m 0600 deploy/ovpncp.env.example /etc/ovpncp/ovpncp.env
-sudoedit /etc/ovpncp/ovpncp.env
+sudo install -d -m 0750 /etc/rivet
+sudo install -m 0600 deploy/rivet.env.example /etc/rivet/rivet.env
+sudoedit /etc/rivet/rivet.env
 ~~~
 
 Use the azure extra instead when Azure Blob Storage is required. Add the MySQL
 or PostgreSQL extra for those database backends.
 
-Replace every angle-bracket placeholder in `/etc/ovpncp/ovpncp.env`. The five
+Replace every angle-bracket placeholder in `/etc/rivet/rivet.env`. The five
 tenant, client, and role `AZURE_ENTRAID_*` values are required together.
 Authentication fails closed. Storage connection strings and database
 credentials are secrets and must stay in the mode-0600 environment file or an
@@ -122,8 +122,8 @@ client-compatible options, then atomically writes the credential-free shared
 profile before committing the server record. It never derives the endpoint
 from the HTTP Host header, tunnel address, or Application Gateway.
 
-The profile defaults to `/opt/ovpncp/client.ovpn`. Set
-`OVPNCP_CLIENT_CONFIG_PATH` before starting the service only when deployment
+The profile defaults to `/opt/rivet/client.ovpn`. Set
+`RIVET_CLIENT_CONFIG_PATH` before starting the service only when deployment
 policy requires another absolute path writable by the service account.
 `deploy/client.ovpn.example` is an illustrative reviewed example, not the
 source used during generation.
@@ -146,7 +146,7 @@ The API serves the result to every authenticated `device_user`, `sysadmin`, and
 app-only `ServiceAdmin` through `GET /me/client-config`. Interactive
 administrators can discover the same download under **Portal > My VPN clients**;
 app-only callers use the API directly. The response is named
-`ovpncp-client.ovpn` and includes `Cache-Control: no-store`.
+`rivet-client.ovpn` and includes `Cache-Control: no-store`.
 
 This shared file must not contain any client certificate or private key, SAS
 URL, password, token, or other per-client credential. The API validates strict
@@ -160,12 +160,12 @@ the extracted archive, substitute the assigned client name, and connect with
 the exact credential flags:
 
 ~~~shell
-OVPNCP_CLIENT_NAME=assigned-client-name
+RIVET_CLIENT_NAME=assigned-client-name
 sudo openvpn \
-  --config ovpncp-client.ovpn \
+  --config rivet-client.ovpn \
   --ca ca.crt \
-  --cert "${OVPNCP_CLIENT_NAME}.crt" \
-  --key "${OVPNCP_CLIENT_NAME}.key"
+  --cert "${RIVET_CLIENT_NAME}.crt" \
+  --key "${RIVET_CLIENT_NAME}.key"
 ~~~
 
 Graphical OpenVPN clients must be configured equivalently: import the shared
@@ -212,25 +212,25 @@ other than the same-origin /api boundary. `.env.production.local` is gitignored.
 Install the output in a versioned directory, then switch the stable symlink:
 
 ~~~shell
-OVPNCP_RELEASE=0.1.7
-sudo install -d -o root -g root -m 0755 /srv/ovpncp/frontend/releases
+RIVET_RELEASE=0.1.7
+sudo install -d -o root -g root -m 0755 /srv/rivet/frontend/releases
 sudo install -d -o root -g root -m 0755 \
-  "/srv/ovpncp/frontend/releases/${OVPNCP_RELEASE}"
+  "/srv/rivet/frontend/releases/${RIVET_RELEASE}"
 sudo cp -a dist/. \
-  "/srv/ovpncp/frontend/releases/${OVPNCP_RELEASE}/"
+  "/srv/rivet/frontend/releases/${RIVET_RELEASE}/"
 sudo chown -R root:root \
-  "/srv/ovpncp/frontend/releases/${OVPNCP_RELEASE}"
+  "/srv/rivet/frontend/releases/${RIVET_RELEASE}"
 sudo chmod -R u=rwX,go=rX \
-  "/srv/ovpncp/frontend/releases/${OVPNCP_RELEASE}"
+  "/srv/rivet/frontend/releases/${RIVET_RELEASE}"
 sudo ln -sfn \
-  "/srv/ovpncp/frontend/releases/${OVPNCP_RELEASE}" \
-  /srv/ovpncp/frontend/current
+  "/srv/rivet/frontend/releases/${RIVET_RELEASE}" \
+  /srv/rivet/frontend/current
 cd ..
 ~~~
 
 Use a package version plus source revision when multiple builds can share a
 package version. The root-owned static tree is traversable by Nginx but remains
-outside `/opt/ovpncp`, the privileged API service's writable application tree.
+outside `/opt/rivet`, the privileged API service's writable application tree.
 
 ## Install the systemd service
 
@@ -240,12 +240,12 @@ the existing OpenVPN and network operations.
 
 ~~~shell
 sudo install -m 0644 \
-  deploy/systemd/ovpncp.service \
-  /etc/systemd/system/ovpncp.service
+  deploy/systemd/rivet.service \
+  /etc/systemd/system/rivet.service
 sudo systemctl daemon-reload
-sudo systemctl enable ovpncp
-sudo systemctl restart ovpncp
-sudo systemctl status ovpncp
+sudo systemctl enable rivet
+sudo systemctl restart rivet
+sudo systemctl status rivet
 ~~~
 
 Do not expose port 8000, set HOST=0.0.0.0, or place an untrusted proxy between
@@ -260,11 +260,11 @@ certificate remain Application Gateway concerns. The envsubst allowlist leaves
 Nginx variables such as $uri, $http_host, and $remote_addr intact.
 
 ~~~shell
-export OVPNCP_FRONTEND_ROOT=/srv/ovpncp/frontend/current
+export RIVET_FRONTEND_ROOT=/srv/rivet/frontend/current
 
-OVPNCP_TEMPLATE_VARIABLES='${OVPNCP_FRONTEND_ROOT}'
-envsubst "${OVPNCP_TEMPLATE_VARIABLES}" < deploy/nginx/ovpncp.conf.template \
-  | sudo tee /etc/nginx/conf.d/ovpncp.conf >/dev/null
+RIVET_TEMPLATE_VARIABLES='${RIVET_FRONTEND_ROOT}'
+envsubst "${RIVET_TEMPLATE_VARIABLES}" < deploy/nginx/rivet.conf.template \
+  | sudo tee /etc/nginx/conf.d/rivet.conf >/dev/null
 
 if [ -L /etc/nginx/sites-enabled/default ]; then
   sudo mv /etc/nginx/sites-enabled/default /etc/nginx/default-site.disabled
@@ -285,7 +285,7 @@ For each environment, register the exact public root using the Entra
 Single-page application platform:
 
 ~~~text
-https://ovpncp.example.com/
+https://rivet.example.com/
 ~~~
 
 Use the same root as the front-channel logout URL when configured. The SPA
@@ -324,7 +324,7 @@ Run the repository quality gates and frontend production checks:
 ruff format --check .
 ruff check .
 mypy .
-pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing
+pytest --cov=src/sciaiot/rivet --cov-report=term-missing
 
 cd frontend
 npm audit
@@ -341,7 +341,7 @@ npm run build:production
 After Nginx and FastAPI start with complete Entra configuration, run:
 
 ~~~shell
-OVPNCP_BASE_URL=https://ovpncp.example.com npm run smoke:production
+RIVET_BASE_URL=https://rivet.example.com npm run smoke:production
 ~~~
 
 This credential-free check covers the public shell, an authentication-return
@@ -365,13 +365,13 @@ frontend symlink atomically:
 
 ~~~shell
 sudo ln -sfn \
-  /srv/ovpncp/frontend/releases/<previous-release> \
-  /srv/ovpncp/frontend/current
+  /srv/rivet/frontend/releases/<previous-release> \
+  /srv/rivet/frontend/current
 sudo nginx -t
 sudo systemctl reload nginx
 ~~~
 
-Reinstall the previous backend wheel into /opt/ovpncp/venv and restart ovpncp.
+Reinstall the previous backend wheel into /opt/rivet/venv and restart rivet.
 Restore a compatible database backup if a release included a schema migration.
 Re-run the live smoke check after either rollback. Never overwrite the active
 release directory in place.

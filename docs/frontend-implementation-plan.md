@@ -2,7 +2,7 @@
 
 ## Purpose and status rules
 
-This document is the source of truth for phased implementation of the ovpncp
+This document is the source of truth for phased implementation of the rivet
 frontend. It is intentionally self-contained so a new session or coding agent
 can implement one phase without relying on previous conversation history.
 
@@ -960,7 +960,7 @@ Production builds must continue to fail closed.
 ### Objective
 
 Allow a successfully authenticated interactive Microsoft Entra user to become
-a local ovpncp user on their first `GET /me` request without a separate
+a local rivet user on their first `GET /me` request without a separate
 administrator bootstrap step.
 
 ### Backend work
@@ -1147,11 +1147,11 @@ per-client certificates and private keys in their existing owned archives.
 
 ### Backend and deployment contract
 
-- Read only the exact `OVPNCP_CLIENT_CONFIG_PATH`, defaulting to
-  `/opt/ovpncp/client.ovpn`; never accept a request-controlled path.
+- Read only the exact `RIVET_CLIENT_CONFIG_PATH`, defaulting to
+  `/opt/rivet/client.ovpn`; never accept a request-controlled path.
 - Expose `GET /me/client-config` to valid `device_user`, `sysadmin`, and
   app-only `ServiceAdmin` principals without requiring a local User record.
-- Return `ovpncp-client.ovpn` with a fixed media type, attachment name, and
+- Return `rivet-client.ovpn` with a fixed media type, attachment name, and
   `Cache-Control: no-store`. Missing and unreadable files use fixed actionable
   RFC 7807 errors without path disclosure.
 - Supply an operator template that matches the inspected OpenVPN 2.6 UDP/tun
@@ -1218,7 +1218,7 @@ contracts:
 ruff format --check .
 ruff check .
 mypy .
-pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing
+pytest --cov=src/sciaiot/rivet --cov-report=term-missing
 ```
 
 If a repository-wide check fails because of an existing baseline finding,
@@ -1259,7 +1259,7 @@ Verification:
 - `ruff format --check .`: passed for 40 files.
 - `ruff check <Phase 1 changed backend files>`: passed.
 - `mypy .`: passed for 36 source files.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 82 passed,
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: 82 passed,
   86% total coverage.
 Deferred:
 - `ruff check .` retains 31 pre-existing findings in untouched files; the
@@ -1296,7 +1296,7 @@ Verification:
 - `ruff check <Phase 2 changed Python files>`: passed. `ruff check .
   --statistics` retained exactly 31 documented pre-existing findings.
 - `mypy .`: passed for 36 source files.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 91 passed,
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: 91 passed,
   87% total coverage; one existing Starlette/httpx deprecation warning remains.
 Deferred:
 - A real Entra tenant/browser smoke test requires deployment-specific credentials
@@ -1416,7 +1416,7 @@ Verification:
   Phase 5-touched Python and test file. Repository-wide `ruff check .` retains
   exactly 21 pre-existing findings outside Phase 5 scope.
 - `mypy .`: passed for 37 source files.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 109 passed with
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: 109 passed with
   90% total coverage and one existing Starlette/httpx deprecation warning.
 - `git diff --check` and the scoped sensitive-output review passed. Azure,
   OpenVPN, filesystem, and privileged operations were mocked in focused tests;
@@ -1457,7 +1457,7 @@ Verification:
   tests/test_identity_api.py`: passed. Repository-wide `ruff check .` retains
   exactly 21 pre-existing findings outside Phase 6 scope.
 - `mypy .`: passed for 37 source files.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 110 passed with
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: 110 passed with
   91% total coverage and one existing Starlette/httpx deprecation warning.
 - `git diff --check` and the scoped sensitive-output/security review passed. No
   cloud, VPN, firewall, route, network, or certificate operation was invoked.
@@ -1496,7 +1496,7 @@ Verification:
   passed; 60 focused backend tests.
 - `ruff format --check .`, `ruff check .`, and `mypy .`: passed for the full
   repository.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 138 passed with
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: 138 passed with
   90% total coverage; changed `utils/network.py` reached 100%,
   `routes/network.py` reached 96%, and `routes/server.py` reached 87%.
 - `git diff --check` and scoped sensitive-output/line-length review passed.
@@ -1534,7 +1534,7 @@ Verification:
   contracts, and the exact loopback connection hook.
 - `ruff format --check .`, `ruff check .`, and `mypy .`: passed for the
   full repository.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 155 passed with
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: 155 passed with
   91% total coverage; new `authorization.py` reached 95%.
 - `git diff --check` and scoped sensitive-output, unsafe-browser-API,
   logging, line-length, and privileged-boundary diagnostics passed. No real
@@ -1577,7 +1577,7 @@ Verification:
   transformed 2,297 modules and emitted a separate 9.00 kB portal chunk.
 - `ruff format --check .`: passed for 46 files. `ruff check .`: passed. `mypy
   .`: passed for 42 source files.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 160 passed with
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: 160 passed with
   92% total coverage; `authorization.py` reached 97%, `routes/identity.py`
   reached 84%, and the certificate archive service reached 100%.
 - `git diff --check`, explicit untracked-file whitespace scanning, scoped
@@ -1627,7 +1627,7 @@ Verification:
 - `pytest -q tests/test_production_deployment.py`: passed; 8 tests. `ruff
   format --check .`, `ruff check .`, and `mypy .`: passed for the full
   repository and 44 typed source files.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 169 passed with
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: 169 passed with
   92% total coverage. The Nginx template rendered correctly through the
   documented allowlisted `envsubst` command.
 - `git diff --check`, untracked-file whitespace review, hardcoded-credential
@@ -1666,7 +1666,7 @@ Verification:
   formatted and the full repository had no lint findings.
 - `mypy --exclude '^build/' .`: passed; 44 source files had no issues after
   excluding the duplicate generated package.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: passed; 202
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: passed; 202
   tests with 92% total coverage.
 - `npm ci`: passed; 261 packages were installed and 262 audited. `npm audit`:
   passed with 0 vulnerabilities. `npm run api:check`, `npm run lint`, and
@@ -1707,7 +1707,7 @@ Verification:
   transformed 2,300 modules and emitted the production bundle.
 - `ruff format --check .` passed for 51 files and `ruff check .` passed.
   `mypy --exclude '^build/' .` passed for 45 source files.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: passed; 209 tests
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: passed; 209 tests
   with 92% total coverage. `routes/client.py` reached 99% coverage.
 - `git diff --check` and scoped transaction, invalid-name logging,
   sensitive-error, accessibility, and cache-invalidation reviews passed.
@@ -1769,7 +1769,7 @@ Deferred:
 - Final staged-file unlinking and Azure Blob deletion cannot share the local
   filesystem/database transaction. If either post-commit cleanup fails, the
   client remains truthfully deleted and a redacted operator log requests
-  manual removal of `.ovpncp-delete-*` remnants or the orphaned cloud archive.
+  manual removal of `.rivet-delete-*` remnants or the orphaned cloud archive.
 - Privileged OpenVPN, Easy-RSA, filesystem, and Azure verification remains an
   isolated-deployment manual check; automated tests use temporary files and
   mocks only.
@@ -1778,8 +1778,8 @@ Deferred:
 2026-09-07 - Phase 14 completed
 Implementation:
 - Added one bounded reader for the exact absolute
-  `OVPNCP_CLIENT_CONFIG_PATH`, defaulting to the live deployment's existing
-  `/opt/ovpncp/client.ovpn`, with a 1 MiB limit, strict credential-free profile
+  `RIVET_CLIENT_CONFIG_PATH`, defaulting to the live deployment's existing
+  `/opt/rivet/client.ovpn`, with a 1 MiB limit, strict credential-free profile
   validation, no-store attachment response, and distinct fixed path-safe
   missing and unreadable RFC 7807 failures. Validation rejects non-text/control
   content, incomplete or unresolved profiles, credential directives, all inline
@@ -1803,7 +1803,7 @@ Verification:
   action failure, and two absent deployment-template/documentation failures.
 - Focused authorization, OpenAPI, and deployment tests passed 63 tests; focused
   portal tests passed 12 tests; final shared-reader edge tests passed 8 tests.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: passed all 263
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: passed all 263
   tests with 92% total coverage.
 - `ruff format --check .` and `ruff check .`: passed for all 54 Python files.
   `mypy --exclude '^build/' .`: passed for 48 source files.
@@ -1834,7 +1834,7 @@ Implementation:
 - Regenerated OpenAPI artifacts and updated local, production, environment, and
   client-combination instructions.
 Verification:
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 297 passed
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: 297 passed
   with 92% total coverage.
 - `ruff format --check .`, `ruff check .`, and
   `mypy --exclude '^build/' .`: passed.

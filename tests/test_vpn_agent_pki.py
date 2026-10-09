@@ -6,9 +6,9 @@ import zipfile
 
 import pytest
 
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.vpn_agent import bounded, files
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.vpn_agent import bounded, files
 from tests.support.agent import request
 from tests.support.pki import change
 

@@ -58,7 +58,7 @@ function AuthorizationExplanation() {
           <strong className="text-foreground">
             Enforced: Not enforced.
           </strong>{' '}
-          ovpncp does not apply OpenVPN or firewall policy for these grants and
+          rivet does not apply OpenVPN or firewall policy for these grants and
           does not confirm network connectivity.
         </p>
       </CardContent>

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from sciaiot.ovpncp.services.client_config import (
+from sciaiot.rivet.services.client_config import (
     ClientConfigReadError,
     client_config_response,
 )

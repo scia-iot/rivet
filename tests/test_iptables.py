@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from sciaiot.ovpncp.utils.iptables import apply_rules, drop_rules, list_rules
+from sciaiot.rivet.utils.iptables import apply_rules, drop_rules, list_rules
 
 rules_output = """Chain FORWARD (policy ACCEPT 0 packets, 0 bytes)
  pkts bytes target     prot opt in     out     source               destination
@@ -168,7 +168,7 @@ def test_drop_rules_does_not_log_rules_or_commands(mock_run, caplog):
 
 
 def test_validate_chain():
-    from sciaiot.ovpncp.utils.iptables import validate_chain
+    from sciaiot.rivet.utils.iptables import validate_chain
 
     validate_chain("FORWARD")
     with pytest.raises(ValueError, match="Invalid chain"):

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from sciaiot.ovpncp import recovery_set
+from sciaiot.rivet import recovery_set
 
 
 def _images() -> dict[str, str]:

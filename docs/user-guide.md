@@ -1,6 +1,6 @@
 # Client registration, certificates, and restricted network user guide
 
-This guide explains the ovpncp web interface. It assumes two users already
+This guide explains the rivet web interface. It assumes two users already
 exist and can sign in: a **system administrator** (`sysadmin`) and a
 **device user** (`device_user`). User creation and deployment are covered
 elsewhere.
@@ -85,7 +85,7 @@ Before enabling restricted networks, have the deployment operator confirm:
 - The VPN interface is `tun0`, as required by the current restricted network
   rules, and IP forwarding is enabled.
 - The forwarding chain ends with a drop rule for traffic arriving on `tun0`.
-  Earlier broad allow rules must not bypass this restriction. ovpncp inserts
+  Earlier broad allow rules must not bypass this restriction. rivet inserts
   its allow rules immediately before the chain's final rule.
 - OpenVPN checks an up-to-date certificate revocation list that its running
   service can read.
@@ -254,7 +254,7 @@ networks, restore the required remaining configuration, and reconnect it.
 2. Under **Certificate operations**, choose **Package** and wait for success.
 3. Choose **Download** to save `edge-01-vpn.zip`.
 4. Open **My VPN clients** and use **Connection setup > Download shared
-   profile** to save `ovpncp-client.ovpn`. This shared download is available
+   profile** to save `rivet-client.ovpn`. This shared download is available
    even if the administrator has no owned laptop client.
 5. Give these files to the person provisioning the edge device through your
    organization's approved secure transfer method.
@@ -264,7 +264,7 @@ shared profile and these separate credential files:
 
 | OpenVPN setting | File |
 | --- | --- |
-| Profile/configuration | `ovpncp-client.ovpn` |
+| Profile/configuration | `rivet-client.ovpn` |
 | CA certificate | `ca.crt` |
 | Client certificate | `edge-01-vpn.crt` |
 | Private key | `edge-01-vpn.key` |
@@ -286,7 +286,7 @@ Sign in with the existing **device user** account.
 2. Choose its **Download** button. The portal packages the credentials and
    downloads `operator-laptop.zip` in one action.
 3. In **Connection setup**, choose **Download shared profile** to download
-   `ovpncp-client.ovpn`.
+   `rivet-client.ovpn`.
 4. Extract the ZIP into a private folder and put the shared profile beside
    the extracted files.
 5. Open your organization's OpenVPN application and import the shared profile.
@@ -294,7 +294,7 @@ Sign in with the existing **device user** account.
 
 | OpenVPN setting | File |
 | --- | --- |
-| Profile/configuration | `ovpncp-client.ovpn` |
+| Profile/configuration | `rivet-client.ovpn` |
 | CA certificate | `ca.crt` |
 | Client certificate | `operator-laptop.crt` |
 | Private key | `operator-laptop.key` |

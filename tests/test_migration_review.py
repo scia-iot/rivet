@@ -7,8 +7,8 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from sciaiot.ovpncp.migration import filesystem, source, validation
-from sciaiot.ovpncp.migration.models import (
+from sciaiot.rivet.migration import filesystem, source, validation
+from sciaiot.rivet.migration.models import (
     Directive,
     Entry,
     MigrationError,

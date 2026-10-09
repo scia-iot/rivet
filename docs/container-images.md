@@ -27,7 +27,7 @@ provider-specific example, not a project requirement.
 ## Build locally and push to your registry
 
 Install Docker with Buildx and Compose in your own build environment. The
-validated platform is x86_64: use `OVPNCP_PLATFORM=linux/amd64` even on Apple
+validated platform is x86_64: use `RIVET_PLATFORM=linux/amd64` even on Apple
 Silicon. Docker Desktop can cross-build using emulation; a native amd64
 Buildx worker is faster. This does not require installing Docker inside this
 coding workspace. Do not run the host-network VPN stack on your Mac.
@@ -35,7 +35,7 @@ coding workspace. Do not run the host-network VPN stack on your Mac.
 Copy `deploy/container.env.example` to a protected local file outside the
 repository build context, then set the registry, image tag and platform.
 No Entra settings are needed to build any image. The UI image uses the same
-artifact across environments: its three public `OVPNCP_UI_ENTRA_*` settings
+artifact across environments: its three public `RIVET_UI_ENTRA_*` settings
 are supplied only when the container starts. The build fixes authentication
 on, requires runtime configuration, and fixes the API URL to `/api`. Local
 frontend environment files and process `VITE_*` settings are not embedded by
@@ -61,8 +61,8 @@ registry afterward; a successful build alone does not prove SBOM or provenance
 retention. Keep private runtime variables out of build environments and args.
 
 Capture the pushed manifest digests using `docker buildx imagetools inspect`
-for each of the four tags. Set `OVPNCP_OPENVPN_IMAGE`, `OVPNCP_AGENT_IMAGE`,
-`OVPNCP_API_IMAGE`, and `OVPNCP_WEB_IMAGE` to complete `registry/repository@sha256:…`
+for each of the four tags. Set `RIVET_OPENVPN_IMAGE`, `RIVET_AGENT_IMAGE`,
+`RIVET_API_IMAGE`, and `RIVET_WEB_IMAGE` to complete `registry/repository@sha256:…`
 references in the deployment environment. Supply those references and build
 logs for verification on the selected target before migration.
 
@@ -74,16 +74,16 @@ No local Docker daemon or Entra build arguments are needed.
 
 ```bash
 set -e
-: "${OVPNCP_ACR_NAME:?Set OVPNCP_ACR_NAME to your Azure registry resource name}"
+: "${RIVET_ACR_NAME:?Set RIVET_ACR_NAME to your Azure registry resource name}"
 TAG="build-$(date -u +%Y%m%d%H%M%S)"
-az acr build --registry "$OVPNCP_ACR_NAME" --platform linux/amd64 \
-  --image "ovpncp-openvpn:${TAG}" --file deploy/openvpn/Dockerfile .
-az acr build --registry "$OVPNCP_ACR_NAME" --platform linux/amd64 \
-  --image "ovpncp-agent:${TAG}" --file deploy/agent/Dockerfile .
-az acr build --registry "$OVPNCP_ACR_NAME" --platform linux/amd64 \
-  --image "ovpncp-api:${TAG}" --file deploy/api/Dockerfile .
-az acr build --registry "$OVPNCP_ACR_NAME" --platform linux/amd64 \
-  --image "ovpncp-web:${TAG}" --file deploy/nginx/Dockerfile .
+az acr build --registry "$RIVET_ACR_NAME" --platform linux/amd64 \
+  --image "rivet-openvpn:${TAG}" --file deploy/openvpn/Dockerfile .
+az acr build --registry "$RIVET_ACR_NAME" --platform linux/amd64 \
+  --image "rivet-agent:${TAG}" --file deploy/agent/Dockerfile .
+az acr build --registry "$RIVET_ACR_NAME" --platform linux/amd64 \
+  --image "rivet-api:${TAG}" --file deploy/api/Dockerfile .
+az acr build --registry "$RIVET_ACR_NAME" --platform linux/amd64 \
+  --image "rivet-web:${TAG}" --file deploy/nginx/Dockerfile .
 ```
 
 These commands are an operator handoff; they have not been executed here.
@@ -125,7 +125,7 @@ OpenVPN's operator-reviewed configuration must drop to `ovpn-openvpn` /
 `ovpn-runtime`, stay in the foreground, and write its PID to
 `/run/openvpn/openvpn.pid`. Its entry point requires runtime and pool directories
 owned 65530:65532 with mode 02770 and precreated status/pool files with mode 0660.
-It never repairs permissions or initializes PKI. `/usr/local/bin/ovpncp-vpn-event`
+It never repairs permissions or initializes PKI. `/usr/local/bin/rivet-vpn-event`
 provides the reviewed event hook; its socket arguments remain configuration-owned.
 
 The API accepts `SQLALCHEMY_DATABASE_URI_FILE` and
@@ -136,18 +136,18 @@ inline and file values fail startup. The image contains the existing Entra and
 Azure storage dependencies. The reference uses SQLite; optional MySQL/Postgres
 drivers need a separately reviewed lock and image variant before use.
 
-`OVPNCP_PROXY_IP` must be one explicit IPv4 address matching Nginx. It is the
+`RIVET_PROXY_IP` must be one explicit IPv4 address matching Nginx. It is the
 only trusted forwarded-header source. API startup requires agent mode and
 complete Entra settings. Logging uses stderr/stdout without request access logs
 or mutable log files. Run the supplied read-only roots, tmpfs, capability,
 resource-limit and mount settings from Compose.
 
-Nginx startup requires `OVPNCP_UI_ENTRA_TENANT_ID` and
-`OVPNCP_UI_ENTRA_CLIENT_ID` as UUIDs, plus `OVPNCP_UI_ENTRA_API_SCOPE` as a
+Nginx startup requires `RIVET_UI_ENTRA_TENANT_ID` and
+`RIVET_UI_ENTRA_CLIENT_ID` as UUIDs, plus `RIVET_UI_ENTRA_API_SCOPE` as a
 concrete `api://host/scope` or `https://host/scope` value (maximum 2048 ASCII
 characters; host letters/digits/dots/hyphens and path letters/digits plus
 `._~/-`). These settings are public browser configuration, never secrets.
-Only these three fields are emitted into `/tmp/ovpncp-runtime-config.js` on the
+Only these three fields are emitted into `/tmp/rivet-runtime-config.js` on the
 container's tmpfs. Nginx serves it as `/runtime-config.js` with `no-store`,
 before the application initializes. Missing/invalid values stop startup;
 missing/invalid browser configuration blocks authentication and never enables

@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from sciaiot.ovpncp.main import app
+from sciaiot.rivet.main import app
 
 
 # We will add a temporary route to 'app' for testing purposes
@@ -26,12 +26,12 @@ async def trigger_exception():
 def client_fixture():
     # Use a yield fixture with patch to ensure it persists during the test
     with patch(
-        "sciaiot.ovpncp.middlewares.azure_security.validate_token"
+        "sciaiot.rivet.middlewares.azure_security.validate_token"
     ) as mock_validate:
         mock_validate.return_value = {"sub": "test-user"}
         # Also patch the middleware's response to errors
         with patch(
-            "sciaiot.ovpncp.middlewares.azure_security.azure_security_middleware"
+            "sciaiot.rivet.middlewares.azure_security.azure_security_middleware"
         ) as mock_middleware:
             # Manually implement the middleware bypass
             async def side_effect(request, call_next):

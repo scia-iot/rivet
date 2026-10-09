@@ -14,9 +14,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from sciaiot.ovpncp import native_api, native_assets, native_firewall
-from sciaiot.ovpncp.native_assets import export
-from sciaiot.ovpncp.vpn_agent import access_mutations, network
+from sciaiot.rivet import native_api, native_assets, native_firewall
+from sciaiot.rivet.native_assets import export
+from sciaiot.rivet.vpn_agent import access_mutations, network
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -34,7 +34,7 @@ def test_package_metadata_keeps_agent_install_small() -> None:
         assert excluded not in dependencies
     for required in ("fastapi", "sqlmodel", "uvicorn", "python-jose"):
         assert required in api
-    assert "sciaiot.ovpncp.native_api:main" == project["scripts"]["ovpncp"]
+    assert "sciaiot.rivet.native_api:main" == project["scripts"]["rivet"]
 
 
 def test_built_wheel_contains_native_templates(tmp_path: Path) -> None:
@@ -66,31 +66,122 @@ def test_built_wheel_contains_native_templates(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    wheel = next(wheel_dir.glob("ovpncp-*.whl"))
+    wheel = next(wheel_dir.glob("sciaiot_rivet-*.whl"))
     with zipfile.ZipFile(wheel) as archive:
+        assert not any("sciaiot/ovpncp/" in name for name in archive.namelist())
         for name in (
-            "ovpncp.service",
-            "ovpncp-vpn-agent.service",
-            "ovpncp-openvpn.service",
-            "ovpncp-forward-policy.service",
-            "ovpncp.conf",
+            "rivet.service",
+            "rivet-agent.service",
+            "rivet-openvpn.service",
+            "rivet-forward-policy.service",
+            "rivet.conf",
             "api.env.example",
             "agent.env.example",
             "server.conf.example",
             "nginx.conf.template",
             "web-config.sh",
         ):
-            assert f"sciaiot/ovpncp/native_assets/{name}" in archive.namelist()
-        assert "sciaiot/ovpncp/log.yml" in archive.namelist()
+            assert f"sciaiot/rivet/native_assets/{name}" in archive.namelist()
+        assert "sciaiot/rivet/log.yml" in archive.namelist()
+
+    agent_source = tmp_path / "agent"
+    shutil.copytree(ROOT / "packages/agent", agent_source)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-deps",
+            "--no-build-isolation",
+            "--wheel-dir",
+            str(wheel_dir),
+            str(agent_source),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    agent_wheel = next(wheel_dir.glob("sciaiot_rivet_agent-*.whl"))
+    with zipfile.ZipFile(agent_wheel) as archive:
+        assert all(".dist-info/" in name for name in archive.namelist())
+
+    # Exercise installed entry points outside the source tree. Dependencies
+    # come from the test environment; both Rivet distributions come from wheels.
+    environment = tmp_path / "venv"
+    subprocess.run(
+        [sys.executable, "-m", "venv", "--system-site-packages", str(environment)],
+        check=True,
+        capture_output=True,
+    )
+    python = environment / "bin/python"
+    subprocess.run(
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--no-deps",
+            "--no-index",
+            str(wheel),
+            str(agent_wheel),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    for command in ("rivet-migrate", "rivet-export-native", "rivet-vpn-event"):
+        subprocess.run(
+            [str(environment / "bin" / command), "--help"],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+    exported = tmp_path / "exported"
+    subprocess.run(
+        [str(environment / "bin/rivet-export-native"), str(exported)],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    assert (exported / "rivet-agent.service").exists()
+    agent_result = subprocess.run(
+        [str(environment / "bin/rivet-agent")],
+        check=False,
+        cwd=tmp_path,
+        env={"PATH": str(environment / "bin")},
+        capture_output=True,
+        text=True,
+    )
+    assert agent_result.returncode == 1
+    assert "Private VPN agent unavailable" in agent_result.stderr
+    assert "Traceback" not in agent_result.stderr
+    result = subprocess.run(
+        [str(environment / "bin/rivet")],
+        check=False,
+        cwd=tmp_path,
+        env={"PATH": str(environment / "bin")},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "Traceback" not in result.stderr
+    assert any(
+        message in result.stderr
+        for message in (
+            "configuration",
+            "unprivileged account",
+            "API dependencies missing",
+        )
+    )
 
 
 @pytest.mark.parametrize(
     "overrides",
     [
         {},
-        {"OVPNCP_VPN_BACKEND": "host"},
-        {"OVPNCP_AGENT_UID": ""},
-        {"OVPNCP_AGENT_UID": "1234"},
+        {"RIVET_VPN_BACKEND": "host"},
+        {"RIVET_AGENT_UID": ""},
+        {"RIVET_AGENT_UID": "1234"},
         {"AZURE_ENTRAID_TENANT_ID": ""},
     ],
 )
@@ -100,11 +191,11 @@ def test_native_api_rejects_incomplete_isolation(
     """A native API cannot start with a privileged backend or missing auth."""
     monkeypatch.setattr(native_api.os, "geteuid", lambda: 1234)
     for key in list(os.environ):
-        if key.startswith(("OVPNCP_", "AZURE_ENTRAID_")):
+        if key.startswith(("RIVET_", "AZURE_ENTRAID_")):
             monkeypatch.delenv(key)
     values = {
-        "OVPNCP_VPN_BACKEND": "agent",
-        "OVPNCP_AGENT_UID": "1235",
+        "RIVET_VPN_BACKEND": "agent",
+        "RIVET_AGENT_UID": "1235",
         "AZURE_ENTRAID_TENANT_ID": "11111111-1111-4111-8111-111111111111",
         "AZURE_ENTRAID_APP_CLIENT_ID": "22222222-2222-4222-8222-222222222222",
         "AZURE_ENTRAID_USER_ROLE": "device_user",
@@ -116,7 +207,7 @@ def test_native_api_rejects_incomplete_isolation(
         monkeypatch.setenv(key, value)
 
     if not overrides:
-        monkeypatch.delenv("OVPNCP_VPN_BACKEND")
+        monkeypatch.delenv("RIVET_VPN_BACKEND")
     with pytest.raises(ValueError, match="native API configuration"):
         native_api.validate_environment()
 
@@ -132,8 +223,8 @@ def test_native_api_starts_after_validation(monkeypatch: pytest.MonkeyPatch) -> 
     """A complete native configuration reaches the API runner."""
     monkeypatch.setattr(native_api.os, "geteuid", lambda: 1234)
     values = {
-        "OVPNCP_VPN_BACKEND": "agent",
-        "OVPNCP_AGENT_UID": "1235",
+        "RIVET_VPN_BACKEND": "agent",
+        "RIVET_AGENT_UID": "1235",
         "AZURE_ENTRAID_TENANT_ID": "11111111-1111-4111-8111-111111111111",
         "AZURE_ENTRAID_APP_CLIENT_ID": "22222222-2222-4222-8222-222222222222",
         "AZURE_ENTRAID_USER_ROLE": "device_user",
@@ -147,7 +238,7 @@ def test_native_api_starts_after_validation(monkeypatch: pytest.MonkeyPatch) -> 
 
 def test_native_api_main_runs_after_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
     """The installed CLI reaches the existing API runner after checks."""
-    from sciaiot.ovpncp import main as api_main
+    from sciaiot.rivet import main as api_main
 
     runner = Mock()
     monkeypatch.setattr(native_api, "validate_environment", lambda: None)
@@ -161,7 +252,7 @@ def test_native_api_main_reports_missing_extra(
 ) -> None:
     """Base installs receive an actionable error from the API command."""
     monkeypatch.setattr(native_api.importlib.util, "find_spec", lambda _: None)
-    with pytest.raises(SystemExit, match=r"ovpncp\[api\]"):
+    with pytest.raises(SystemExit, match=r"sciaiot-rivet\[api\]"):
         native_api.main()
 
 
@@ -193,7 +284,7 @@ def test_native_firewall_rejects_foreign_owned_collision() -> None:
 
 def test_native_firewall_rejects_recreating_declared_grants() -> None:
     """An absent chain with declared grants requires a reviewed recovery."""
-    from sciaiot.ovpncp.application.vpn_control.schemas import AccessIntent
+    from sciaiot.rivet.application.vpn_control.schemas import AccessIntent
 
     snapshot = (
         "*filter\n:INPUT ACCEPT [0:0]\n:FORWARD ACCEPT [0:0]\n"
@@ -231,7 +322,7 @@ def test_native_firewall_rejects_configured_device_mismatch(
         "configuration",
         lambda *_: SimpleNamespace(device="tun1", device_type="tun"),
     )
-    monkeypatch.setenv("OVPNCP_FIREWALL_DEVICE", "tun0")
+    monkeypatch.setenv("RIVET_FIREWALL_DEVICE", "tun0")
     observe = Mock()
     monkeypatch.setattr(native_firewall.bounded, "observe", observe)
     with pytest.raises(ValueError, match="does not match"):
@@ -260,7 +351,7 @@ def test_native_firewall_initializes_or_verifies_owned_state(
     )
     inventory = network.Ownership()
     monkeypatch.setattr(native_firewall.network, "ownership", lambda *_: inventory)
-    monkeypatch.setenv("OVPNCP_FIREWALL_DEVICE", "tun0")
+    monkeypatch.setenv("RIVET_FIREWALL_DEVICE", "tun0")
     header = (
         "*filter\n:INPUT ACCEPT [0:0]\n:FORWARD ACCEPT [0:0]\n:OUTPUT ACCEPT [0:0]\n"
     )
@@ -306,7 +397,7 @@ def test_native_firewall_rejects_missing_sysctl(
         lambda *_: SimpleNamespace(device="tun0", device_type="tun"),
     )
     monkeypatch.setattr(native_firewall, "read_ipv4_sysctl", lambda _: "0")
-    monkeypatch.setenv("OVPNCP_FIREWALL_DEVICE", "tun0")
+    monkeypatch.setenv("RIVET_FIREWALL_DEVICE", "tun0")
     command = Mock()
     monkeypatch.setattr(native_firewall.bounded, "command", command)
     with pytest.raises(ValueError, match="sysctls"):
@@ -342,10 +433,10 @@ def test_export_assets_refuses_existing_files(tmp_path: Path) -> None:
     """A template export cannot overwrite operator-edited configuration."""
     target = tmp_path / "native"
     target.mkdir()
-    (target / "ovpncp.service").write_text("operator")
+    (target / "rivet.service").write_text("operator")
     with pytest.raises(FileExistsError):
         export(target)
-    assert (target / "ovpncp.service").read_text() == "operator"
+    assert (target / "rivet.service").read_text() == "operator"
 
 
 def test_export_assets_writes_reviewable_complete_set(tmp_path: Path) -> None:
@@ -355,7 +446,7 @@ def test_export_assets_writes_reviewable_complete_set(tmp_path: Path) -> None:
     assert {entry.name for entry in target.iterdir()} == set(native_assets.ASSETS)
     assert stat.S_IMODE(target.stat().st_mode) == 0o700
     assert stat.S_IMODE((target / "web-config.sh").stat().st_mode) == 0o755
-    assert "User=ovpn-api" in (target / "ovpncp.service").read_text()
+    assert "User=ovpn-api" in (target / "rivet.service").read_text()
     assert (
         "location = /runtime-config.js" in (target / "nginx.conf.template").read_text()
     )
@@ -369,7 +460,7 @@ def test_export_cli_reports_existing_target(
     """The command exits cleanly without replacing reviewed operator files."""
     target = tmp_path / "native"
     export(target)
-    monkeypatch.setattr(sys, "argv", ["ovpncp-export-native", str(target)])
+    monkeypatch.setattr(sys, "argv", ["rivet-export-native", str(target)])
     with pytest.raises(SystemExit, match="1"):
         native_assets.main()
     assert "Refusing to replace" in capsys.readouterr().err
@@ -377,15 +468,15 @@ def test_export_cli_reports_existing_target(
 
 def test_native_units_keep_api_out_of_vpn_state() -> None:
     """The API and agent units have distinct identities and writable roots."""
-    assets = ROOT / "src/sciaiot/ovpncp/native_assets"
-    api = (assets / "ovpncp.service").read_text()
-    agent = (assets / "ovpncp-vpn-agent.service").read_text()
-    runtime = (assets / "ovpncp.conf").read_text()
+    assets = ROOT / "src/sciaiot/rivet/native_assets"
+    api = (assets / "rivet.service").read_text()
+    agent = (assets / "rivet-agent.service").read_text()
+    runtime = (assets / "rivet.conf").read_text()
 
     assert "User=ovpn-api" in api
-    assert "OVPNCP_VPN_BACKEND=agent" in api
+    assert "RIVET_VPN_BACKEND=agent" in api
     assert "CapabilityBoundingSet=" in api
-    assert "ReadWritePaths=/opt/ovpncp" in api
+    assert "ReadWritePaths=/opt/rivet" in api
     assert "ReadWritePaths=/var/lib/ovpn-agent" not in api
     assert "InaccessiblePaths=-/var/lib/ovpn-agent" in api
     assert "User=ovpn-agent" in agent

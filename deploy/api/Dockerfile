@@ -4,8 +4,8 @@ RUN pip install --no-cache-dir --require-hashes --only-binary=:all: -r /opt/cont
 FROM python:3.14-slim-trixie@sha256:caaf356f40667c496d405780745b9ac25771c189a51dfcc42430d531ea09f8a2
 RUN groupadd --gid 65531 ovpn-control \
     && useradd --uid 65531 --gid 65531 --no-create-home ovpn-api \
-    && mkdir -p /opt/ovpncp/certs /opt/ovpncp/profile \
-    && chown -R 65531:65531 /opt/ovpncp
+    && mkdir -p /opt/rivet/certs /opt/rivet/profile \
+    && chown -R 65531:65531 /opt/rivet
 COPY --from=dependencies /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
 # Runtime services never install packages; remove vendored installer payloads.
 RUN python -m pip uninstall --yes pip \

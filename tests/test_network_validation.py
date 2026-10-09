@@ -1,6 +1,6 @@
 import pytest
 
-from sciaiot.ovpncp.utils.network import is_rfc1918_ipv4_network
+from sciaiot.rivet.utils.network import is_rfc1918_ipv4_network
 
 
 @pytest.mark.parametrize(

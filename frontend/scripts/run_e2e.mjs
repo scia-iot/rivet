@@ -7,7 +7,7 @@ const playwright = fileURLToPath(
 )
 const environment = {
   ...process.env,
-  OVPNCP_E2E_TOKEN: randomUUID(),
+  RIVET_E2E_TOKEN: randomUUID(),
 }
 
 execFileSync(

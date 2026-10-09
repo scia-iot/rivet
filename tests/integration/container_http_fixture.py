@@ -175,7 +175,7 @@ class JwksHandler(BaseHTTPRequestHandler):
 
 def serve() -> None:
     """Serve TLS inside a private namespace at a fixed reviewed address."""
-    listen = os.environ.get("OVPNCP_FIXTURE_LISTEN", "127.0.0.1")
+    listen = os.environ.get("RIVET_FIXTURE_LISTEN", "127.0.0.1")
     if listen not in {"127.0.0.1", "0.0.0.0"}:
         raise ValueError("Invalid disposable fixture listen address.")
     server = HTTPServer((listen, 443), JwksHandler)

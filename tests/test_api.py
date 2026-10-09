@@ -9,13 +9,13 @@ from fastapi.testclient import TestClient
 from httpx2 import Response
 from sqlmodel import Session, select
 
-from sciaiot.ovpncp import dependencies
-from sciaiot.ovpncp.data.network import RestrictedNetwork
-from sciaiot.ovpncp.data.server import Cert, Client, Connection, VirtualAddress
-from sciaiot.ovpncp.dependencies import get_session
-from sciaiot.ovpncp.main import app
-from sciaiot.ovpncp.routes.server import load_from_config
-from sciaiot.ovpncp.utils import openvpn
+from sciaiot.rivet import dependencies
+from sciaiot.rivet.data.network import RestrictedNetwork
+from sciaiot.rivet.data.server import Cert, Client, Connection, VirtualAddress
+from sciaiot.rivet.dependencies import get_session
+from sciaiot.rivet.main import app
+from sciaiot.rivet.routes.server import load_from_config
+from sciaiot.rivet.utils import openvpn
 from tests.support.api import MOCKED_ROUTES, SERVER_CONFIG_LINES, SERVER_STATUS_ACTIVE
 
 
@@ -31,7 +31,7 @@ def client_fixture(db_session: Session) -> Generator[TestClient]:
     try:
         with (
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+                "sciaiot.rivet.middlewares.azure_security.validate_token",
                 return_value={
                     "iss": "https://login.example/tenant/v2.0",
                     "sub": "service-object-id",
@@ -40,17 +40,17 @@ def client_fixture(db_session: Session) -> Generator[TestClient]:
                 },
             ),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.TENANT_ID",
+                "sciaiot.rivet.middlewares.azure_security.TENANT_ID",
                 "mocked_tenant_id",
             ),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID",
+                "sciaiot.rivet.middlewares.azure_security.APP_CLIENT_ID",
                 "mocked_app_client_id",
             ),
-            patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
-            patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+            patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
+            patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+                "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
                 "ServiceAdmin",
             ),
         ):
@@ -294,7 +294,7 @@ def test_get_routes(mock_run, client: TestClient):
     assert len(routes) == 2
 
 
-@patch("sciaiot.ovpncp.utils.iproute.add")
+@patch("sciaiot.rivet.utils.iproute.add")
 @pytest.mark.usefixtures("initialized_server")
 def test_add_route(mock_add, client: TestClient):
     response = client.post("/server/routes", json={"network": "192.168.1.0/24"})
@@ -325,7 +325,7 @@ def test_add_route_rejects_non_rfc1918_or_noncanonical_network(
     network: str,
     client: TestClient,
 ):
-    with patch("sciaiot.ovpncp.utils.iproute.add") as mock_add:
+    with patch("sciaiot.rivet.utils.iproute.add") as mock_add:
         response = client.post("/server/routes", json={"network": network})
 
     assert response.status_code == 400
@@ -334,7 +334,7 @@ def test_add_route_rejects_non_rfc1918_or_noncanonical_network(
 
 
 @patch(
-    "sciaiot.ovpncp.utils.iproute.add",
+    "sciaiot.rivet.utils.iproute.add",
     side_effect=RuntimeError("route 192.168.77.0/24 failed"),
 )
 @pytest.mark.usefixtures("initialized_server")
@@ -351,9 +351,9 @@ def test_add_route_command_failure_is_safe(mock_add, client: TestClient, caplog)
     mock_add.assert_called_once()
 
 
-@patch("sciaiot.ovpncp.utils.iproute.delete")
+@patch("sciaiot.rivet.utils.iproute.delete")
 @patch(
-    "sciaiot.ovpncp.utils.iproute.list",
+    "sciaiot.rivet.utils.iproute.list",
     return_value=[
         "10.8.0.0/24 proto kernel scope link src 10.8.0.1",
         "192.168.1.0/24 via 10.8.0.1",
@@ -369,7 +369,7 @@ def test_delete_route(mock_list, mock_delete, client: TestClient):
 
 
 @patch(
-    "sciaiot.ovpncp.utils.iproute.list",
+    "sciaiot.rivet.utils.iproute.list",
     return_value=["10.8.0.0/24 proto kernel scope link src 10.8.0.1"],
 )
 @pytest.mark.usefixtures("initialized_server")
@@ -389,8 +389,8 @@ cert_details = {
 }
 
 
-@patch("sciaiot.ovpncp.utils.openvpn.read_client_cert", return_value=cert_details)
-@patch("sciaiot.ovpncp.utils.openvpn.build_client", return_value=True)
+@patch("sciaiot.rivet.utils.openvpn.read_client_cert", return_value=cert_details)
+@patch("sciaiot.rivet.utils.openvpn.build_client", return_value=True)
 def test_create_client(mock_build_client, mock_read_client_cert, client: TestClient):
     response = client.get("/clients/test_client")
     assert response.status_code == 404
@@ -438,8 +438,8 @@ def test_get_clients(client: TestClient):
     assert len(content) == 3
 
 
-@patch("sciaiot.ovpncp.utils.openvpn.add_iroute")
-@patch("sciaiot.ovpncp.utils.openvpn.assign_client_ip")
+@patch("sciaiot.rivet.utils.openvpn.add_iroute")
+@patch("sciaiot.rivet.utils.openvpn.assign_client_ip")
 @pytest.mark.usefixtures("seeded_clients")
 def test_assign_virtual_address(
     mock_assign_client_ip,
@@ -468,7 +468,7 @@ def test_assign_virtual_address(
     application_logs = "\n".join(
         record.getMessage()
         for record in caplog.records
-        if record.name.startswith("sciaiot.ovpncp")
+        if record.name.startswith("sciaiot.rivet")
     )
     assert "10.8.0.2" not in application_logs
     assert "10.8.0.3" not in application_logs
@@ -504,7 +504,7 @@ def test_assign_virtual_address(
     application_logs = "\n".join(
         record.getMessage()
         for record in caplog.records
-        if record.name.startswith("sciaiot.ovpncp")
+        if record.name.startswith("sciaiot.rivet")
     )
     assert "10.8.0.11" not in application_logs
     assert "192.168.1.0" not in application_logs
@@ -540,9 +540,9 @@ def test_start_connection(client: TestClient):
     assert response.status_code == 200
 
 
-@patch("sciaiot.ovpncp.utils.iptables.apply_rules")
+@patch("sciaiot.rivet.utils.iptables.apply_rules")
 @patch(
-    "sciaiot.ovpncp.utils.iptables.list_rules",
+    "sciaiot.rivet.utils.iptables.list_rules",
     return_value=["DROP all -- anywhere anywhere"],
 )
 @pytest.mark.usefixtures("assigned_clients")
@@ -579,7 +579,7 @@ def test_create_restricted_network(
 
 
 @patch(
-    "sciaiot.ovpncp.routes.network.get_client_by_name", return_value=Client(name="N/A")
+    "sciaiot.rivet.routes.network.get_client_by_name", return_value=Client(name="N/A")
 )
 @pytest.mark.usefixtures("initialized_server")
 def test_create_restricted_network_fail(mock_get_client_by_name, client: TestClient):
@@ -592,10 +592,10 @@ def test_create_restricted_network_fail(mock_get_client_by_name, client: TestCli
     assert mock_get_client_by_name.call_count == 2
 
 
-@patch("sciaiot.ovpncp.utils.openvpn.push_client_routes")
-@patch("sciaiot.ovpncp.utils.iptables.apply_rules")
+@patch("sciaiot.rivet.utils.openvpn.push_client_routes")
+@patch("sciaiot.rivet.utils.iptables.apply_rules")
 @patch(
-    "sciaiot.ovpncp.utils.iptables.list_rules",
+    "sciaiot.rivet.utils.iptables.list_rules",
     return_value=["DROP all -- anywhere anywhere"],
 )
 @pytest.mark.usefixtures("assigned_clients")
@@ -652,9 +652,9 @@ def test_create_restricted_network_rejects_non_rfc1918_or_noncanonical_address(
     client: TestClient,
 ):
     with (
-        patch("sciaiot.ovpncp.utils.iptables.list_rules") as mock_list_rules,
-        patch("sciaiot.ovpncp.utils.iptables.apply_rules") as mock_apply_rules,
-        patch("sciaiot.ovpncp.utils.openvpn.push_client_routes") as mock_push,
+        patch("sciaiot.rivet.utils.iptables.list_rules") as mock_list_rules,
+        patch("sciaiot.rivet.utils.iptables.apply_rules") as mock_apply_rules,
+        patch("sciaiot.rivet.utils.openvpn.push_client_routes") as mock_push,
     ):
         response = client.post(
             "/networks",
@@ -680,10 +680,10 @@ def test_create_restricted_network_rejects_identical_clients(
     client: TestClient,
 ):
     with (
-        patch("sciaiot.ovpncp.routes.network.get_client_by_name") as mock_get_client,
-        patch("sciaiot.ovpncp.utils.iptables.list_rules") as mock_list_rules,
-        patch("sciaiot.ovpncp.utils.iptables.apply_rules") as mock_apply_rules,
-        patch("sciaiot.ovpncp.utils.openvpn.push_client_routes") as mock_push,
+        patch("sciaiot.rivet.routes.network.get_client_by_name") as mock_get_client,
+        patch("sciaiot.rivet.utils.iptables.list_rules") as mock_list_rules,
+        patch("sciaiot.rivet.utils.iptables.apply_rules") as mock_apply_rules,
+        patch("sciaiot.rivet.utils.openvpn.push_client_routes") as mock_push,
     ):
         response = client.post(
             "/networks",
@@ -725,11 +725,11 @@ def test_create_restricted_network_rejects_invalid_private_network(
 
 
 @patch(
-    "sciaiot.ovpncp.utils.iptables.apply_rules",
+    "sciaiot.rivet.utils.iptables.apply_rules",
     side_effect=RuntimeError("firewall 10.8.0.2 failed"),
 )
 @patch(
-    "sciaiot.ovpncp.utils.iptables.list_rules",
+    "sciaiot.rivet.utils.iptables.list_rules",
     return_value=["DROP all -- anywhere anywhere"],
 )
 @pytest.mark.usefixtures("assigned_clients")
@@ -795,8 +795,8 @@ def test_close_connection(client: TestClient):
     assert response.status_code == 200
 
 
-@patch("sciaiot.ovpncp.utils.openvpn.pull_client_routes")
-@patch("sciaiot.ovpncp.utils.iptables.drop_rules")
+@patch("sciaiot.rivet.utils.openvpn.pull_client_routes")
+@patch("sciaiot.rivet.utils.iptables.drop_rules")
 @pytest.mark.usefixtures("restricted_networks")
 def test_drop_restricted_network(
     mock_drop_rules, mock_pull_client_routes, client: TestClient
@@ -846,7 +846,7 @@ def test_drop_restricted_network(
     mock_drop_rules.assert_called_with("FORWARD", rules)
 
 
-@patch("sciaiot.ovpncp.utils.openvpn.unassign_client_ip")
+@patch("sciaiot.rivet.utils.openvpn.unassign_client_ip")
 @pytest.mark.usefixtures("assigned_clients")
 def test_unassign_virtual_address(mock_unassign_client_ip, client: TestClient):
     response = client.delete("/clients/test_client_2/unassign-ip")
@@ -878,8 +878,8 @@ def test_get_client(client: TestClient):
 
 
 @patch(
-    "sciaiot.ovpncp.utils.openvpn.package_client_cert",
-    return_value="/opt/ovpncp/certs/test_client_1.zip",
+    "sciaiot.rivet.utils.openvpn.package_client_cert",
+    return_value="/opt/rivet/certs/test_client_1.zip",
 )
 @pytest.mark.usefixtures("seeded_clients")
 def test_package_client_cert(mock_package_client_cert, client: TestClient):
@@ -888,7 +888,7 @@ def test_package_client_cert(mock_package_client_cert, client: TestClient):
     assert response.content == b""
 
     mock_package_client_cert.assert_called_once_with(
-        "test_client_1", "/opt/ovpncp/certs"
+        "test_client_1", "/opt/rivet/certs"
     )
 
 
@@ -904,7 +904,7 @@ def test_download_client_cert(mock_open, client: TestClient):
         response.headers["Content-Disposition"]
         == 'attachment; filename="test_client_1.zip"'
     )
-    mock_open.assert_called_once_with("/opt/ovpncp/certs/test_client_1.zip", "rb")
+    mock_open.assert_called_once_with("/opt/rivet/certs/test_client_1.zip", "rb")
 
 
 @patch("builtins.open", side_effect=OSError("local archive unavailable"))
@@ -923,11 +923,11 @@ def test_download_client_cert_uses_azure_without_local_archive(
 
     with (
         patch(
-            "sciaiot.ovpncp.middlewares.azure_storage.STORAGE_CONNECTION_STRING",
+            "sciaiot.rivet.middlewares.azure_storage.STORAGE_CONNECTION_STRING",
             "configured",
         ),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_storage.container_client",
+            "sciaiot.rivet.middlewares.azure_storage.container_client",
             container,
             create=True,
         ),
@@ -963,7 +963,7 @@ def test_download_client_cert_failure_is_safe(
     assert sensitive not in caplog.text
 
 
-@patch("sciaiot.ovpncp.utils.openvpn.renew_client_cert", return_value=cert_details)
+@patch("sciaiot.rivet.utils.openvpn.renew_client_cert", return_value=cert_details)
 @pytest.mark.usefixtures("seeded_clients")
 def test_renew_client(mock_renew_client_cert, client: TestClient):
     response = client.put("/clients/test_client_1/renew-cert")
@@ -978,7 +978,7 @@ def test_renew_client(mock_renew_client_cert, client: TestClient):
     mock_renew_client_cert.assert_called_once_with("test_client_1")
 
 
-@patch("sciaiot.ovpncp.utils.openvpn.renew_client_cert", return_value={})
+@patch("sciaiot.rivet.utils.openvpn.renew_client_cert", return_value={})
 @pytest.mark.usefixtures("seeded_clients")
 def test_renew_client_rejects_empty_certificate(
     mock_renew_client_cert, client: TestClient
@@ -997,8 +997,8 @@ def test_renew_client_rejects_empty_certificate(
     ("revoke_result", "crl_result"),
     [(False, True), (True, False)],
 )
-@patch("sciaiot.ovpncp.utils.openvpn.revoke_client")
-@patch("sciaiot.ovpncp.utils.openvpn.generate_crl")
+@patch("sciaiot.rivet.utils.openvpn.revoke_client")
+@patch("sciaiot.rivet.utils.openvpn.generate_crl")
 @pytest.mark.usefixtures("seeded_clients")
 def test_revoke_client_rejects_unsuccessful_result(
     mock_generate_crl,
@@ -1017,8 +1017,8 @@ def test_revoke_client_rejects_unsuccessful_result(
     assert client.get("/clients/test_client_2").json()["revoked"] is False
 
 
-@patch("sciaiot.ovpncp.utils.openvpn.revoke_client", return_value=True)
-@patch("sciaiot.ovpncp.utils.openvpn.generate_crl", return_value=True)
+@patch("sciaiot.rivet.utils.openvpn.revoke_client", return_value=True)
+@patch("sciaiot.rivet.utils.openvpn.generate_crl", return_value=True)
 @pytest.mark.usefixtures("seeded_clients")
 def test_revoke_client(mock_generate_crl, mock_revoke_client, client: TestClient):
     response = client.put("/clients/test_client_1/revoke")
@@ -1032,9 +1032,9 @@ def test_revoke_client(mock_generate_crl, mock_revoke_client, client: TestClient
     mock_revoke_client.assert_called_once_with("test_client_1")
 
 
-@patch("sciaiot.ovpncp.utils.openvpn.list_client_certs")
-@patch("sciaiot.ovpncp.utils.openvpn.read_client_cert")
-@patch("sciaiot.ovpncp.utils.openvpn.read_client_ip")
+@patch("sciaiot.rivet.utils.openvpn.list_client_certs")
+@patch("sciaiot.rivet.utils.openvpn.read_client_cert")
+@patch("sciaiot.rivet.utils.openvpn.read_client_ip")
 @pytest.mark.usefixtures("initialized_server")
 def test_import_clients(
     mock_read_ip, mock_read_cert, mock_list_certs, client: TestClient
@@ -1125,31 +1125,31 @@ def test_import_clients(
             "post",
             "/clients",
             {"name": "failure-client"},
-            "sciaiot.ovpncp.utils.openvpn.build_client",
+            "sciaiot.rivet.utils.openvpn.build_client",
         ),
         (
             "put",
             "/clients/test_client_1/package-cert",
             None,
-            "sciaiot.ovpncp.utils.openvpn.package_client_cert",
+            "sciaiot.rivet.utils.openvpn.package_client_cert",
         ),
         (
             "put",
             "/clients/test_client_1/renew-cert",
             None,
-            "sciaiot.ovpncp.utils.openvpn.renew_client_cert",
+            "sciaiot.rivet.utils.openvpn.renew_client_cert",
         ),
         (
             "put",
             "/clients/test_client_1/revoke",
             None,
-            "sciaiot.ovpncp.utils.openvpn.revoke_client",
+            "sciaiot.rivet.utils.openvpn.revoke_client",
         ),
         (
             "post",
             "/clients/import",
             None,
-            "sciaiot.ovpncp.utils.openvpn.list_client_certs",
+            "sciaiot.rivet.utils.openvpn.list_client_certs",
         ),
     ],
 )
@@ -1178,10 +1178,10 @@ def test_certificate_operation_failures_hide_sensitive_details(
 
 
 @patch(
-    "sciaiot.ovpncp.utils.openvpn.list_client_certs",
+    "sciaiot.rivet.utils.openvpn.list_client_certs",
     return_value=["in-loop-client"],
 )
-@patch("sciaiot.ovpncp.utils.openvpn.read_client_cert")
+@patch("sciaiot.rivet.utils.openvpn.read_client_cert")
 def test_import_in_loop_failure_hides_sensitive_details(
     mock_read_cert,
     mock_list_certs,

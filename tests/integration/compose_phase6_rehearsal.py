@@ -48,8 +48,8 @@ MOUNTS: dict[str, dict[str, tuple[str, bool]]] = {
         "/var/lib/openvpn": ("vpn-pool", True),
     },
     "api": {
-        "/opt/ovpncp": ("api-data", False),
-        "/opt/ovpncp/certs": ("api-archives", False),
+        "/opt/rivet": ("api-data", False),
+        "/opt/rivet/certs": ("api-archives", False),
         "/var/lib/ovpn-api/profile": ("api-profile", False),
         "/run/ovpn-agent": ("agent-socket", True),
     },
@@ -239,31 +239,31 @@ def _attest_service(
     expected_environments = {
         "openvpn": None,
         "agent": {
-            "OVPNCP_AGENT_CONFIG": "/var/lib/ovpn-agent/config/server.conf",
-            "OVPNCP_AGENT_PKI": "/var/lib/ovpn-agent/pki",
-            "OVPNCP_AGENT_CCD": "/var/lib/ovpn-agent/ccd",
-            "OVPNCP_AGENT_JOURNAL": "/var/lib/ovpn-agent/journal",
-            "OVPNCP_AGENT_PROJECTION": "/var/lib/ovpn-agent/projection",
-            "OVPNCP_AGENT_OWNERSHIP": "/var/lib/ovpn-agent/config/ownership.json",
-            "OVPNCP_AGENT_SOCKET": "/run/ovpn-agent/agent.sock",
-            "OVPNCP_AGENT_EVENT_SOCKET": "/run/ovpn-events/events.sock",
-            "OVPNCP_MANAGEMENT_SOCKET": "/run/openvpn/management.sock",
-            "OVPNCP_MANAGEMENT_UID": "0",
-            "OVPNCP_MANAGEMENT_GID": "65532",
-            "OVPNCP_OPENVPN_UID": "65530",
-            "OVPNCP_API_UID": "65531",
-            "OVPNCP_AGENT_ROUTE_PROTOCOL": route_protocol,
-            "OVPNCP_AGENT_MUTATIONS": "assignments,routes,access,pki,events,management",
-            "OVPNCP_AGENT_EASYRSA": "/usr/share/easy-rsa/easyrsa",
+            "RIVET_AGENT_CONFIG": "/var/lib/ovpn-agent/config/server.conf",
+            "RIVET_AGENT_PKI": "/var/lib/ovpn-agent/pki",
+            "RIVET_AGENT_CCD": "/var/lib/ovpn-agent/ccd",
+            "RIVET_AGENT_JOURNAL": "/var/lib/ovpn-agent/journal",
+            "RIVET_AGENT_PROJECTION": "/var/lib/ovpn-agent/projection",
+            "RIVET_AGENT_OWNERSHIP": "/var/lib/ovpn-agent/config/ownership.json",
+            "RIVET_AGENT_SOCKET": "/run/ovpn-agent/agent.sock",
+            "RIVET_AGENT_EVENT_SOCKET": "/run/ovpn-events/events.sock",
+            "RIVET_MANAGEMENT_SOCKET": "/run/openvpn/management.sock",
+            "RIVET_MANAGEMENT_UID": "0",
+            "RIVET_MANAGEMENT_GID": "65532",
+            "RIVET_OPENVPN_UID": "65530",
+            "RIVET_API_UID": "65531",
+            "RIVET_AGENT_ROUTE_PROTOCOL": route_protocol,
+            "RIVET_AGENT_MUTATIONS": "assignments,routes,access,pki,events,management",
+            "RIVET_AGENT_EASYRSA": "/usr/share/easy-rsa/easyrsa",
         },
         "api": {
-            "OVPNCP_VPN_BACKEND": "agent",
-            "OVPNCP_AGENT_SOCKET": "/run/ovpn-agent/agent.sock",
-            "OVPNCP_AGENT_UID": "65532",
-            "OVPNCP_CLIENT_CONFIG_PATH": "/var/lib/ovpn-api/profile/client.ovpn",
-            "OVPNCP_VPN_EVENTS": "0",
-            "OVPNCP_VPN_RECONCILE": "0",
-            "OVPNCP_PROXY_IP": "172.30.250.2",
+            "RIVET_VPN_BACKEND": "agent",
+            "RIVET_AGENT_SOCKET": "/run/ovpn-agent/agent.sock",
+            "RIVET_AGENT_UID": "65532",
+            "RIVET_CLIENT_CONFIG_PATH": "/var/lib/ovpn-api/profile/client.ovpn",
+            "RIVET_VPN_EVENTS": "0",
+            "RIVET_VPN_RECONCILE": "0",
+            "RIVET_PROXY_IP": "172.30.250.2",
             "AZURE_ENTRAID_TENANT_ID": TENANT,
             "AZURE_ENTRAID_APP_CLIENT_ID": AUDIENCE,
             "AZURE_ENTRAID_USER_ROLE": "device_user",
@@ -272,9 +272,9 @@ def _attest_service(
             "AZURE_ENTRAID_AUTO_REGISTER_USERS": "true",
         },
         "web": {
-            "OVPNCP_UI_ENTRA_TENANT_ID": TENANT,
-            "OVPNCP_UI_ENTRA_CLIENT_ID": SPA,
-            "OVPNCP_UI_ENTRA_API_SCOPE": SCOPE,
+            "RIVET_UI_ENTRA_TENANT_ID": TENANT,
+            "RIVET_UI_ENTRA_CLIENT_ID": SPA,
+            "RIVET_UI_ENTRA_API_SCOPE": SCOPE,
         },
     }
     if service.get("environment") != expected_environments[role]:
@@ -327,9 +327,9 @@ def isolated_bundle(
     model = copy.deepcopy(rendered)
     if set(model) != {"name", "networks", "services", "x-bind", "x-runtime"}:
         raise ValueError("Unexpected top-level Compose resource.")
-    if model["name"] != "ovpncp" or model["networks"] != {
+    if model["name"] != "rivet" or model["networks"] != {
         "web": {
-            "name": "ovpncp_web",
+            "name": "rivet_web",
             "driver": "bridge",
             "ipam": {"config": [{"subnet": "172.30.250.0/28"}]},
         }
@@ -341,7 +341,7 @@ def isolated_bundle(
     if set(anchors) != {"server", "a", "b", "c", "http"}:
         raise ValueError("Missing disposable namespace anchors.")
     if len(set(anchors.values())) != len(anchors) or not all(
-        re.fullmatch(rf"ovpncp-p6-{token}-anchor-{role}", anchor)
+        re.fullmatch(rf"rivet-p6-{token}-anchor-{role}", anchor)
         for role, anchor in anchors.items()
     ):
         raise ValueError("Disposable namespace anchor identity changed.")
@@ -360,9 +360,9 @@ def isolated_bundle(
         )
         service["logging"] = {"driver": "none"}
         service["restart"] = "no"
-        service["labels"] = {"ovpncp.rehearsal": token}
+        service["labels"] = {"rivet.rehearsal": token}
     api = services["api"]
-    api["environment"]["OVPNCP_PROXY_IP"] = "127.0.0.1"
+    api["environment"]["RIVET_PROXY_IP"] = "127.0.0.1"
     api["environment"]["SSL_CERT_FILE"] = "/tmp/phase6-ca.crt"
     api["volumes"].append(
         {
@@ -375,8 +375,8 @@ def isolated_bundle(
     )
     web = services["web"]
     if upgrade:
-        web["environment"]["OVPNCP_UI_ENTRA_API_SCOPE"] = UPGRADE_SCOPE
-    model["name"] = f"ovpncp-p6-{token}"
+        web["environment"]["RIVET_UI_ENTRA_API_SCOPE"] = UPGRADE_SCOPE
+    model["name"] = f"rivet-p6-{token}"
     model.pop("networks", None)
     model.pop("x-bind", None)
     model.pop("x-runtime", None)
@@ -411,7 +411,7 @@ class ComposeRehearsal(Rehearsal):
         if upgrade_web is not None:
             self.upgrade_images["web"] = upgrade_web
         self.manifest = manifest.resolve()
-        self.project = f"ovpncp-p6-{self.token}"
+        self.project = f"rivet-p6-{self.token}"
         self.initial_bundle = self.root / "initial-compose.json"
         self.upgrade_bundle = self.root / "upgrade-compose.json"
         self.active_bundle = self.initial_bundle
@@ -476,15 +476,15 @@ class ComposeRehearsal(Rehearsal):
     def _render(self, anchors: dict[str, str]) -> None:
         """Render source Compose, attest it, and write two isolated bundles."""
         settings = {
-            "OVPNCP_PLATFORM": "linux/amd64",
-            "OVPNCP_STATE_ROOT": str(self.state),
-            "OVPNCP_AGENT_ROUTE_PROTOCOL": "200",
-            "OVPNCP_AGENT_MUTATIONS": "assignments,routes,access,pki,events,management",
-            "OVPNCP_VPN_EVENTS": "0",
-            "OVPNCP_VPN_RECONCILE": "0",
-            "OVPNCP_UI_ENTRA_TENANT_ID": TENANT,
-            "OVPNCP_UI_ENTRA_CLIENT_ID": SPA,
-            "OVPNCP_UI_ENTRA_API_SCOPE": SCOPE,
+            "RIVET_PLATFORM": "linux/amd64",
+            "RIVET_STATE_ROOT": str(self.state),
+            "RIVET_AGENT_ROUTE_PROTOCOL": "200",
+            "RIVET_AGENT_MUTATIONS": "assignments,routes,access,pki,events,management",
+            "RIVET_VPN_EVENTS": "0",
+            "RIVET_VPN_RECONCILE": "0",
+            "RIVET_UI_ENTRA_TENANT_ID": TENANT,
+            "RIVET_UI_ENTRA_CLIENT_ID": SPA,
+            "RIVET_UI_ENTRA_API_SCOPE": SCOPE,
             "AZURE_ENTRAID_TENANT_ID": TENANT,
             "AZURE_ENTRAID_APP_CLIENT_ID": AUDIENCE,
             "AZURE_ENTRAID_USER_ROLE": "device_user",
@@ -492,7 +492,7 @@ class ComposeRehearsal(Rehearsal):
             "AZURE_ENTRAID_SERVICE_ADMIN_ROLE": "ServiceAdmin",
         }
         for role, image in self.images.items():
-            settings[f"OVPNCP_{role.upper()}_IMAGE"] = image
+            settings[f"RIVET_{role.upper()}_IMAGE"] = image
         env_path = self.root / "render.env"
         env_path.write_text(
             "".join(f"{key}={value}\n" for key, value in settings.items())
@@ -540,7 +540,7 @@ class ComposeRehearsal(Rehearsal):
         info = json.loads(self.docker("inspect", container))[0]
         labels = info["Config"]["Labels"]
         if (
-            labels.get("ovpncp.rehearsal") != self.token
+            labels.get("rivet.rehearsal") != self.token
             or labels.get("com.docker.compose.project") != self.project
             or labels.get("com.docker.compose.service") != role
             or info["Id"] != container
@@ -792,7 +792,7 @@ class ComposeRehearsal(Rehearsal):
                 labels = info["Config"]["Labels"]
                 if (
                     info["Id"] != container
-                    or labels.get("ovpncp.rehearsal") != self.token
+                    or labels.get("rivet.rehearsal") != self.token
                     or labels.get("com.docker.compose.project") != self.project
                     or labels.get("com.docker.compose.service") not in self.images
                 ):

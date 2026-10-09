@@ -11,9 +11,9 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.vpn_agent import bounded
-from sciaiot.ovpncp.vpn_agent.writer import MutationVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.vpn_agent import bounded
+from sciaiot.rivet.vpn_agent.writer import MutationVpnControl
 from tests.support.agent import request, settings
 
 

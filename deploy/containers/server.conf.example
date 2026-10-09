@@ -32,8 +32,8 @@ status-version 3
 writepid /run/openvpn/openvpn.pid
 ifconfig-pool-persist /var/lib/openvpn/ipp.txt
 script-security 2
-client-connect "/usr/local/bin/ovpncp-vpn-event --socket /run/ovpn-events/events.sock --management-socket /run/openvpn/management.sock --agent-uid 65532"
-client-disconnect "/usr/local/bin/ovpncp-vpn-event --socket /run/ovpn-events/events.sock --management-socket /run/openvpn/management.sock --agent-uid 65532"
+client-connect "/usr/local/bin/rivet-vpn-event --socket /run/ovpn-events/events.sock --management-socket /run/openvpn/management.sock --agent-uid 65532"
+client-disconnect "/usr/local/bin/rivet-vpn-event --socket /run/ovpn-events/events.sock --management-socket /run/openvpn/management.sock --agent-uid 65532"
 # Raw OpenVPN diagnostics can include client addresses; use bounded health probes.
 log /dev/null
 verb 0

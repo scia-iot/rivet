@@ -24,13 +24,13 @@ RUN pip install --no-cache-dir --require-hashes --only-binary=:all: -r /opt/agen
 RUN python -m pip uninstall --yes pip \
     && rm -rf /usr/local/lib/python3.14/ensurepip \
     && python -c "import importlib.util; assert all(importlib.util.find_spec(name) is None for name in ('pip', 'ensurepip'))"
-COPY src/sciaiot/ovpncp/application /opt/agent/sciaiot/ovpncp/application
-COPY src/sciaiot/ovpncp/vpn_agent /opt/agent/sciaiot/ovpncp/vpn_agent
-COPY src/sciaiot/ovpncp/adapters/vpn/settings.py /opt/agent/sciaiot/ovpncp/adapters/vpn/settings.py
+COPY src/sciaiot/rivet/application /opt/agent/sciaiot/rivet/application
+COPY src/sciaiot/rivet/vpn_agent /opt/agent/sciaiot/rivet/vpn_agent
+COPY src/sciaiot/rivet/adapters/vpn/settings.py /opt/agent/sciaiot/rivet/adapters/vpn/settings.py
 COPY deploy/containers/openvpn_entrypoint.py /opt/container/openvpn_entrypoint.py
 COPY deploy/containers/openvpn_health.py /opt/container/openvpn_health.py
-COPY deploy/containers/vpn_event.sh /usr/local/bin/ovpncp-vpn-event
-RUN chmod 0555 /usr/local/bin/ovpncp-vpn-event
+COPY deploy/containers/vpn_event.sh /usr/local/bin/rivet-vpn-event
+RUN chmod 0555 /usr/local/bin/rivet-vpn-event
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/opt/agent
 USER 0:65532
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s CMD ["python", "/opt/container/openvpn_health.py"]

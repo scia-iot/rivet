@@ -6,8 +6,8 @@ ingestion. Keep production on `host` until the remaining deployment/cutover gate
 are accepted; the implementation and disposable rehearsals do not authorize a
 production cutover.
 
-`ovpncp-vpn-agent` (also `python -m sciaiot.ovpncp.vpn_agent`) serves a private
-Unix socket only. With no `OVPNCP_AGENT_MUTATIONS`, writes and archives return
+`rivet-agent` (also `python -m sciaiot.rivet.vpn_agent`) serves a private
+Unix socket only. With no `RIVET_AGENT_MUTATIONS`, writes and archives return
 `unavailable`. Enabled families use `POST /v1/control`; credential streams use
 `POST /v1/archive`. Malformed uncorrelated requests are closed.
 
@@ -28,15 +28,15 @@ executable, command argument, identity or environment variable.
 
 | Variable | Meaning |
 | --- | --- |
-| `OVPNCP_AGENT_CONFIG` | Absolute server configuration file; single-file syntax. |
-| `OVPNCP_AGENT_PKI` | Absolute public PKI observation root containing `ca.crt`, `index.txt`, and `issued/*.crt`. Private keys are opened only for explicitly enabled PKI lifecycle/archive operations. |
-| `OVPNCP_AGENT_CCD` | Absolute CCD observation directory. |
-| `OVPNCP_MANAGEMENT_SOCKET` | Canonical private OpenVPN management Unix socket. |
-| `OVPNCP_MANAGEMENT_UID` | Expected listener creator UID from Linux `SO_PEERCRED`; OpenVPN startup UID may be 0 even after dropping privileges. |
-| `OVPNCP_MANAGEMENT_GID` | Expected listener primary GID and private parent directory GID. |
-| `OVPNCP_API_UID` | The sole API peer UID allowed to send control requests. |
-| `OVPNCP_AGENT_SOCKET` | Defaults to `/run/ovpn-agent/agent.sock`. |
-| `OVPNCP_AGENT_OWNERSHIP` | Owned intent manifest; read-only in observation mode, agent-written for enabled network families. |
+| `RIVET_AGENT_CONFIG` | Absolute server configuration file; single-file syntax. |
+| `RIVET_AGENT_PKI` | Absolute public PKI observation root containing `ca.crt`, `index.txt`, and `issued/*.crt`. Private keys are opened only for explicitly enabled PKI lifecycle/archive operations. |
+| `RIVET_AGENT_CCD` | Absolute CCD observation directory. |
+| `RIVET_MANAGEMENT_SOCKET` | Canonical private OpenVPN management Unix socket. |
+| `RIVET_MANAGEMENT_UID` | Expected listener creator UID from Linux `SO_PEERCRED`; OpenVPN startup UID may be 0 even after dropping privileges. |
+| `RIVET_MANAGEMENT_GID` | Expected listener primary GID and private parent directory GID. |
+| `RIVET_API_UID` | The sole API peer UID allowed to send control requests. |
+| `RIVET_AGENT_SOCKET` | Defaults to `/run/ovpn-agent/agent.sock`. |
+| `RIVET_AGENT_OWNERSHIP` | Owned intent manifest; read-only in observation mode, agent-written for enabled network families. |
 
 Prepare the control parent directory with agent ownership, control group, mode
 02750. The read-only server refuses an existing socket. A writer holding the exclusive
@@ -91,7 +91,7 @@ network entries are never automatically adopted. The strict manifest is:
 Rows use protocol `ManagedRoute`, `AccessIntent` and `OwnedPushes` schemas.
 Duplicate ownership identities, unknown fields and duplicate JSON keys fail.
 The operator must review this inventory and explicitly allocate its route
-protocol. Read-only fixtures use **200** unless `OVPNCP_AGENT_ROUTE_PROTOCOL`
+protocol. Read-only fixtures use **200** unless `RIVET_AGENT_ROUTE_PROTOCOL`
 is supplied; the read-only service creates neither markers nor a journal. Each route must actually match device, destination,
 gateway, unicast type and the configured protocol. Matching foreign routes are rejected.
 
@@ -185,16 +185,16 @@ sudo -n timeout --signal=TERM --kill-after=10s 600s \
 
 Enable families individually in this order, verifying and retaining rollback
 state after each: `assignments`, `routes`, `access`, `pki`, then `events` and
-`management`. `OVPNCP_AGENT_MUTATIONS` is a comma-separated list; the empty
+`management`. `RIVET_AGENT_MUTATIONS` is a comma-separated list; the empty
 (default) list leaves the agent read-only. Unknown names fail startup.
 
 | Variable | Mutation requirement |
 | --- | --- |
-| `OVPNCP_AGENT_JOURNAL` | Existing private agent-owned durable directory; required for every enabled family. |
-| `OVPNCP_AGENT_PROJECTION` | Agent-written minimal runtime root, mounted read-only by OpenVPN. Precreate `ccd/`; required by assignment and PKI deployment. |
-| `OVPNCP_AGENT_ROUTE_PROTOCOL` | Explicit operator-allocated integer 1–255; required for route writes. No production default is reserved. Protocol 200 is only the disposable/read-only fixture convention. |
-| `OVPNCP_AGENT_EASYRSA` | Trusted absolute Easy-RSA executable; default `/usr/share/easy-rsa/easyrsa`. Renewal currently supports the verified 3.1.7 command semantics. |
-| `OVPNCP_AGENT_EVENT_SOCKET` | Separate protected local daemon-ingress Unix socket; required when `events` is enabled. Never mount it in the API. |
+| `RIVET_AGENT_JOURNAL` | Existing private agent-owned durable directory; required for every enabled family. |
+| `RIVET_AGENT_PROJECTION` | Agent-written minimal runtime root, mounted read-only by OpenVPN. Precreate `ccd/`; required by assignment and PKI deployment. |
+| `RIVET_AGENT_ROUTE_PROTOCOL` | Explicit operator-allocated integer 1–255; required for route writes. No production default is reserved. Protocol 200 is only the disposable/read-only fixture convention. |
+| `RIVET_AGENT_EASYRSA` | Trusted absolute Easy-RSA executable; default `/usr/share/easy-rsa/easyrsa`. Renewal currently supports the verified 3.1.7 command semantics. |
+| `RIVET_AGENT_EVENT_SOCKET` | Separate protected local daemon-ingress Unix socket; required when `events` is enabled. Never mount it in the API. |
 
 The mutation profile supports OpenVPN 2.6, numbered IPv4 TUN, topology subnet
 and explicit `disable-dco`. `client-to-client`, TAP, IPv6 tunnel directives,
@@ -296,7 +296,7 @@ length/digest verification and retains its existing authorization checks.
 
 ## Local connection events
 
-Install the package and `ovpncp-vpn-event` entry point in the OpenVPN workload
+Install the package and `rivet-vpn-event` entry point in the OpenVPN workload
 as well as the agent. OpenVPN strips inherited `PYTHONPATH`; source-only module
 commands without an installed package are not a supported deployment. Verify
 both hooks before admitting VPN clients. Import/argument/deployment failures
@@ -309,11 +309,11 @@ command for both `client-connect` and `client-disconnect`, substituting trusted
 deployment paths and numeric UID:
 
 ```text
-/usr/local/bin/ovpncp-vpn-event --socket /run/ovpn-events/events.sock --management-socket /run/openvpn/management.sock --agent-uid 65532
+/usr/local/bin/rivet-vpn-event --socket /run/ovpn-events/events.sock --management-socket /run/openvpn/management.sock --agent-uid 65532
 ```
 
 The local hook validates only required daemon environment fields and checks
-the agent peer UID before sending bounded JSON. Set `OVPNCP_OPENVPN_UID` to the post-drop hook UID when it differs from the
+the agent peer UID before sending bounded JSON. Set `RIVET_OPENVPN_UID` to the post-drop hook UID when it differs from the
 management-listener creator UID; otherwise the listener UID is the default.
 The ingress worker verifies that daemon UID and runtime GID before reading and durably commits before acknowledging.
 Connect/disconnect events are captured directly, including sessions shorter
@@ -331,8 +331,8 @@ retained history with an explicit durable gap; sequences never reset. API
 commits event receipts, connection history and cursor before an immutable
 acknowledgement intent. Completed acknowledgement evidence and acknowledged
 receipts have 90-day retention with bounded cleanup; pending acknowledgement
-intents are retained until resolved. Enable API ingestion with `OVPNCP_VPN_EVENTS=1` and
-workflow lookup reconciliation with `OVPNCP_VPN_RECONCILE=1`, only in agent mode;
+intents are retained until resolved. Enable API ingestion with `RIVET_VPN_EVENTS=1` and
+workflow lookup reconciliation with `RIVET_VPN_RECONCILE=1`, only in agent mode;
 both default off. A gap records incomplete history and obtains live sessions.
 Durable session bindings are capped at 10,000. Missing disconnect hooks can
 retain stale bindings across daemon crashes; exhausting that bound refuses new
@@ -344,7 +344,7 @@ ingestion; do not delete the journal to clear capacity.
 
 Freeze new writes, retain all API/agent intent and event records, reconcile
 accepted operations and verify actual state before disabling a family or
-switching `OVPNCP_VPN_BACKEND` to `host`. Never run legacy and agent writers
+switching `RIVET_VPN_BACKEND` to `host`. Never run legacy and agent writers
 concurrently. Keep the journal/configuration identity and CA revocation history;
 rollback must not resurrect credentials. Verify host-compatible CCD, route,
 firewall and archive behavior explicitly. An uncertain PKI/reload operation

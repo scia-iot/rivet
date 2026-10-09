@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, mock_open, patch
 
 import pytest
 
-from sciaiot.ovpncp.utils.openvpn import (
+from sciaiot.rivet.utils.openvpn import (
     add_iroute,
     assign_client_ip,
     build_client,
@@ -204,8 +204,8 @@ def _write_client_artifacts(tmp_path, monkeypatch):
     crl = easy_rsa / "pki" / "crl.pem"
     index.write_text("revocation evidence", encoding="utf-8")
     crl.write_text("crl", encoding="utf-8")
-    monkeypatch.setattr("sciaiot.ovpncp.utils.openvpn.openvpn_dir", str(openvpn_root))
-    monkeypatch.setattr("sciaiot.ovpncp.utils.openvpn.easyrsa_dir", str(easy_rsa))
+    monkeypatch.setattr("sciaiot.rivet.utils.openvpn.openvpn_dir", str(openvpn_root))
+    monkeypatch.setattr("sciaiot.rivet.utils.openvpn.easyrsa_dir", str(easy_rsa))
     return paths, index, crl, archive_root
 
 
@@ -268,7 +268,7 @@ def test_package_client_cert_hides_archive_path(mock_zipfile, mock_remove, caplo
     mock_zipfile.assert_called_once()
 
 
-@patch("sciaiot.ovpncp.utils.openvpn.read_client_cert", return_value={})
+@patch("sciaiot.rivet.utils.openvpn.read_client_cert", return_value={})
 @patch("subprocess.run", return_value=MagicMock(returncode=0))
 def test_renew_client_cert(mock_run, mock_read_client_cert):
     cert_details = renew_client_cert("client")

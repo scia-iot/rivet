@@ -3,10 +3,10 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ovpncp"
+name = "sciaiot-rivet"
 version = "0.1.7"
 license = { text = "Apache License 2.0" }
-description = "OpenVPN Control Panel for Restricted Network."
+description = "Rivet: OpenVPN control plane from SCIA IoT."
 authors = [{ name = "Nick Yao", email = "ipaddict@outlook.com" }]
 requires-python = ">=3.14"
 dependencies = [
@@ -22,9 +22,9 @@ api = [
     "uvicorn",
     "python-jose[cryptography]",
 ]
-security = ["ovpncp[api]"]
+security = ["sciaiot-rivet[api]"]
 azure = [
-    "ovpncp[api]",
+    "sciaiot-rivet[api]",
     "azure-storage-blob"
 ]
 mysql = [
@@ -43,12 +43,12 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.scripts]
-ovpncp = "sciaiot.ovpncp.native_api:main"
-ovpncp-vpn-event = "sciaiot.ovpncp.vpn_agent.event_hook:main"
-ovpncp-vpn-agent = "sciaiot.ovpncp.vpn_agent.cli:main"
-ovpncp-migrate = "sciaiot.ovpncp.migration.cli:main"
-ovpncp-export-native = "sciaiot.ovpncp.native_assets:main"
-ovpncp-native-firewall = "sciaiot.ovpncp.native_firewall:main"
+rivet = "sciaiot.rivet.native_api:main"
+rivet-vpn-event = "sciaiot.rivet.vpn_agent.event_hook:main"
+rivet-agent = "sciaiot.rivet.vpn_agent.cli:main"
+rivet-migrate = "sciaiot.rivet.migration.cli:main"
+rivet-export-native = "sciaiot.rivet.native_assets:main"
+rivet-native-firewall = "sciaiot.rivet.native_firewall:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -59,7 +59,7 @@ exclude = [
 
 [tool.setuptools.package-data]
 sciaiot = ["**/*.yml", "**/*.sh"]
-"sciaiot.ovpncp.native_assets" = [
+"sciaiot.rivet.native_assets" = [
     "*.service", "*.conf", "*.example", "*.template", "*.sh"
 ]
 

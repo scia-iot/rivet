@@ -16,14 +16,14 @@ import re
 from cryptography import x509
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
-from sciaiot.ovpncp.migration import (
+from sciaiot.rivet.migration import (
     bundle,
     container_target,
     filesystem,
     source,
     target,
 )
-from sciaiot.ovpncp.migration.models import (
+from sciaiot.rivet.migration.models import (
     ContainerTargetSpec,
     MigrationError,
     Replacement,
@@ -49,7 +49,7 @@ def _image_digest(value: object, role: str) -> str:
     """Validate a reviewed role-specific OCI reference and return its digest."""
     registry = r"[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]+)?"
     namespace = r"(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*"
-    pattern = rf"{registry}{namespace}/ovpncp-{role}@sha256:[a-f0-9]{{64}}"
+    pattern = rf"{registry}{namespace}/rivet-{role}@sha256:[a-f0-9]{{64}}"
     if not isinstance(value, str) or re.fullmatch(pattern, value) is None:
         raise MigrationError("pinned image capability evidence mismatch")
     return value.rsplit("@", 1)[1]

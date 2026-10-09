@@ -1,0 +1,31 @@
+[Unit]
+Description=Rivet private VPN agent
+Wants=network-online.target
+After=network-online.target systemd-tmpfiles-setup.service rivet-openvpn.service
+Wants=rivet-openvpn.service
+
+[Service]
+Type=simple
+User=ovpn-agent
+Group=ovpn-runtime
+SupplementaryGroups=ovpn-control
+WorkingDirectory=/var/lib/ovpn-agent
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=/etc/rivet/agent.env
+ExecStart=/usr/local/lib/rivet/agent-venv/bin/rivet-agent
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0007
+NoNewPrivileges=true
+CapabilityBoundingSet=CAP_NET_ADMIN
+AmbientCapabilities=CAP_NET_ADMIN
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/ovpn-agent /run/ovpn-agent /run/ovpn-events
+InaccessiblePaths=-/opt/rivet
+
+[Install]
+WantedBy=multi-user.target

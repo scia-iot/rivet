@@ -15,7 +15,7 @@ from tests.integration import vpn_container_rehearsal as base
 def _rendered() -> tuple[dict[str, Any], dict[str, str]]:
     """Build the smallest model needed to exercise namespace substitution."""
     images = {
-        role: f"example.test/ovpncp-{role}@sha256:{role[0] * 64}"
+        role: f"example.test/rivet-{role}@sha256:{role[0] * 64}"
         for role in ("openvpn", "agent", "api", "web")
     }
     services: dict[str, dict[str, object]] = {}
@@ -28,10 +28,10 @@ def _rendered() -> tuple[dict[str, Any], dict[str, str]]:
             "ports": ["8080:8080"],
         }
     model: dict[str, Any] = {
-        "name": "ovpncp",
+        "name": "rivet",
         "networks": {
             "web": {
-                "name": "ovpncp_web",
+                "name": "rivet_web",
                 "driver": "bridge",
                 "ipam": {"config": [{"subnet": "172.30.250.0/28"}]},
             }
@@ -46,7 +46,7 @@ def _rendered() -> tuple[dict[str, Any], dict[str, str]]:
 def _anchors() -> dict[str, str]:
     """Return only run-owned anchor names."""
     return {
-        role: f"ovpncp-p6-{'a' * 12}-anchor-{role}"
+        role: f"rivet-p6-{'a' * 12}-anchor-{role}"
         for role in ("server", "a", "b", "c", "http")
     }
 
@@ -68,7 +68,7 @@ def test_isolation_remaps_every_service_to_owned_namespaces(
         upgrade=True,
     )
     assert "networks" not in isolated
-    assert model["name"] == "ovpncp"
+    assert model["name"] == "rivet"
     services = isolated["services"]
     for role, service in services.items():
         assert "networks" not in service
@@ -77,7 +77,7 @@ def test_isolation_remaps_every_service_to_owned_namespaces(
         assert service["network_mode"] == f"container:{_anchors()[anchor]}"
         assert service["logging"] == {"driver": "none"}
         assert service["restart"] == "no"
-        assert service["labels"] == {"ovpncp.rehearsal": "a" * 12}
+        assert service["labels"] == {"rivet.rehearsal": "a" * 12}
         assert "extra_hosts" not in service
     assert services["api"]["volumes"] == [
         {
@@ -89,7 +89,7 @@ def test_isolation_remaps_every_service_to_owned_namespaces(
         }
     ]
     assert services["api"]["environment"]["SSL_CERT_FILE"] == ("/tmp/phase6-ca.crt")
-    assert services["web"]["environment"]["OVPNCP_UI_ENTRA_API_SCOPE"] == (
+    assert services["web"]["environment"]["RIVET_UI_ENTRA_API_SCOPE"] == (
         phase6.UPGRADE_SCOPE
     )
 
@@ -159,7 +159,7 @@ def test_cleanup_refuses_foreign_compose_container(
     """Cleanup cannot remove a container with only a matching project label."""
     run = phase6.ComposeRehearsal.__new__(phase6.ComposeRehearsal)
     run.compose_invoked = True
-    run.project = "ovpncp-p6-" + "a" * 12
+    run.project = "rivet-p6-" + "a" * 12
     run.token = "a" * 12
     run.images = {"api": "image"}
     container = "b" * 64
@@ -171,7 +171,7 @@ def test_cleanup_refuses_foreign_compose_container(
                     "Id": container,
                     "Config": {
                         "Labels": {
-                            "ovpncp.rehearsal": "foreign",
+                            "rivet.rehearsal": "foreign",
                             "com.docker.compose.project": run.project,
                             "com.docker.compose.service": "api",
                         }
@@ -192,11 +192,11 @@ def test_cleanup_refuses_foreign_compose_container(
 def test_service_identity_checks_actual_cached_image_id() -> None:
     """A tag or stale image cache cannot masquerade as the reviewed digest."""
     run = phase6.ComposeRehearsal.__new__(phase6.ComposeRehearsal)
-    run.project = "ovpncp-p6-" + "a" * 12
+    run.project = "rivet-p6-" + "a" * 12
     run.token = "a" * 12
     run.active_bundle = Path("initial")
     run.upgrade_bundle = Path("upgrade")
-    image = "example.test/ovpncp-api@sha256:" + "c" * 64
+    image = "example.test/rivet-api@sha256:" + "c" * 64
     run.images = {"api": image}
     run.upgrade_images = copy.copy(run.images)
     run.cached_image_ids = {image: "sha256:" + "e" * 64}
@@ -208,7 +208,7 @@ def test_service_identity_checks_actual_cached_image_id() -> None:
         "Config": {
             "Image": image,
             "Labels": {
-                "ovpncp.rehearsal": run.token,
+                "rivet.rehearsal": run.token,
                 "com.docker.compose.project": run.project,
                 "com.docker.compose.service": "api",
             },

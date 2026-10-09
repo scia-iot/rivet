@@ -75,7 +75,7 @@ async function fulfillJson(
 }
 
 function requiredControlledToken(): string {
-  const token = process.env.OVPNCP_E2E_TOKEN?.trim()
+  const token = process.env.RIVET_E2E_TOKEN?.trim()
   if (!token) {
     throw new Error('The controlled E2E token is required.')
   }
@@ -214,7 +214,7 @@ async function useControlledRole(
       }
     }
     browser.sessionStorage.setItem(
-      'ovpncp:e2e:controlled-role',
+      'rivet:e2e:controlled-role',
       controlledRole,
     )
   }, role)

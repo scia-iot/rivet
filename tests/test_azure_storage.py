@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 from fastapi import Request, Response
 
-from sciaiot.ovpncp.middlewares import azure_storage
+from sciaiot.rivet.middlewares import azure_storage
 
 
 def storage_request(method: str, path: str) -> Request:

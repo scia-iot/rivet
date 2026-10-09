@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from sqlmodel import Session
 
-from sciaiot.ovpncp.data.server import Client, Connection
+from sciaiot.rivet.data.server import Client, Connection
 
 
 def test_connection_history_model(db_session: Session):

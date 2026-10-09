@@ -31,7 +31,7 @@ export async function checkContainerBrowser(directory) {
               status: configuration === undefined ? 404 : 200,
               contentType: 'text/javascript',
               body: configuration === undefined ? '' :
-                `window.__OVPNCP_CONFIG__=${JSON.stringify(configuration)};`,
+                `window.__RIVET_CONFIG__=${JSON.stringify(configuration)};`,
             })
             return
           }

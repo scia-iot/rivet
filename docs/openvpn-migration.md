@@ -10,7 +10,7 @@ generation and restored the exact nonempty prior target state. This is toolkit
 acceptance evidence, not approval to migrate a live installation or cut over
 production traffic.
 
-The tool does not migrate ovpncp, its database, archive storage, authentication,
+The tool does not migrate rivet, its database, archive storage, authentication,
 UI, system services, host accounts, routes, firewall rules or cloud resources.
 It invokes no system commands. It neither stops services nor freezes external
 writers automatically. Its supported target adapter starts and ends with the
@@ -21,8 +21,8 @@ operator-controlled maintenance and recovery procedure outside this adapter.
 
 Install the project with its existing runtime dependencies. No new dependency
 is required: authenticated encryption uses the existing `cryptography` package.
-The installed command is `ovpncp-migrate`; from a checkout use
-`PYTHONPATH=src python -m sciaiot.ovpncp.migration.cli`.
+The installed command is `rivet-migrate`; from a checkout use
+`PYTHONPATH=src python -m sciaiot.rivet.migration.cli`.
 
 All six subcommands emit redacted JSON. Success exits 0; validation, input,
 compatibility and operational failures exit 2. Errors contain safe corrective
@@ -179,7 +179,7 @@ agent-private and daemon projection mounts. It rejects source includes,
 host-specific `local`, TLS static-key options, unrecognized assets, and
 non-UDP/non-subnet profiles until a reviewed conversion exists. Every source
 hook replacement maps to the pinned image's
-`/usr/local/bin/ovpncp-vpn-event`, with SHA-256
+`/usr/local/bin/rivet-vpn-event`, with SHA-256
 `bd29220d58469db027654ff9a5468f61f5c81d877511da1e28f04dc0fe31edb3`.
 Check this hash against the actual cached image file before import. The
 adapter refuses any other replacement hash or path.
@@ -187,7 +187,7 @@ adapter refuses any other replacement hash or path.
 For the opt-in container rehearsal, `capabilities.json` must contain the
 reviewed immutable references for all three roles under `image_refs`:
 `openvpn`, `agent`, and `api`. Each reference uses
-`<registry-or-namespace>/ovpncp-<role>@sha256:<64-lowercase-hex-digits>`.
+`<registry-or-namespace>/rivet-<role>@sha256:<64-lowercase-hex-digits>`.
 The runner requires exact agreement with its `--openvpn-image`,
 `--agent-image`, and `--api-image` arguments before creating rehearsal state.
 Tags, missing roles and mismatched evidence are rejected. Private registry
@@ -197,15 +197,15 @@ With the encrypted M0 bundle, private key file and protected container policy,
 the non-interactive sequence is:
 
 ```bash
-ovpncp-migrate validate --container --bundle migration.bundle \
+rivet-migrate validate --container --bundle migration.bundle \
   --key-file migration.key --policy container-target.json
-ovpncp-migrate import --container --bundle migration.bundle \
+rivet-migrate import --container --bundle migration.bundle \
   --key-file migration.key --policy container-target.json \
   --target /private/migration
-ovpncp-migrate import --container --bundle migration.bundle \
+rivet-migrate import --container --bundle migration.bundle \
   --key-file migration.key --policy container-target.json \
   --target /private/migration --apply --target-stopped
-ovpncp-migrate verify --container --bundle migration.bundle \
+rivet-migrate verify --container --bundle migration.bundle \
   --key-file migration.key --policy container-target.json \
   --target /private/migration
 ```
@@ -213,10 +213,10 @@ ovpncp-migrate verify --container --bundle migration.bundle \
 Run the applying command as root on a stopped disposable target with all VPN
 writers frozen; the adapter assigns the fixed image UIDs and GIDs. Keep the
 private wrapper and its `rollback` generation on one filesystem. Set Compose
-`OVPNCP_STATE_ROOT=/private/migration/active`. Provision separate API-related
+`RIVET_STATE_ROOT=/private/migration/active`. Provision separate API-related
 state outside this migration-owned wrapper before running a full four-service
 deployment. After stopping the target and freezing writers again, run
-`ovpncp-migrate rollback --container --target /private/migration --apply
+`rivet-migrate rollback --container --target /private/migration --apply
 --target-stopped`; it restores the exact previous generation, including the
 previously absent state. Verify before issuing new target credentials, because
 the expected imported PKI hashes change after issuance and revocation.
@@ -238,7 +238,7 @@ operator process does not add an unauthenticated HTTP route. Revoked VPN
 identities remain excluded from the API inventory, while old API users,
 devices, grants and archives are outside the M0 migration scope.
 
-Start the API with `OVPNCP_VPN_EVENTS=0` and `OVPNCP_VPN_RECONCILE=0` during
+Start the API with `RIVET_VPN_EVENTS=0` and `RIVET_VPN_RECONCILE=0` during
 this initialization. The latter recovers pending API workflows; it does not
 import PKI clients. Enable event consumption and reconciliation after API
 inventory and agent health checks. Enabling the agent's `access` mutation
@@ -351,7 +351,7 @@ reviewed hash. Arbitrary hook argument strings are rejected.
 Supported PKI verification includes CA/server fingerprints, signature chains
 to a direct self-signed CA, key matches, server validity/usage, complete index
 and serial allocation consistency, fresh signed CRLs, and existing/revoked
-client status. Revoked clients deleted by ovpncp may have no remaining leaf
+client status. Revoked clients deleted by rivet may have no remaining leaf
 certificate or private key; their index/CRL evidence is retained. Expired
 historical client certificates remain historical state. The server and CA
 must be currently valid. Both sequential and Easy-RSA random serial allocation
@@ -463,7 +463,7 @@ revoked client; runs encrypted export/validate/dry-run/import/verify; issues
 and revokes a new test client in the imported PKI; checks unchanged existing
 credentials and preserved revocations; rolls back; and checks source hashes.
 Only synthetic PKI is touched. Artifacts/logs remain in a private
-`/tmp/ovpncp-migration-rehearsal-*` directory. Redacted JSON labels OpenVPN
+`/tmp/rivet-migration-rehearsal-*` directory. Redacted JSON labels OpenVPN
 metadata as a declared assumption and connectivity as unverified.
 
 The network variant is **not to be run in the current macOS-hosted development
@@ -562,7 +562,7 @@ harness version-placeholder gate. Runtime regressions are covered for the
 Easy-RSA 3.1 common-name override and OpenVPN's successful `--help` exit code 1.
 
 
-Final local checks on 2026-09-10: `pytest --cov=src/sciaiot/ovpncp
+Final local checks on 2026-09-10: `pytest --cov=src/sciaiot/rivet
 --cov-report=term-missing` passed **392 tests with 91% overall coverage**.
 Migration package coverage is 88%, with each module above 80%. Ruff formatting
 and lint pass, `mypy --exclude '^build/' .` passes 62 files, shell syntax checks

@@ -178,7 +178,7 @@ export function PortalClientsPage() {
               {'<client-name>'} value in the command below, then run it:
             </p>
             <code className="block overflow-x-auto rounded-md bg-muted p-3">
-              {'openvpn --config ovpncp-client.ovpn --ca ca.crt ' +
+              {'openvpn --config rivet-client.ovpn --ca ca.crt ' +
                 '--cert <client-name>.crt --key <client-name>.key'}
             </code>
             <p className="text-muted-foreground">

@@ -6,8 +6,8 @@ import { PERMISSIONS } from '@/auth/permissions'
 import { PrincipalSessionProvider } from '@/auth/principal-session'
 import { Button } from '@/components/ui/button'
 
-const CONTROLLED_ROLE_KEY = 'ovpncp:e2e:controlled-role'
-const REDIRECT_RETURN_KEY = 'ovpncp:e2e:redirect-return'
+const CONTROLLED_ROLE_KEY = 'rivet:e2e:controlled-role'
+const REDIRECT_RETURN_KEY = 'rivet:e2e:redirect-return'
 const REDIRECT_RETURN_PATH = '/__e2e/auth-return'
 
 type ControlledRole = 'device_user' | 'sysadmin'

@@ -60,19 +60,19 @@ def test_builds_are_read_only_and_publication_is_explicit() -> None:
 @pytest.mark.parametrize(
     ("registry", "namespace", "success", "expected"),
     [
-        ("", "", True, "ghcr.io/example/ovpncp-api"),
+        ("", "", True, "ghcr.io/example/rivet-api"),
         (
             "registry.example:5000",
             "team/vpn",
             True,
-            "registry.example:5000/team/vpn/ovpncp-api",
+            "registry.example:5000/team/vpn/rivet-api",
         ),
-        ("example.azurecr.io", "team", True, "example.azurecr.io/team/ovpncp-api"),
+        ("example.azurecr.io", "team", True, "example.azurecr.io/team/rivet-api"),
         ("https://registry.example", "team", False, ""),
         ("registry.example/path", "team", False, ""),
         ("GHCR.IO", "team", False, ""),
-        ("registry.example", "", True, "registry.example/ovpncp-api"),
-        ("example.azurecr.io", "", True, "example.azurecr.io/ovpncp-api"),
+        ("registry.example", "", True, "registry.example/rivet-api"),
+        ("example.azurecr.io", "", True, "example.azurecr.io/rivet-api"),
         ("docker.io", "", False, ""),
         ("ghcr.io", "../team", False, ""),
         ("ghcr.io", "$(touch marker)", False, ""),
@@ -106,7 +106,7 @@ def test_registry_target_validation(
     assert (result.returncode == 0) is success
     if success:
         values = dict(line.split("=", 1) for line in output.read_text().splitlines())
-        assert f"{values['prefix']}/ovpncp-api" == expected
+        assert f"{values['prefix']}/rivet-api" == expected
     assert not (tmp_path / "marker").exists()
 
 

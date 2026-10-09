@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.vpn_agent.mutations import replace_block
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.vpn_agent.mutations import replace_block
 
 
 def test_owned_block_preserves_foreign_bytes() -> None:
@@ -34,9 +34,9 @@ def test_assignment_crash_after_replace_reconciles(
     import dataclasses
     from unittest.mock import patch
 
-    from sciaiot.ovpncp.application.vpn_control import schemas as s
-    from sciaiot.ovpncp.vpn_agent import mutations
-    from sciaiot.ovpncp.vpn_agent.writer import MutationVpnControl
+    from sciaiot.rivet.application.vpn_control import schemas as s
+    from sciaiot.rivet.vpn_agent import mutations
+    from sciaiot.rivet.vpn_agent.writer import MutationVpnControl
     from tests.support.agent import request, settings
 
     configured = dataclasses.replace(

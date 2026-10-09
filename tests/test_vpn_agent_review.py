@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.vpn_agent.management import Management
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.vpn_agent.management import Management
 from tests.support.agent import settings
 
 
@@ -30,7 +30,7 @@ def test_empty_status_still_requires_complete_header(
 
 def test_rehearsal_refuses_host_before_fixture_setup(monkeypatch):
     """The explicit integration entry cannot construct PKI before attestation."""
-    from sciaiot.ovpncp.migration.models import MigrationError
+    from sciaiot.rivet.migration.models import MigrationError
     from tests.integration import vpn_agent_rehearsal as rehearsal
 
     monkeypatch.setattr(rehearsal.sys, "argv", ["rehearsal", "--easyrsa", "/unused"])

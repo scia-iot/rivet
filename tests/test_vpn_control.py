@@ -2,8 +2,8 @@
 
 import pytest
 
-from sciaiot.ovpncp.application.vpn_control import schemas, wire
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
+from sciaiot.rivet.application.vpn_control import schemas, wire
+from sciaiot.rivet.application.vpn_control.errors import ControlError
 
 
 def test_unknown_operation_has_redacted_error() -> None:
@@ -77,7 +77,7 @@ def test_existing_long_names_preserved() -> None:
 
 
 def test_retry_matrix_and_stable_status() -> None:
-    from sciaiot.ovpncp.application.vpn_control.errors import (
+    from sciaiot.rivet.application.vpn_control.errors import (
         ErrorCode,
         RetryAction,
         problem_status,
@@ -195,7 +195,7 @@ def test_invalid_json_values(payload: bytes) -> None:
 
 
 def test_response_error_round_trip_and_redaction() -> None:
-    from sciaiot.ovpncp.application.vpn_control.errors import ErrorCode
+    from sciaiot.rivet.application.vpn_control.errors import ErrorCode
 
     request = schemas.Request(request_id=REQUEST_ID, command=schemas.Health())
     response = schemas.Response(
@@ -276,7 +276,7 @@ def test_response_kind_id_and_client_correlation() -> None:
 def test_archive_correlation_closes_unread_source(field: str, value: object) -> None:
     import hashlib
 
-    from sciaiot.ovpncp.application.vpn_control import archive
+    from sciaiot.rivet.application.vpn_control import archive
     from tests.vpn_control_conformance import BytesSource, request
 
     incoming = request(schemas.Archive(client="edge_1", generation=0))
@@ -312,7 +312,7 @@ def test_archive_correlation_closes_unread_source(field: str, value: object) -> 
 def test_archive_stream_lifetime(fault: str) -> None:
     import hashlib
 
-    from sciaiot.ovpncp.application.vpn_control import archive
+    from sciaiot.rivet.application.vpn_control import archive
     from tests.vpn_control_conformance import BytesSource, request
 
     class Source(BytesSource):
@@ -467,7 +467,7 @@ def test_nonterminal_results_cannot_be_public_success(
 
 
 def test_failure_result_is_not_success() -> None:
-    from sciaiot.ovpncp.application.vpn_control.errors import ErrorCode
+    from sciaiot.rivet.application.vpn_control.errors import ErrorCode
 
     response = schemas.Response(
         request_id=REQUEST_ID,

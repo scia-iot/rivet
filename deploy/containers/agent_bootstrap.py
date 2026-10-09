@@ -85,7 +85,7 @@ def bootstrap(*, health: bool = False) -> None:
     target = (
         ["/opt/agent/agent_health.py"]
         if health
-        else ["-m", "sciaiot.ovpncp.vpn_agent.cli"]
+        else ["-m", "sciaiot.rivet.vpn_agent.cli"]
     )
     os.execv(sys.executable, [sys.executable, *target])
 

@@ -3,9 +3,9 @@
 import pytest
 from pydantic import ValidationError
 
-from sciaiot.ovpncp.application.vpn_control import schemas
-from sciaiot.ovpncp.services import vpn
-from sciaiot.ovpncp.utils import openvpn
+from sciaiot.rivet.application.vpn_control import schemas
+from sciaiot.rivet.services import vpn
+from sciaiot.rivet.utils import openvpn
 
 
 @pytest.mark.parametrize(

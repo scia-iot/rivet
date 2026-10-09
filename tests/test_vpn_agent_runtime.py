@@ -20,16 +20,16 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
-from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
-from sciaiot.ovpncp.adapters.vpn.host import HostVpnControl
-from sciaiot.ovpncp.adapters.vpn.shadow import ShadowHostVpnControl, projection
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError, ErrorCode
-from sciaiot.ovpncp.vpn_agent import bounded, cli, files, network
-from sciaiot.ovpncp.vpn_agent.control import ReadOnlyVpnControl
-from sciaiot.ovpncp.vpn_agent.management import Management
-from sciaiot.ovpncp.vpn_agent.server import UnixAgentServer
-from sciaiot.ovpncp.vpn_agent.settings import Settings
+from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
+from sciaiot.rivet.adapters.vpn.host import HostVpnControl
+from sciaiot.rivet.adapters.vpn.shadow import ShadowHostVpnControl, projection
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError, ErrorCode
+from sciaiot.rivet.vpn_agent import bounded, cli, files, network
+from sciaiot.rivet.vpn_agent.control import ReadOnlyVpnControl
+from sciaiot.rivet.vpn_agent.management import Management
+from sciaiot.rivet.vpn_agent.server import UnixAgentServer
+from sciaiot.rivet.vpn_agent.settings import Settings
 from tests.support.agent import STATUS, request, settings
 
 
@@ -483,19 +483,19 @@ def test_settings_and_cli_fail_closed(runtime, monkeypatch):
     with pytest.raises(ValueError):
         dataclasses.replace(runtime, config_path=Path("relative"))
     environment = {
-        "OVPNCP_AGENT_CONFIG": str(runtime.config_path),
-        "OVPNCP_AGENT_PKI": str(runtime.pki_path),
-        "OVPNCP_AGENT_CCD": str(runtime.ccd_path),
-        "OVPNCP_MANAGEMENT_SOCKET": runtime.management_socket,
-        "OVPNCP_MANAGEMENT_UID": str(os.getuid()),
-        "OVPNCP_MANAGEMENT_GID": str(os.getgid()),
-        "OVPNCP_API_UID": str(os.getuid()),
-        "OVPNCP_AGENT_SOCKET": runtime.control_socket,
+        "RIVET_AGENT_CONFIG": str(runtime.config_path),
+        "RIVET_AGENT_PKI": str(runtime.pki_path),
+        "RIVET_AGENT_CCD": str(runtime.ccd_path),
+        "RIVET_MANAGEMENT_SOCKET": runtime.management_socket,
+        "RIVET_MANAGEMENT_UID": str(os.getuid()),
+        "RIVET_MANAGEMENT_GID": str(os.getgid()),
+        "RIVET_API_UID": str(os.getuid()),
+        "RIVET_AGENT_SOCKET": runtime.control_socket,
     }
     for key, value in environment.items():
         monkeypatch.setenv(key, value)
     assert Settings.from_environment() == runtime
-    monkeypatch.setenv("OVPNCP_API_UID", "invalid")
+    monkeypatch.setenv("RIVET_API_UID", "invalid")
     with pytest.raises(ValueError):
         Settings.from_environment()
     with pytest.raises(SystemExit, match="Private VPN agent unavailable"):
@@ -619,7 +619,7 @@ def test_cli_normal_lifecycle_and_module_entry(monkeypatch):
     assert server.shutdown.call_count == 2
     mocked = Mock()
     monkeypatch.setattr(cli, "main", mocked)
-    runpy.run_module("sciaiot.ovpncp.vpn_agent", run_name="__main__")
+    runpy.run_module("sciaiot.rivet.vpn_agent", run_name="__main__")
     mocked.assert_called_once()
 
 
@@ -627,13 +627,13 @@ def test_shadow_settings_selection_and_service_clone(runtime, monkeypatch):
     """Application host compatibility survives construction for each request."""
     from sqlmodel import Session, create_engine
 
-    from sciaiot.ovpncp import dependencies
-    from sciaiot.ovpncp.adapters.vpn.settings import BackendSettings
-    from sciaiot.ovpncp.services.vpn import VpnService
+    from sciaiot.rivet import dependencies
+    from sciaiot.rivet.adapters.vpn.settings import BackendSettings
+    from sciaiot.rivet.services.vpn import VpnService
 
-    monkeypatch.setenv("OVPNCP_VPN_BACKEND", "shadow")
-    monkeypatch.setenv("OVPNCP_AGENT_UID", str(os.getuid()))
-    monkeypatch.setenv("OVPNCP_AGENT_SOCKET", runtime.control_socket)
+    monkeypatch.setenv("RIVET_VPN_BACKEND", "shadow")
+    monkeypatch.setenv("RIVET_AGENT_UID", str(os.getuid()))
+    monkeypatch.setenv("RIVET_AGENT_SOCKET", runtime.control_socket)
     assert BackendSettings.from_environment().backend == "shadow"
     dependencies._configured_vpn_control.cache_clear()
     try:
@@ -788,10 +788,10 @@ root = pathlib.Path(sys.argv[1])
 sys.path.insert(0, str(root))
 sys.path.extend(sys.argv[2:])
 for name in ("cli", "server", "control", "management", "network", "files"):
-    module = importlib.import_module("sciaiot.ovpncp.vpn_agent." + name)
+    module = importlib.import_module("sciaiot.rivet.vpn_agent." + name)
     assert pathlib.Path(module.__file__).is_relative_to(root)
 assert not any(name.split(".")[0] in {"fastapi", "sqlmodel", "azure"} for name in sys.modules)
-assert not (root / "sciaiot/ovpncp/utils").exists()
+assert not (root / "sciaiot/rivet/utils").exists()
 print("agent image source subset imports independently")
 """
     result = subprocess.run(

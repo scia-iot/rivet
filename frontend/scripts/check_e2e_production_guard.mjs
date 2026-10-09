@@ -20,14 +20,14 @@ const markers = [
   controlledToken,
   'Controlled E2E identity',
   'E2E administrator',
-  'ovpncp:e2e:controlled-role',
+  'rivet:e2e:controlled-role',
   'VITE_E2E_ACCESS_TOKEN',
   '/__e2e/auth-return',
 ]
 const vite = fileURLToPath(
   new URL('../node_modules/vite/bin/vite.js', import.meta.url),
 )
-const outputRoot = mkdtempSync(join(tmpdir(), 'ovpncp-e2e-guard-'))
+const outputRoot = mkdtempSync(join(tmpdir(), 'rivet-e2e-guard-'))
 const sourceRoot = fileURLToPath(new URL('..', import.meta.url))
 const buildRoot = join(outputRoot, 'source')
 mkdirSync(buildRoot)

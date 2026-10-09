@@ -38,7 +38,7 @@ from tests.integration.vpn_container_rehearsal import validate_namespace
 VPN_NETWORK = ipaddress.IPv4Network("10.253.0.0/24")
 WEB_NETWORK = ipaddress.IPv4Network("172.30.250.0/28")
 ROUTE_PROTOCOL = "186"
-SOURCE_UNITS = ("ovpncp.service", "openvpn@server.service")
+SOURCE_UNITS = ("rivet.service", "openvpn@server.service")
 
 
 def docker_network_overlaps(details: dict[str, Any]) -> bool:
@@ -90,9 +90,9 @@ def host_bundle(
         raise ValueError("Invalid disposable run identifier.")
     if set(model) != {"name", "networks", "services", "x-bind", "x-runtime"}:
         raise ValueError("Unexpected top-level Compose resource.")
-    if model["name"] != "ovpncp" or model["networks"] != {
+    if model["name"] != "rivet" or model["networks"] != {
         "web": {
-            "name": "ovpncp_web",
+            "name": "rivet_web",
             "driver": "bridge",
             "ipam": {"config": [{"subnet": str(WEB_NETWORK)}]},
         }
@@ -107,7 +107,7 @@ def host_bundle(
         _attest_service(role, service, state, ROUTE_PROTOCOL)
         service["logging"] = {"driver": "none"}
         service["restart"] = "no"
-        service["labels"] = {"ovpncp.rehearsal": token}
+        service["labels"] = {"rivet.rehearsal": token}
     services["api"]["environment"]["SSL_CERT_FILE"] = "/tmp/phase6-ca.crt"
     services["api"]["volumes"].append(
         {
@@ -119,8 +119,8 @@ def host_bundle(
         }
     )
     if upgrade:
-        services["web"]["environment"]["OVPNCP_UI_ENTRA_API_SCOPE"] = UPGRADE_SCOPE
-    project = f"ovpncp-p6-{token}"
+        services["web"]["environment"]["RIVET_UI_ENTRA_API_SCOPE"] = UPGRADE_SCOPE
+    project = f"rivet-p6-{token}"
     model["name"] = project
     model["networks"]["web"]["name"] = f"{project}_web"
     model.pop("x-bind")
@@ -250,15 +250,15 @@ class HostComposeRehearsal(ComposeRehearsal):
     def _render(self, anchors: dict[str, str] | None = None) -> None:
         """Render and attest real host/bridge services in a unique project."""
         settings = {
-            "OVPNCP_PLATFORM": "linux/amd64",
-            "OVPNCP_STATE_ROOT": str(self.state),
-            "OVPNCP_AGENT_ROUTE_PROTOCOL": ROUTE_PROTOCOL,
-            "OVPNCP_AGENT_MUTATIONS": "assignments,routes,access,pki,events,management",
-            "OVPNCP_VPN_EVENTS": "0",
-            "OVPNCP_VPN_RECONCILE": "0",
-            "OVPNCP_UI_ENTRA_TENANT_ID": TENANT,
-            "OVPNCP_UI_ENTRA_CLIENT_ID": SPA,
-            "OVPNCP_UI_ENTRA_API_SCOPE": SCOPE,
+            "RIVET_PLATFORM": "linux/amd64",
+            "RIVET_STATE_ROOT": str(self.state),
+            "RIVET_AGENT_ROUTE_PROTOCOL": ROUTE_PROTOCOL,
+            "RIVET_AGENT_MUTATIONS": "assignments,routes,access,pki,events,management",
+            "RIVET_VPN_EVENTS": "0",
+            "RIVET_VPN_RECONCILE": "0",
+            "RIVET_UI_ENTRA_TENANT_ID": TENANT,
+            "RIVET_UI_ENTRA_CLIENT_ID": SPA,
+            "RIVET_UI_ENTRA_API_SCOPE": SCOPE,
             "AZURE_ENTRAID_TENANT_ID": TENANT,
             "AZURE_ENTRAID_APP_CLIENT_ID": AUDIENCE,
             "AZURE_ENTRAID_USER_ROLE": "device_user",
@@ -266,7 +266,7 @@ class HostComposeRehearsal(ComposeRehearsal):
             "AZURE_ENTRAID_SERVICE_ADMIN_ROLE": "ServiceAdmin",
         }
         for role, image in self.images.items():
-            settings[f"OVPNCP_{role.upper()}_IMAGE"] = image
+            settings[f"RIVET_{role.upper()}_IMAGE"] = image
         env = self.root / "render.env"
         env.write_text("".join(f"{key}={value}\n" for key, value in settings.items()))
         env.chmod(0o600)
@@ -462,7 +462,7 @@ class HostComposeRehearsal(ComposeRehearsal):
         """Pin a bridge-attached helper namespace and its exact Docker identity."""
         if role not in {"a", "b", "c", "http"}:
             raise ValueError("Unexpected bridge anchor role.")
-        name = f"ovpncp-p6-{self.token}-bridge-{role}"
+        name = f"rivet-p6-{self.token}-bridge-{role}"
         self.containers.append(name)
         options = [
             "docker",
@@ -472,7 +472,7 @@ class HostComposeRehearsal(ComposeRehearsal):
             "--name",
             name,
             "--label",
-            f"ovpncp.rehearsal={self.token}",
+            f"rivet.rehearsal={self.token}",
             "--network",
             self.bridge,
             *(["--network-alias=login.microsoftonline.com"] if jwks_alias else []),
@@ -502,7 +502,7 @@ class HostComposeRehearsal(ComposeRehearsal):
         if (
             not item["State"]["Running"]
             or item["HostConfig"]["NetworkMode"] != self.bridge
-            or item["Config"]["Labels"].get("ovpncp.rehearsal") != self.token
+            or item["Config"]["Labels"].get("rivet.rehearsal") != self.token
             or address not in WEB_NETWORK
             or address
             in {
@@ -531,7 +531,7 @@ class HostComposeRehearsal(ComposeRehearsal):
 
     def _start_host_probe(self) -> str:
         """Run only the fixed HTTP probe against the real loopback web port."""
-        name = f"ovpncp-p6-{self.token}-host-probe"
+        name = f"rivet-p6-{self.token}-host-probe"
         self.containers.append(name)
         self.command(
             [
@@ -542,7 +542,7 @@ class HostComposeRehearsal(ComposeRehearsal):
                 "--name",
                 name,
                 "--label",
-                f"ovpncp.rehearsal={self.token}",
+                f"rivet.rehearsal={self.token}",
                 "--network",
                 "host",
                 "--read-only",
@@ -566,7 +566,7 @@ class HostComposeRehearsal(ComposeRehearsal):
         details = json.loads(self.docker("inspect", name))
         if len(details) != 1 or (
             details[0]["HostConfig"]["NetworkMode"] != "host"
-            or details[0]["Config"]["Labels"].get("ovpncp.rehearsal") != self.token
+            or details[0]["Config"]["Labels"].get("rivet.rehearsal") != self.token
             or not details[0]["State"]["Running"]
         ):
             raise RuntimeError("Disposable HTTP probe identity changed.")
@@ -603,7 +603,7 @@ class HostComposeRehearsal(ComposeRehearsal):
                 "--entrypoint=python",
                 "--user=65531:65531",
                 "--cap-add=NET_BIND_SERVICE",
-                "--env=OVPNCP_FIXTURE_LISTEN=0.0.0.0",
+                "--env=RIVET_FIXTURE_LISTEN=0.0.0.0",
                 *self.mount("http-fixture", "/fixture"),
             ],
             ["/fixture/fixture.py", "serve"],

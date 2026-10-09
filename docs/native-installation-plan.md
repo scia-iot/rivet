@@ -6,22 +6,22 @@ prior Compose service was restored after native cleanup.
 
 ## Package boundary
 
-- Publish one versioned `ovpncp` wheel. Its base dependencies cover the VPN
-  agent, event hook, shared protocol and migration CLI. `ovpncp[api]` adds the
+- Publish one versioned `sciaiot-rivet` core wheel. Its base dependencies cover the VPN
+  agent, event hook, shared protocol and migration CLI. `sciaiot-rivet[api]` adds the
   FastAPI service, SQLModel, Uvicorn and required Entra authentication. Optional
   storage and database extras compose with `api`. Two separate virtual
-  environments install the same exact wheel version.
-- This changes the former plain `pip install ovpncp` API dependency behavior.
-  Retain the `ovpncp` command and make a missing `api` extra fail with an
-  actionable message. One distribution prevents file overlap and protocol
-  version skew between API and agent packages.
+  environments install the same exact core version. `sciaiot-rivet-agent`
+  is a metapackage pinned to that version without the API extra.
+- The `rivet` command makes a missing `api` extra fail with an actionable
+  message. Application code lives only in the core distribution, preventing
+  file overlap between API and agent installations.
 - Require CPython 3.14 or newer. Include the YAML, legacy hook scripts and
   other runtime package resources in the built wheel. The UI is a separate
   static artifact and is served by Nginx, not the Python wheel.
 
 ## Native runtime boundary
 
-- Run the API as a dedicated unprivileged account with `OVPNCP_VPN_BACKEND=agent`.
+- Run the API as a dedicated unprivileged account with `RIVET_VPN_BACKEND=agent`.
   Run the agent as a separate account with only its reviewed Linux capabilities
   and private VPN state. Keep application code and both environments root-owned.
 - Give the API only its database/archive/profile state and read access to the
@@ -55,6 +55,11 @@ prior Compose service was restored after native cleanup.
   on the approved host; restore the prior Compose service.
 
 ## Verification
+
+These results predate the Rivet rename. They establish the original native
+deployment behavior, not verification of newly named wheels or images. See
+[the rename guide](rivet-rename.md) for the current package boundary and
+upgrade requirements.
 
 - Focused native/deployment suite: 45 passed. The complete local suite
   passed 961 tests at 90% total coverage; new application modules: native API
@@ -91,7 +96,7 @@ prior Compose service was restored after native cleanup.
   identity and typed agent socket, while HTTP authentication was checked with
   denial responses rather than a live Entra token. Native services and
   test-owned state were removed; the original paths were restored, and
-  `ovpncp-containers.service` returned active with all four services healthy.
+  the prior Compose startup service returned active with all four services healthy.
   The unchanged original client credentials and imported CCD reconnected,
   appeared in the agent session list and passed gateway traffic. The agent
   could not read the root-only API env file.

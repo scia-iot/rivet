@@ -10,20 +10,20 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from sciaiot.ovpncp import dependencies
-from sciaiot.ovpncp.authorization import (
+from sciaiot.rivet import dependencies
+from sciaiot.rivet.authorization import (
     AuthenticatedPrincipal,
     Permission,
     authorize_granted_device,
     authorize_owned_client,
     get_authenticated_principal,
 )
-from sciaiot.ovpncp.data.identity import AccessGrant, Device, User, UserClient
-from sciaiot.ovpncp.data.server import Client
-from sciaiot.ovpncp.dependencies import get_session
-from sciaiot.ovpncp.main import app
-from sciaiot.ovpncp.middlewares.azure_security import validate_token
-from sciaiot.ovpncp.services.client_config import (
+from sciaiot.rivet.data.identity import AccessGrant, Device, User, UserClient
+from sciaiot.rivet.data.server import Client
+from sciaiot.rivet.dependencies import get_session
+from sciaiot.rivet.main import app
+from sciaiot.rivet.middlewares.azure_security import validate_token
+from sciaiot.rivet.services.client_config import (
     MAX_CLIENT_CONFIG_BYTES,
     ClientConfigReadError,
     client_config_response,
@@ -109,16 +109,16 @@ def authorization_context_fixture() -> Generator[
         app.dependency_overrides[get_session] = get_session_override
         with (
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+                "sciaiot.rivet.middlewares.azure_security.validate_token",
                 side_effect=lambda request: dict(claims),
             ),
-            patch("sciaiot.ovpncp.main.create_app_directory"),
-            patch("sciaiot.ovpncp.main.create_tables"),
-            patch("sciaiot.ovpncp.main.init_scripts"),
-            patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
-            patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+            patch("sciaiot.rivet.main.create_app_directory"),
+            patch("sciaiot.rivet.main.create_tables"),
+            patch("sciaiot.rivet.main.init_scripts"),
+            patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
+            patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+                "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
                 "ServiceAdmin",
             ),
             TestClient(app) as test_client,
@@ -362,10 +362,10 @@ def test_missing_unknown_and_ambiguous_roles_fail_closed(
 ) -> None:
     """Only one explicitly configured app role can select a policy."""
     with (
-        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
-        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+        patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
+        patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
             "ServiceAdmin",
         ),
         pytest.raises(HTTPException) as error,
@@ -419,10 +419,10 @@ def test_delegated_roles_require_user_token_and_access_scope(
 ) -> None:
     """Human roles cannot authorize app-only or unscoped tokens."""
     with (
-        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
-        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+        patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
+        patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
             "ServiceAdmin",
         ),
         pytest.raises(HTTPException) as error,
@@ -456,10 +456,10 @@ def test_service_admin_requires_unscoped_app_only_token(
 ) -> None:
     """ServiceAdmin cannot authorize delegated or ambiguously scoped tokens."""
     with (
-        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
-        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+        patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
+        patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
             "ServiceAdmin",
         ),
         pytest.raises(HTTPException) as error,
@@ -493,10 +493,10 @@ def test_missing_or_duplicate_role_configuration_fails_closed(
         "scp": "access_as_user",
     }
     with (
-        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", user_role),
-        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", admin_role),
+        patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", user_role),
+        patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", admin_role),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
             service_role,
         ),
         pytest.raises(HTTPException) as error,
@@ -545,29 +545,29 @@ def test_validate_token_accepts_complete_role_configuration() -> None:
 
     with (
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.TENANT_ID",
+            "sciaiot.rivet.middlewares.azure_security.TENANT_ID",
             "tenant",
         ),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.APP_CLIENT_ID",
+            "sciaiot.rivet.middlewares.azure_security.APP_CLIENT_ID",
             "client",
         ),
-        patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
-        patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+        patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
+        patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
             "ServiceAdmin",
         ),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.urlopen",
+            "sciaiot.rivet.middlewares.azure_security.urlopen",
             return_value=keys,
         ),
         patch(
-            ("sciaiot.ovpncp.middlewares.azure_security.jwt.get_unverified_header"),
+            ("sciaiot.rivet.middlewares.azure_security.jwt.get_unverified_header"),
             return_value={"kid": "key-1"},
         ),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.jwt.decode",
+            "sciaiot.rivet.middlewares.azure_security.jwt.decode",
             return_value={
                 "iss": "https://login.microsoftonline.com/tenant/v2.0",
                 "sub": "device-user-subject",
@@ -635,7 +635,7 @@ def test_current_user_can_package_and_download_only_owned_credentials(
     archive = b"owned certificate archive"
 
     with (
-        patch("sciaiot.ovpncp.utils.openvpn.package_client_cert") as package,
+        patch("sciaiot.rivet.utils.openvpn.package_client_cert") as package,
         patch(
             "builtins.open",
             mock_open(read_data=archive),
@@ -705,7 +705,7 @@ def test_authenticated_roles_download_the_same_shared_client_config(
     assert response.content == profile
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["content-disposition"] == (
-        'attachment; filename="ovpncp-client.ovpn"'
+        'attachment; filename="rivet-client.ovpn"'
     )
 
 
@@ -818,15 +818,15 @@ def test_revoked_current_user_credentials_fail_before_archive_work(
     sensitive = "/private/revoked.zip?sig=secret-token"
     with (
         patch(
-            "sciaiot.ovpncp.middlewares.azure_storage.STORAGE_CONNECTION_STRING",
+            "sciaiot.rivet.middlewares.azure_storage.STORAGE_CONNECTION_STRING",
             "configured",
         ),
         patch(
-            "sciaiot.ovpncp.middlewares.azure_storage.container_client",
+            "sciaiot.rivet.middlewares.azure_storage.container_client",
             container,
             create=True,
         ),
-        patch("sciaiot.ovpncp.utils.openvpn.package_client_cert") as package,
+        patch("sciaiot.rivet.utils.openvpn.package_client_cert") as package,
         patch("builtins.open", side_effect=AssertionError(sensitive)) as opened,
     ):
         package_response = test_client.put("/me/clients/revoked-laptop/package-cert")

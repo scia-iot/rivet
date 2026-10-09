@@ -252,17 +252,17 @@ row covers all listed methods; permission details remain authoritative in
 | `read_client_cert`, `list_client_certs`, `client_is_revoked` | Agent issued cert metadata, discovery and authoritative index/CRL inspection. Missing index must fail closed, not silently classify as unrevoked. |
 | `package_client_cert` ZIP: `ca.crt`, `private/NAME.key`, `issued/NAME.crt` | Agent packages only this authorized client's leaf/key and public CA; API archive storage owns `NAME.zip`. Never include CA key. |
 | `assign_client_ip`, `unassign_client_ip`, `read_client_ip`, `add_iroute`, `remove_iroute`, `push_client_routes`, `pull_client_routes` | Agent owns structured CCD fields keyed by operation/client intent; atomic replace, preserve unrelated approved CCD directives. Current whole-file truncation/deletion and all-push removal cannot carry forward. |
-| `stage_client_file_removal`, restore/discard and `.ovpncp-delete-*` | Agent stages issued/private/reqs/inline/CCD leaf cleanup; API stages its local archive. Durable workflow records compensate/reconcile DB failures and retry cloud deletion; never roll back committed revocation. Retain CA/index/serial/CRL and historical revocation. |
+| `stage_client_file_removal`, restore/discard and `.rivet-delete-*` | Agent stages issued/private/reqs/inline/CCD leaf cleanup; API stages its local archive. Durable workflow records compensate/reconcile DB failures and retry cloud deletion; never roll back committed revocation. Retain CA/index/serial/CRL and historical revocation. |
 | `list_connections` legacy `/var/log/openvpn/openvpn-status.log` CSV parser | Agent bounded status/management snapshot; API owns persisted history even though utility currently has no public caller. |
 | `ip route show dev DEV`, `ip route add NET via IP dev DEV`, `ip route del ... dev DEV` | Agent typed route operations with configured TUN identity plus dedicated protocol marker and durable route IDs. Read administrator routes only for conflict detection; never remove/adopt them implicitly. |
 | `iptables -L CHAIN --line-numbers`, `-I CHAIN POSITION ...`, `-D CHAIN ...` | Agent replaces built-in chain/line-number edits with D3 owned chain/rules and bounded lock/reconcile. Paired client ACCEPT and RFC1918 private-destination return rules remain required; explicit default deny for managed TUN forwarding. |
 | `RestrictedNetwork.iptable_rules`, `private_iptable_rules`, `push_routes` | API computes typed intent; agent renders validated configured interface/network/mask/gateway. Preserve administrator rules and unrelated client pushes; reconcile overlap/reference counts before removing shared routes. |
 | `Server.load_from_config` device/address expansion | API consumes bounded subnet and exact agent-observed device. Current `dev + '0'` can turn tun0 into tun00; hard-coded tun0 firewall rules also disappear in target. No guessed interface or unbounded host-list allocation. |
-| `services/client_config.py`, `OVPNCP_CLIENT_CONFIG_PATH` and backup/temp files | API private profile mount, bounded validation, atomic generation/rollback; no host OpenVPN path. |
+| `services/client_config.py`, `RIVET_CLIENT_CONFIG_PATH` and backup/temp files | API private profile mount, bounded validation, atomic generation/rollback; no host OpenVPN path. |
 | `dependencies.py` app/certs mkdir, SQLModel table creation, script copy/chmod; `main.py` lifespan and logging YAML | API owns only application startup/data; deployment owns schema migration sequencing and immutable scripts/images. Remove API runtime hook installation. Logging stays redacted and bounded. |
 | `client-connect.sh`, `client-disconnect.sh`: bash, date, cat, curl, common_name/untrusted_ip/untrusted_port | Replace with agent management events or reviewed local bounded ingestion. Treat environment-derived names/addresses as untrusted. No curl callback, interpolated JSON, inherited shell contract or loopback auth bypass in containers. |
 | Existing Nginx template, systemd unit, env file, static release symlink; install/sudo/pip/npm/envsubst/nginx/systemctl commands | Deployment operator/build pipeline own installation and lifecycle. Retain existing host runbook during adapter transition; later Compose runbook replaces it, never execute these from API. |
-| `ovpncp-migrate` inventory/export/validate/import/verify/rollback; OpenSSL/Easy-RSA/OpenVPN probe commands and namespace rehearsal launcher | Offline deployment/migration operator only. Agent runtime does not expose bundle import, namespace creation or arbitrary binary probing. M0 source freeze and retained rollback stay mandatory. |
+| `rivet-migrate` inventory/export/validate/import/verify/rollback; OpenSSL/Easy-RSA/OpenVPN probe commands and namespace rehearsal launcher | Offline deployment/migration operator only. Agent runtime does not expose bundle import, namespace creation or arbitrary binary probing. M0 source freeze and retained rollback stay mandatory. |
 
 Managed routes use a deployment-allocated routing protocol number confirmed
 unused/non-reserved against the pinned host registry and actual route tables
@@ -366,7 +366,7 @@ verbosity and UDP exit notification plus bounded server subnet/device identity.
 API renders the transport-only file and persists its generation with the
 operation. No raw server dictionary or embedded credential is needed. `GET
 /me/client-config` remains authenticated for device_user, sysadmin and app-only
-ServiceAdmin, named `ovpncp-client.ovpn`, media type
+ServiceAdmin, named `rivet-client.ovpn`, media type
 `application/x-openvpn-profile`, `Cache-Control: no-store`, maximum 1 MiB.
 Per-client ZIP remains `NAME.zip`, `application/zip`, with no-store and existing
 admin/self-service ownership checks. ZIP contains CA certificate, named leaf

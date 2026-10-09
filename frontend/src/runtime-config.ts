@@ -41,8 +41,8 @@ function validateRuntimeConfiguration(value: unknown): RuntimeConfiguration | nu
 // additionally require runtime configuration when the script fails to load.
 export const usesRuntimeConfiguration =
   import.meta.env.VITE_RUNTIME_CONFIG === 'true' ||
-  Object.prototype.hasOwnProperty.call(window, '__OVPNCP_CONFIG__')
+  Object.prototype.hasOwnProperty.call(window, '__RIVET_CONFIG__')
 
 export const runtimeConfiguration = validateRuntimeConfiguration(
-  window.__OVPNCP_CONFIG__,
+  window.__RIVET_CONFIG__,
 )

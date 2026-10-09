@@ -8,8 +8,8 @@ import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from sciaiot.ovpncp import dependencies
-from sciaiot.ovpncp.data.server import Client, Server
+from sciaiot.rivet import dependencies
+from sciaiot.rivet.data.server import Client, Server
 from tests.integration.phase7_api_initializer import (
     BootstrapError,
     initialize,
@@ -84,7 +84,7 @@ def test_operator_initializer_imports_only_active_client(
     with (
         patch.object(dependencies, "client_config_path", str(profile)),
         patch(
-            "sciaiot.ovpncp.routes.server.openvpn.get_server_config",
+            "sciaiot.rivet.routes.server.openvpn.get_server_config",
             return_value=_configuration(),
         ),
         patch(

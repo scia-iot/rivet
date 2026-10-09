@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.vpn_agent.server import UnixAgentServer
-from sciaiot.ovpncp.vpn_agent.writer import MutationVpnControl
+from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.vpn_agent.server import UnixAgentServer
+from sciaiot.rivet.vpn_agent.writer import MutationVpnControl
 from tests.support.agent import request
 from tests.support.pki import change
 
@@ -119,7 +119,7 @@ def test_reload_success_replays_without_a_second_signal(
     config = control.settings.config_path
     config.write_text(config.read_text() + "\npersist-key\npersist-tun\n")
     calls: list[bool] = []
-    from sciaiot.ovpncp.vpn_agent.control import ReadOnlyVpnControl
+    from sciaiot.rivet.vpn_agent.control import ReadOnlyVpnControl
 
     monkeypatch.setattr(control, "_network_snapshot", lambda _: b"stable")
     monkeypatch.setattr(
@@ -206,7 +206,7 @@ def test_runtime_allows_explicit_compression_denial(pki_control):
 def test_reload_keeps_network_drift_partial_then_recovers_without_resignal(
     pki_control, monkeypatch
 ):
-    from sciaiot.ovpncp.vpn_agent.control import ReadOnlyVpnControl
+    from sciaiot.rivet.vpn_agent.control import ReadOnlyVpnControl
 
     control, _ = pki_control
     control.settings = dataclasses.replace(

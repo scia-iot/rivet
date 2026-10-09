@@ -5,7 +5,7 @@ import threading
 import time
 from pathlib import Path
 
-from sciaiot.ovpncp.vpn_agent.management import Management
+from sciaiot.rivet.vpn_agent.management import Management
 from tests.support.agent import STATUS, settings
 
 

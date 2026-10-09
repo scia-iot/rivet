@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.vpn_agent.journal import Journal
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.vpn_agent.journal import Journal
 
 
 def request(generation: int = 0) -> s.Request:
@@ -68,7 +68,7 @@ def test_single_writer_and_unknown_lookup(tmp_path: Path) -> None:
 
 
 def test_generation_failure_and_immutable_evidence(tmp_path: Path) -> None:
-    from sciaiot.ovpncp.application.vpn_control.errors import ErrorCode
+    from sciaiot.rivet.application.vpn_control.errors import ErrorCode
 
     with Journal(tmp_path) as journal:
         assert journal.accept(request(5)).state == "failed"

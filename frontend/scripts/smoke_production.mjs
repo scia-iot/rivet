@@ -17,7 +17,7 @@ function deploymentOrigin(value) {
   try {
     url = new URL(value)
   } catch {
-    throw new Error('OVPNCP_BASE_URL must be a valid HTTPS origin.')
+    throw new Error('RIVET_BASE_URL must be a valid HTTPS origin.')
   }
   if (
     url.protocol !== 'https:' ||
@@ -27,7 +27,7 @@ function deploymentOrigin(value) {
     url.search ||
     url.hash
   ) {
-    throw new Error('OVPNCP_BASE_URL must be a valid HTTPS origin.')
+    throw new Error('RIVET_BASE_URL must be a valid HTTPS origin.')
   }
   return url
 }
@@ -168,7 +168,7 @@ export async function smokeProductionDeployment(
 
 async function main() {
   try {
-    await smokeProductionDeployment(process.env.OVPNCP_BASE_URL ?? '')
+    await smokeProductionDeployment(process.env.RIVET_BASE_URL ?? '')
     process.stdout.write('Production deployment smoke checks passed.\n')
   } catch (error) {
     const message =

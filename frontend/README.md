@@ -1,4 +1,4 @@
-# ovpncp frontend
+# Rivet frontend
 
 React frontend for the OpenVPN control panel. Device, user, VPN-client,
 individual-access, server, network, fine-grained authorization, and device-user
@@ -122,7 +122,7 @@ also available to interactive administrators, so they can discover and verify
 the same shared setup download. Both download flows use short-lived, no-store
 Blobs and remove temporary anchors and object URLs immediately. Users place the
 profile beside the extracted credential ZIP and supply `ca.crt`, the named
-certificate, and named private key with `openvpn --config ovpncp-client.ovpn
+certificate, and named private key with `openvpn --config rivet-client.ovpn
 --ca ca.crt --cert <client-name>.crt --key <client-name>.key`, or select those
 same inputs in a graphical OpenVPN client's separate credential fields.
 
@@ -141,8 +141,8 @@ those administrative routes remains forbidden.
 The container image uses `npm run build:container` and carries no Entra
 settings. Container mode ignores dotenv files and all build-time `VITE_*`
 values, requires authentication, and fixes the API base to `/api`. At startup,
-set `OVPNCP_UI_ENTRA_TENANT_ID`, `OVPNCP_UI_ENTRA_CLIENT_ID`, and
-`OVPNCP_UI_ENTRA_API_SCOPE`; the container validates these public settings and
+set `RIVET_UI_ENTRA_TENANT_ID`, `RIVET_UI_ENTRA_CLIENT_ID`, and
+`RIVET_UI_ENTRA_API_SCOPE`; the container validates these public settings and
 serves `/runtime-config.js` with `Cache-Control: no-store`. The browser loads
 that script before the application. Missing or malformed runtime settings
 block the application; runtime configuration cannot enable an authentication
@@ -183,7 +183,7 @@ to confirm that the same compiled assets use two different runtime Entra
 configurations, and that missing or invalid runtime data blocks startup.
 Identity-provider requests are mocked; no real sign-in is performed.
 
-Use `npm run smoke:production` with `OVPNCP_BASE_URL` after deployment. The
+Use `npm run smoke:production` with `RIVET_BASE_URL` after deployment. The
 credential-free checker validates static fallback, asset caching, security
 headers, and the unauthenticated API boundary without printing response data.
 

@@ -7,7 +7,7 @@ from unittest import mock
 import pytest
 from fastapi import HTTPException, Request, Response
 
-from sciaiot.ovpncp.middlewares import azure_security
+from sciaiot.rivet.middlewares import azure_security
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT"])
@@ -18,7 +18,7 @@ def test_agent_backend_authenticates_loopback_connection_requests(
     address: str,
 ) -> None:
     """An API behind a local proxy cannot grant the host-hook exception."""
-    monkeypatch.setenv("OVPNCP_VPN_BACKEND", "agent")
+    monkeypatch.setenv("RIVET_VPN_BACKEND", "agent")
     request = Request(
         {
             "type": "http",
@@ -62,19 +62,19 @@ def test_agent_socket_setting_rejects_unsafe_paths(
     path: str,
 ) -> None:
     """Configuration cannot select an ambiguous or non-Unix destination."""
-    from sciaiot.ovpncp.adapters.vpn.settings import BackendSettings
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.adapters.vpn.settings import BackendSettings
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
 
-    monkeypatch.setenv("OVPNCP_VPN_BACKEND", "agent")
-    monkeypatch.setenv("OVPNCP_AGENT_UID", "12345")
+    monkeypatch.setenv("RIVET_VPN_BACKEND", "agent")
+    monkeypatch.setenv("RIVET_AGENT_UID", "12345")
     if "\x00" in path:
         # OS environment cannot contain NUL; exercise the same constructor.
-        from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
+        from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
 
         with pytest.raises((ControlError, ValueError)):
             AgentVpnControl(path, peer_uid=12345)
         return
-    monkeypatch.setenv("OVPNCP_AGENT_SOCKET", path)
+    monkeypatch.setenv("RIVET_AGENT_SOCKET", path)
     with pytest.raises((ControlError, ValueError)) as caught:
         BackendSettings.from_environment()
     assert path not in str(caught.value)
@@ -86,18 +86,18 @@ def test_unknown_backend_cannot_fall_back_to_host(
     backend: str,
 ) -> None:
     """A misspelled agent selection never silently enables local privileges."""
-    from sciaiot.ovpncp.adapters.vpn.settings import BackendSettings
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.adapters.vpn.settings import BackendSettings
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
 
-    monkeypatch.setenv("OVPNCP_VPN_BACKEND", backend)
+    monkeypatch.setenv("RIVET_VPN_BACKEND", backend)
     with pytest.raises((ControlError, ValueError)):
         BackendSettings.from_environment()
 
 
 def test_fake_pagination_can_follow_its_own_cursor() -> None:
     """A deterministic fake must exercise more than the first discovery page."""
-    from sciaiot.ovpncp.adapters.vpn.fake import FakeVpnControl
-    from sciaiot.ovpncp.application.vpn_control import schemas as s
+    from sciaiot.rivet.adapters.vpn.fake import FakeVpnControl
+    from sciaiot.rivet.application.vpn_control import schemas as s
 
     control = FakeVpnControl()
     for index, name in enumerate(("edge_1", "edge_2")):
@@ -128,9 +128,9 @@ def test_fake_pagination_can_follow_its_own_cursor() -> None:
 
 def test_fake_revocation_invalidates_an_unread_archive_handle() -> None:
     """A previously authorized stream cannot deliver a revoked credential."""
-    from sciaiot.ovpncp.adapters.vpn.fake import FakeVpnControl
-    from sciaiot.ovpncp.application.vpn_control import schemas as s
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.adapters.vpn.fake import FakeVpnControl
+    from sciaiot.rivet.application.vpn_control import schemas as s
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
 
     control = FakeVpnControl()
     request_id = "00000000-0000-4000-8000-000000000001"
@@ -171,10 +171,10 @@ def test_real_unix_transport_rejects_untrusted_responses(
     import socket
     import threading
 
-    from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
-    from sciaiot.ovpncp.application.vpn_control import schemas as s
-    from sciaiot.ovpncp.application.vpn_control import wire
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
+    from sciaiot.rivet.application.vpn_control import schemas as s
+    from sciaiot.rivet.application.vpn_control import wire
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
 
     socket_path = str(tmp_path / "agent.sock")
     observed: list[bytes] = []
@@ -254,12 +254,12 @@ def test_pending_operation_is_looked_up_on_retry(
     """Persisted pending evidence cannot permanently mask later completion."""
     from sqlmodel import Session, SQLModel, create_engine
 
-    from sciaiot.ovpncp import dependencies
-    from sciaiot.ovpncp.adapters.vpn.fake import FakeVpnControl
-    from sciaiot.ovpncp.application.vpn_control import schemas as s
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-    from sciaiot.ovpncp.data import identity  # noqa: F401 -- register ORM models
-    from sciaiot.ovpncp.services.vpn import VpnService
+    from sciaiot.rivet import dependencies
+    from sciaiot.rivet.adapters.vpn.fake import FakeVpnControl
+    from sciaiot.rivet.application.vpn_control import schemas as s
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.data import identity  # noqa: F401 -- register ORM models
+    from sciaiot.rivet.services.vpn import VpnService
 
     class PendingReply(FakeVpnControl):
         """Report admission before the caller observes a committed result."""
@@ -302,9 +302,9 @@ def test_pending_operation_is_looked_up_on_retry(
 
 def test_agent_address_pool_excludes_the_observed_server_address() -> None:
     """The agent's explicit server IP must never become assignable to a client."""
-    from sciaiot.ovpncp.adapters.vpn.fake import default_config
-    from sciaiot.ovpncp.routes.server import load_from_config
-    from sciaiot.ovpncp.services.vpn import config_projection
+    from sciaiot.rivet.adapters.vpn.fake import default_config
+    from sciaiot.rivet.routes.server import load_from_config
+    from sciaiot.rivet.services.vpn import config_projection
 
     config = default_config().model_copy(update={"server_address": "10.8.0.5"})
     server = load_from_config(config_projection(config))
@@ -318,9 +318,9 @@ def test_agent_can_lookup_durable_operations_while_not_ready(monkeypatch):
     """Recovery must remain reachable when unresolved effects gate new work."""
     import uuid
 
-    from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
-    from sciaiot.ovpncp.application.vpn_control import schemas as s
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError, ErrorCode
+    from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
+    from sciaiot.rivet.application.vpn_control import schemas as s
+    from sciaiot.rivet.application.vpn_control.errors import ControlError, ErrorCode
 
     control = AgentVpnControl("/run/ovpn-agent/agent.sock", peer_uid=0)
     observed = []

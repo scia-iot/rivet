@@ -20,14 +20,14 @@ import zipfile
 
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control import wire
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError, ErrorCode
-from sciaiot.ovpncp.data.server import Client, Connection
-from sciaiot.ovpncp.data.vpn_events import EventCursor
-from sciaiot.ovpncp.migration import filesystem
-from sciaiot.ovpncp.services.vpn_events import EventConsumer
+from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control import wire
+from sciaiot.rivet.application.vpn_control.errors import ControlError, ErrorCode
+from sciaiot.rivet.data.server import Client, Connection
+from sciaiot.rivet.data.vpn_events import EventCursor
+from sciaiot.rivet.migration import filesystem
+from sciaiot.rivet.services.vpn_events import EventConsumer
 from tests.integration import migration_rehearsal as fixture
 from tests.integration.vpn_agent_rehearsal import AgentRehearsal
 
@@ -62,7 +62,7 @@ class MutationRehearsal(AgentRehearsal):
                 launcher,
                 (
                     f"import sys\nsys.path.insert(0, {str(source)!r})\n"
-                    "from sciaiot.ovpncp.vpn_agent.event_hook import main\nmain()\n"
+                    "from sciaiot.rivet.vpn_agent.event_hook import main\nmain()\n"
                 ).encode(),
             )
             hook = shlex.join(
@@ -167,7 +167,7 @@ class MutationRehearsal(AgentRehearsal):
         """Require readiness after fresh launch or crash recovery."""
         process = self.start(
             f"agent-{len(self.processes)}",
-            [sys.executable, "-m", "sciaiot.ovpncp.vpn_agent"],
+            [sys.executable, "-m", "sciaiot.rivet.vpn_agent"],
             env,
         )
         deadline = time.monotonic() + 20
@@ -284,7 +284,7 @@ class MutationRehearsal(AgentRehearsal):
         os.chown(jail / "api", 65534, 65534)
         (jail / "run").mkdir(mode=0o755)
         (jail / "run").chmod(0o755)
-        control = pathlib.Path(env["OVPNCP_AGENT_SOCKET"]).parent
+        control = pathlib.Path(env["RIVET_AGENT_SOCKET"]).parent
         shared = jail / "run" / control.name
         shared.mkdir(mode=0o750)
         os.chown(control, 0, 65534)
@@ -297,17 +297,17 @@ class MutationRehearsal(AgentRehearsal):
         entropy.touch(mode=0o444)
         self.run(["/usr/bin/mount", "--bind", "/dev/urandom", str(entropy)])
         self.run(["/usr/bin/mount", "-o", "remount,bind,ro", str(entropy)])
-        child_env = {**env, "OVPNCP_API_UID": "65534"}
+        child_env = {**env, "RIVET_API_UID": "65534"}
         agent = self.start(
             f"agent-{len(self.processes)}",
-            [sys.executable, "-m", "sciaiot.ovpncp.vpn_agent"],
+            [sys.executable, "-m", "sciaiot.rivet.vpn_agent"],
             child_env,
         )
         pid = os.fork()
         if pid == 0:
             try:
                 os.closerange(3, 256)
-                vpn_api_probe.run(jail, env["OVPNCP_AGENT_SOCKET"])
+                vpn_api_probe.run(jail, env["RIVET_AGENT_SOCKET"])
             except BaseException as error:  # noqa: BLE001 - redact child failures
                 print(
                     json.dumps(
@@ -391,12 +391,12 @@ class MutationRehearsal(AgentRehearsal):
         journal = self.source / "journal"
         journal.mkdir(mode=0o700)
         env.update(
-            OVPNCP_AGENT_JOURNAL=str(journal),
-            OVPNCP_AGENT_MUTATIONS="assignments,routes,access,pki,events,management",
-            OVPNCP_AGENT_ROUTE_PROTOCOL="200",
-            OVPNCP_AGENT_EASYRSA=str(self.easyrsa),
-            OVPNCP_AGENT_PROJECTION=str(self.source / "projection"),
-            OVPNCP_AGENT_EVENT_SOCKET="/run/p4-events/events.sock",
+            RIVET_AGENT_JOURNAL=str(journal),
+            RIVET_AGENT_MUTATIONS="assignments,routes,access,pki,events,management",
+            RIVET_AGENT_ROUTE_PROTOCOL="200",
+            RIVET_AGENT_EASYRSA=str(self.easyrsa),
+            RIVET_AGENT_PROJECTION=str(self.source / "projection"),
+            RIVET_AGENT_EVENT_SOCKET="/run/p4-events/events.sock",
         )
         self.adapter = AgentVpnControl(str(socket_path), peer_uid=0)
         agent = self.start_agent(env)

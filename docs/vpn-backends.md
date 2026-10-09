@@ -11,9 +11,9 @@ backend until the deployment/cutover gates in the
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `OVPNCP_VPN_BACKEND` | `host` | Exactly `host`, `shadow` or `agent`; invalid or empty values fail startup. |
-| `OVPNCP_AGENT_SOCKET` | `/run/ovpn-agent/agent.sock` | Canonical absolute ASCII filesystem socket path, at most 107 bytes; traversal, control characters and URLs are rejected. |
-| `OVPNCP_AGENT_UID` | unset | Numeric trusted agent UID; required with `agent` or `shadow`. The client checks Linux `SO_PEERCRED` before transmitting any request bytes. |
+| `RIVET_VPN_BACKEND` | `host` | Exactly `host`, `shadow` or `agent`; invalid or empty values fail startup. |
+| `RIVET_AGENT_SOCKET` | `/run/ovpn-agent/agent.sock` | Canonical absolute ASCII filesystem socket path, at most 107 bytes; traversal, control characters and URLs are rejected. |
+| `RIVET_AGENT_UID` | unset | Numeric trusted agent UID; required with `agent` or `shadow`. The client checks Linux `SO_PEERCRED` before transmitting any request bytes. |
 
 No TCP fallback, redirects, token forwarding, privilege escalation or automatic
 mutation replay is supported. Configured settings are validated at startup;
@@ -92,9 +92,9 @@ retained in `VpnStepAttempt` before an explicit retry allocates a new attempt. A
 reconciled even if the route has already disappeared; an ordinary missing
 route retains its existing 404 response. Restricted-network ownership links
 to its exact creation workflow, preserving separate access/push intent IDs.
-Opt-in `OVPNCP_VPN_RECONCILE=1` performs bounded background lookups; it does not
+Opt-in `RIVET_VPN_RECONCILE=1` performs bounded background lookups; it does not
 dispatch missing operations with its short lookup budget. The agent independently
-reconciles accepted intents. `OVPNCP_VPN_EVENTS=1` commits durable event receipts,
+reconciles accepted intents. `RIVET_VPN_EVENTS=1` commits durable event receipts,
 history and cursor before immutable acknowledgements. Both flags default off
 and require agent mode. Inconclusive PKI/reload outcomes remain fenced for
 operator recovery; no automatic guess or CA rollback is permitted.

@@ -7,8 +7,8 @@ import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 
-from sciaiot.ovpncp.migration import bundle, source, target
-from sciaiot.ovpncp.migration.models import MigrationError, TargetSpec
+from sciaiot.rivet.migration import bundle, source, target
+from sciaiot.rivet.migration.models import MigrationError, TargetSpec
 
 
 def _target_policy(**kwargs):
@@ -95,7 +95,7 @@ def test_compatibility_and_nonempty_target_fail_closed(legacy, tmp_path):
 
 
 def test_cli_redacts_failures(tmp_path, capsys):
-    from sciaiot.ovpncp.migration.cli import main
+    from sciaiot.rivet.migration.cli import main
 
     spec = tmp_path / "private-client-address.json"
     spec.write_text(json.dumps({"openvpn_root": "secret-host-address"}))
@@ -172,7 +172,7 @@ def test_unknown_schema_and_duplicate_json_keys():
 
 
 def test_manifest_checksum_tampering(legacy):
-    from sciaiot.ovpncp.migration import validation
+    from sciaiot.rivet.migration import validation
 
     state = source.capture(legacy[1], writers_frozen=True)
     state.files["pki/serial"] = b"09\n"
@@ -222,7 +222,7 @@ def test_unsupported_or_inconsistent_source_options(legacy, option):
 
 
 def test_source_race_detected(legacy, monkeypatch):
-    from sciaiot.ovpncp.migration import filesystem
+    from sciaiot.rivet.migration import filesystem
 
     original = filesystem.read_file
     calls = 0
@@ -342,7 +342,7 @@ def test_target_tamper_and_missing_stop_refused(legacy, tmp_path):
 
 
 def test_cli_all_commands(legacy, tmp_path, capsys):
-    from sciaiot.ovpncp.migration.cli import main
+    from sciaiot.rivet.migration.cli import main
 
     spec = tmp_path / "source.json"
     spec.write_text(legacy[1].model_dump_json())
@@ -495,8 +495,8 @@ def test_observed_target_cipher_policy_required(legacy, tmp_path):
 
 
 def test_hook_excluded_and_reviewed_target_replacement(legacy, tmp_path):
-    from sciaiot.ovpncp.migration import filesystem
-    from sciaiot.ovpncp.migration.models import Replacement
+    from sciaiot.rivet.migration import filesystem
+    from sciaiot.rivet.migration.models import Replacement
 
     root, spec = legacy
     hook = root / "connect.sh"
@@ -536,7 +536,7 @@ def test_target_lock_conflict_and_unsafe_lock(legacy, tmp_path):
 
 
 def test_cli_passphrase_file(legacy, tmp_path, capsys):
-    from sciaiot.ovpncp.migration.cli import main
+    from sciaiot.rivet.migration.cli import main
 
     path = legacy[0] / "pki/private/ca.key"
     key = serialization.load_pem_private_key(path.read_bytes(), password=None)

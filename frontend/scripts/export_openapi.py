@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from sciaiot.ovpncp.main import app
+from sciaiot.rivet.main import app
 
 
 def main() -> None:

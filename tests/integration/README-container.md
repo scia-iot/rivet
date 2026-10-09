@@ -20,9 +20,9 @@ Example invocation, replacing all placeholders with reviewed cached digests:
 ```bash
 sudo -n timeout --signal=TERM --kill-after=120s 15m \
   python3 tests/integration/vpn_container_rehearsal.py \
-  --agent-image 'registry.example/ovpncp-agent@sha256:<64-hex-digest>' \
-  --openvpn-image 'registry.example/ovpncp-openvpn@sha256:<64-hex-digest>' \
-  --api-image 'registry.example/ovpncp-api@sha256:<64-hex-digest>'
+  --agent-image 'registry.example/rivet-agent@sha256:<64-hex-digest>' \
+  --openvpn-image 'registry.example/rivet-openvpn@sha256:<64-hex-digest>' \
+  --api-image 'registry.example/rivet-api@sha256:<64-hex-digest>'
 ```
 
 The runner explicitly selects the local rootful Docker socket and uses
@@ -86,7 +86,7 @@ It reports `full_phase6: false`: valid-token HTTP/RBAC, web edge, certificate
 renewal, crash-during-mutation recovery, reboot, backup/restore, migration,
 production host-network Compose and release evidence need separate verification.
 
-State is newly created under a private `ovpncp-p6-<run-id>-*` temporary directory.
+State is newly created under a private `rivet-p6-<run-id>-*` temporary directory.
 No source PKI, certificate store, database, host VPN configuration or production
 socket is read or mounted. Raw daemon logs are disabled, subprocess diagnostics
 are suppressed, and failures report only fixed stage/program/action, exit code
@@ -134,11 +134,11 @@ Invoke it from the staged repository root with the exact reviewed digests:
 sudo -n timeout --signal=TERM --kill-after=120s 20m \
   python3 -m tests.integration.compose_phase6_rehearsal \
   --compose deploy/compose.yml \
-  --agent-image 'registry.example/ovpncp-agent@sha256:<64-hex-digest>' \
-  --openvpn-image 'registry.example/ovpncp-openvpn@sha256:<64-hex-digest>' \
-  --api-image 'registry.example/ovpncp-api@sha256:<64-hex-digest>' \
-  --web-image 'registry.example/ovpncp-web@sha256:<64-hex-digest>' \
-  --upgrade-api-image 'registry.example/ovpncp-api@sha256:<64-hex-digest>'
+  --agent-image 'registry.example/rivet-agent@sha256:<64-hex-digest>' \
+  --openvpn-image 'registry.example/rivet-openvpn@sha256:<64-hex-digest>' \
+  --api-image 'registry.example/rivet-api@sha256:<64-hex-digest>' \
+  --web-image 'registry.example/rivet-web@sha256:<64-hex-digest>' \
+  --upgrade-api-image 'registry.example/rivet-api@sha256:<64-hex-digest>'
 ```
 
 The host also needs the Docker Compose plugin. The runner renders the source

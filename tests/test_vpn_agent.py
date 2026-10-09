@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.vpn_agent.control import ReadOnlyVpnControl
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.vpn_agent.control import ReadOnlyVpnControl
 from tests.support.agent import request, settings
 
 

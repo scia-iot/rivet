@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
-from sciaiot.ovpncp.data.identity import User, UserBase
-from sciaiot.ovpncp.dependencies import get_session
-from sciaiot.ovpncp.main import app
-from sciaiot.ovpncp.services.identity import UserService
+from sciaiot.rivet.data.identity import User, UserBase
+from sciaiot.rivet.dependencies import get_session
+from sciaiot.rivet.main import app
+from sciaiot.rivet.services.identity import UserService
 
 
 @pytest.fixture(name="identity_client")
@@ -34,12 +34,12 @@ def identity_client_fixture() -> Generator[TestClient]:
 
         app.dependency_overrides[get_session] = get_session_override
         with (
-            patch("sciaiot.ovpncp.main.create_app_directory"),
-            patch("sciaiot.ovpncp.main.create_tables"),
-            patch("sciaiot.ovpncp.main.init_scripts"),
-            patch("sciaiot.ovpncp.utils.openvpn.build_client"),
+            patch("sciaiot.rivet.main.create_app_directory"),
+            patch("sciaiot.rivet.main.create_tables"),
+            patch("sciaiot.rivet.main.init_scripts"),
+            patch("sciaiot.rivet.utils.openvpn.build_client"),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+                "sciaiot.rivet.middlewares.azure_security.validate_token",
                 return_value={
                     "iss": "https://login.example/tenant/v2.0",
                     "sub": "test-subject",
@@ -48,14 +48,14 @@ def identity_client_fixture() -> Generator[TestClient]:
                     "scp": "access_as_user",
                 },
             ),
-            patch("sciaiot.ovpncp.middlewares.azure_security.USER_ROLE", "user"),
-            patch("sciaiot.ovpncp.middlewares.azure_security.ADMIN_ROLE", "admin"),
+            patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
+            patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
             patch(
-                "sciaiot.ovpncp.middlewares.azure_security.SERVICE_ADMIN_ROLE",
+                "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
                 "ServiceAdmin",
             ),
             patch(
-                "sciaiot.ovpncp.utils.openvpn.read_client_cert",
+                "sciaiot.rivet.utils.openvpn.read_client_cert",
                 return_value={
                     "issued_by": "test-ca",
                     "issued_to": "test-client",
@@ -115,7 +115,7 @@ def test_current_principal_auto_registers_a_missing_local_user(
 ) -> None:
     """The first delegated `/me` request creates its local identity."""
     with patch(
-        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+        "sciaiot.rivet.middlewares.azure_security.validate_token",
         return_value={
             "iss": "https://login.example/tenant/v2.0",
             "sub": "new-subject",
@@ -153,7 +153,7 @@ def test_current_principal_preserves_an_existing_renamed_user(
     assert created.status_code == 201
 
     with patch(
-        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+        "sciaiot.rivet.middlewares.azure_security.validate_token",
         return_value={
             "iss": "https://login.example/tenant/v2.0",
             "sub": "test-subject",
@@ -249,7 +249,7 @@ def test_auto_registration_errors_do_not_expose_validated_identity(
     }
     with (
         patch(
-            "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+            "sciaiot.rivet.middlewares.azure_security.validate_token",
             return_value=claims,
         ),
         patch.dict(
@@ -297,7 +297,7 @@ def test_auto_registration_uses_a_bounded_validated_claim_display_name(
         "preferred_username": preferred_username,
     }
     with patch(
-        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+        "sciaiot.rivet.middlewares.azure_security.validate_token",
         return_value=claims,
     ):
         response = identity_client.get("/me")
@@ -312,7 +312,7 @@ def test_service_admin_is_never_auto_registered(
 ) -> None:
     """App-only service administration never creates a local User."""
     with patch(
-        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+        "sciaiot.rivet.middlewares.azure_security.validate_token",
         return_value={
             "iss": "https://login.example/tenant/v2.0",
             "sub": "service-object-id",
@@ -370,7 +370,7 @@ def test_current_principal_rejects_partial_validated_identity(
 ) -> None:
     """Missing stable token claims fail closed instead of selecting a user."""
     with patch(
-        "sciaiot.ovpncp.middlewares.azure_security.validate_token",
+        "sciaiot.rivet.middlewares.azure_security.validate_token",
         return_value={
             "iss": "https://login.example/tenant/v2.0",
             "roles": ["admin"],

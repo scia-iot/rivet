@@ -93,16 +93,16 @@ def test_compose_enforces_privilege_and_mount_boundaries() -> None:
     assert not services["web"].get("volumes")
     api_mounts = {m["target"]: m for m in services["api"]["volumes"]}
     assert set(api_mounts) == {
-        "/opt/ovpncp",
-        "/opt/ovpncp/certs",
+        "/opt/rivet",
+        "/opt/rivet/certs",
         "/var/lib/ovpn-api/profile",
         "/run/ovpn-agent",
     }
     assert api_mounts["/run/ovpn-agent"]["read_only"] is True
     assert not services["openvpn"].get("depends_on")
     assert (
-        "OVPNCP_AGENT_ROUTE_PROTOCOL:?"
-        in (services["agent"]["environment"]["OVPNCP_AGENT_ROUTE_PROTOCOL"])
+        "RIVET_AGENT_ROUTE_PROTOCOL:?"
+        in (services["agent"]["environment"]["RIVET_AGENT_ROUTE_PROTOCOL"])
     )
 
 
@@ -125,7 +125,7 @@ def test_build_manifest_has_four_independent_images() -> None:
     document = yaml.safe_load((ROOT / "deploy/compose.build.yml").read_text())
     assert set(document["services"]) == {"openvpn", "agent", "api", "web"}
     for service in document["services"].values():
-        assert service["platform"] == "${OVPNCP_PLATFORM:-linux/amd64}"
+        assert service["platform"] == "${RIVET_PLATFORM:-linux/amd64}"
         assert (ROOT / service["build"]["dockerfile"]).is_file()
         assert not service.get("volumes")
         assert not service.get("network_mode")

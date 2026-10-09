@@ -15,10 +15,10 @@ from pathlib import Path
 
 from sqlmodel import Session, select
 
-from sciaiot.ovpncp import dependencies
-from sciaiot.ovpncp.data.server import Client, Server
-from sciaiot.ovpncp.routes import client, server
-from sciaiot.ovpncp.services.vpn import VpnService, is_valid_name
+from sciaiot.rivet import dependencies
+from sciaiot.rivet.data.server import Client, Server
+from sciaiot.rivet.routes import client, server
+from sciaiot.rivet.services.vpn import VpnService, is_valid_name
 
 
 class BootstrapError(Exception):
@@ -127,9 +127,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if (
         os.geteuid() != 65531
-        or os.environ.get("OVPNCP_VPN_BACKEND") != "agent"
-        or os.environ.get("OVPNCP_VPN_EVENTS", "0") != "0"
-        or os.environ.get("OVPNCP_VPN_RECONCILE", "0") != "0"
+        or os.environ.get("RIVET_VPN_BACKEND") != "agent"
+        or os.environ.get("RIVET_VPN_EVENTS", "0") != "0"
+        or os.environ.get("RIVET_VPN_RECONCILE", "0") != "0"
     ):
         parser.exit(2, "operator environment is not isolated\n")
     try:

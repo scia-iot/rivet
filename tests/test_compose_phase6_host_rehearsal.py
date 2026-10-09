@@ -28,10 +28,10 @@ def _rendered() -> tuple[dict[str, Any], dict[str, str]]:
         for role, image in images.items()
     }
     model: dict[str, Any] = {
-        "name": "ovpncp",
+        "name": "rivet",
         "networks": {
             "web": {
-                "name": "ovpncp_web",
+                "name": "rivet_web",
                 "driver": "bridge",
                 "ipam": {"config": [{"subnet": "172.30.250.0/28"}]},
             }
@@ -62,17 +62,17 @@ def test_host_bundle_retains_source_network_modes_and_ports(
     assert rendered == original
     assert attest.call_count == 4
     assert all(call.args[3] == "186" for call in attest.call_args_list)
-    assert bundle["name"] == "ovpncp-p6-" + "a" * 12
+    assert bundle["name"] == "rivet-p6-" + "a" * 12
     assert bundle["networks"]["web"]["name"] == bundle["name"] + "_web"
     for role in ("openvpn", "agent", "api", "web"):
         service = bundle["services"][role]
         assert service["network_mode"] == original["services"][role]["network_mode"]
         assert service["networks"] == original["services"][role]["networks"]
         assert service["ports"] == original["services"][role]["ports"]
-        assert service["labels"] == {"ovpncp.rehearsal": "a" * 12}
+        assert service["labels"] == {"rivet.rehearsal": "a" * 12}
     assert bundle["services"]["api"]["volumes"][0]["read_only"] is True
     assert (
-        bundle["services"]["web"]["environment"]["OVPNCP_UI_ENTRA_API_SCOPE"]
+        bundle["services"]["web"]["environment"]["RIVET_UI_ENTRA_API_SCOPE"]
         == isolated.UPGRADE_SCOPE
     )
 
@@ -104,7 +104,7 @@ def _runner(tmp_path: Path) -> host.HostComposeRehearsal:
     """Create a side-effect-free runner shell with known ownership values."""
     run = host.HostComposeRehearsal.__new__(host.HostComposeRehearsal)
     run.token = "a" * 12
-    run.project = "ovpncp-p6-" + run.token
+    run.project = "rivet-p6-" + run.token
     run.device = "tunp6" + "a" * 8
     run.bridge = run.project + "_web"
     run.root = tmp_path / "state"

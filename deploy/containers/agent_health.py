@@ -2,10 +2,10 @@
 
 import uuid
 
-from sciaiot.ovpncp.application.vpn_control import schemas
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.vpn_agent.control import ReadOnlyVpnControl
-from sciaiot.ovpncp.vpn_agent.settings import Settings
+from sciaiot.rivet.application.vpn_control import schemas
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.vpn_agent.control import ReadOnlyVpnControl
+from sciaiot.rivet.vpn_agent.settings import Settings
 
 
 def main() -> None:

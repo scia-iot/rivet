@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
-from sciaiot.ovpncp.vpn_agent.events import EventSpool
-from sciaiot.ovpncp.vpn_agent.journal import Journal
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.vpn_agent.events import EventSpool
+from sciaiot.rivet.vpn_agent.journal import Journal
 
 
 def test_events_survive_restart_and_ack_is_bounded(tmp_path: Path) -> None:

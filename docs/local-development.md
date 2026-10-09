@@ -5,7 +5,7 @@ This guide runs FastAPI on `http://127.0.0.1:8000` and the Vite frontend on
 backend and removes the `/api` prefix before forwarding them.
 
 Use a disposable Linux development machine or container. The API initializes
-files under `/opt/ovpncp`, and its OpenVPN, routing, and firewall operations
+files under `/opt/rivet`, and its OpenVPN, routing, and firewall operations
 are privileged system boundaries that can change the host when invoked.
 
 ## Prerequisites
@@ -15,7 +15,7 @@ are privileged system boundaries that can change the host when invoked.
 - npm
 - For real sign-in, a Microsoft Entra tenant with separate API and SPA
   application registrations
-- Write access to `/opt/ovpncp` for the account running the backend
+- Write access to `/opt/rivet` for the account running the backend
 
 The backend also needs outbound access to Microsoft Entra while validating
 access tokens.
@@ -33,14 +33,14 @@ python -m pip install -e .
 ```
 
 The API creates its SQLite database, generated hook scripts, and certificate
-working directory under `/opt/ovpncp`. On a disposable development host where
+working directory under `/opt/rivet`. On a disposable development host where
 that path is not already used by an installation, create both required
 directories for the current user:
 
 ```shell
-sudo install -d -m 0700 -o "$(id -un)" -g "$(id -gn)" /opt/ovpncp
+sudo install -d -m 0700 -o "$(id -un)" -g "$(id -gn)" /opt/rivet
 sudo install -d -m 0700 -o "$(id -un)" -g "$(id -gn)" \
-  /opt/ovpncp/certs
+  /opt/rivet/certs
 ```
 
 Do not change the ownership of an existing deployment. Use an isolated
@@ -109,11 +109,11 @@ Entra app role does not by itself create the local record.
 ## Prepare profile generation
 
 The initialization API writes a generated shared client profile. For an
-isolated local environment, keep the default `/opt/ovpncp/client.ovpn` or set
+isolated local environment, keep the default `/opt/rivet/client.ovpn` or set
 an absolute writable override before starting the backend:
 
 ```shell
-export OVPNCP_CLIENT_CONFIG_PATH=/opt/ovpncp/client.ovpn
+export RIVET_CLIENT_CONFIG_PATH=/opt/rivet/client.ovpn
 ```
 
 The host must have a reviewed `/etc/openvpn/server.conf`; initialization reads
@@ -131,11 +131,11 @@ Start the backend in the first terminal from the repository root:
 source .venv/bin/activate
 export HOST=127.0.0.1
 export PORT=8000
-export OVPNCP_ROOT_PATH=""
-ovpncp
+export RIVET_ROOT_PATH=""
+rivet
 ```
 
-Keep `OVPNCP_ROOT_PATH` empty for local Vite development. Vite removes `/api`
+Keep `RIVET_ROOT_PATH` empty for local Vite development. Vite removes `/api`
 before forwarding each request to FastAPI.
 
 Start the frontend in a second terminal:
@@ -193,7 +193,7 @@ bypass.
   local `User` matches the token's issuer and subject.
 - A frontend proxy failure usually means FastAPI is not listening on
   `127.0.0.1:8000`.
-- A startup permission error under `/opt/ovpncp` means the backend account
+- A startup permission error under `/opt/rivet` means the backend account
   cannot initialize its runtime files.
 - OpenVPN, `iptables`, or route operations can fail on an ordinary workstation
   without the corresponding services, tools, and privileges. Run those flows

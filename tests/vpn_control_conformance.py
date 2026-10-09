@@ -9,9 +9,9 @@ from typing import Literal, Protocol
 
 import pytest
 
-from sciaiot.ovpncp.application.vpn_control import archive, port, wire
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError, ErrorCode
+from sciaiot.rivet.application.vpn_control import archive, port, wire
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError, ErrorCode
 
 RID = "00000000-0000-4000-8000-000000000001"
 OID = "00000000-0000-4000-8000-000000000002"

@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from sciaiot.ovpncp.adapters.vpn.agent import AgentVpnControl
-from sciaiot.ovpncp.adapters.vpn.fake import FakeState, FakeVpnControl
-from sciaiot.ovpncp.adapters.vpn.host import HostVpnControl
-from sciaiot.ovpncp.application.vpn_control import port, wire
-from sciaiot.ovpncp.application.vpn_control import schemas as s
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError, problem_status
-from sciaiot.ovpncp.utils import openvpn
+from sciaiot.rivet.adapters.vpn.agent import AgentVpnControl
+from sciaiot.rivet.adapters.vpn.fake import FakeState, FakeVpnControl
+from sciaiot.rivet.adapters.vpn.host import HostVpnControl
+from sciaiot.rivet.application.vpn_control import port, wire
+from sciaiot.rivet.application.vpn_control import schemas as s
+from sciaiot.rivet.application.vpn_control.errors import ControlError, problem_status
+from sciaiot.rivet.utils import openvpn
 from tests import vpn_control_conformance as contract
 
 
@@ -190,7 +190,7 @@ def test_shared_failure_contract(harness_factory, fault):
 
 def test_agent_unavailable_socket_redacts_its_path(tmp_path):
     """Connection diagnostics cannot expose configured runtime paths."""
-    from sciaiot.ovpncp.application.vpn_control.errors import ControlError
+    from sciaiot.rivet.application.vpn_control.errors import ControlError
 
     control = AgentVpnControl(str(tmp_path / "missing.sock"), peer_uid=os.getuid())
     with pytest.raises(ControlError, match="unavailable") as error:
@@ -203,7 +203,7 @@ def test_socket_body_rejects_deadline_and_framing_failures(failure):
     """Reads enforce elapsed deadlines and exact byte framing without PKI."""
     import time
 
-    from sciaiot.ovpncp.adapters.vpn.agent import SocketBody
+    from sciaiot.rivet.adapters.vpn.agent import SocketBody
 
     receiving, sending = socket.socketpair()
     released = []

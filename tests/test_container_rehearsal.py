@@ -16,14 +16,14 @@ def test_image_requires_repository_digest() -> None:
         "agent@sha256:abc",
         ";id",
         "../agent",
-        "registry.example/team/ovpncp-agent:latest",
-        "registry.example/../ovpncp-agent@sha256:" + "a" * 64,
+        "registry.example/team/rivet-agent:latest",
+        "registry.example/../rivet-agent@sha256:" + "a" * 64,
     ):
         with pytest.raises(ValueError):
             rehearsal.validate_image(invalid, "agent")
-    rehearsal.validate_image("example.test/ovpncp-agent@sha256:" + "a" * 64, "agent")
+    rehearsal.validate_image("example.test/rivet-agent@sha256:" + "a" * 64, "agent")
     rehearsal.validate_image(
-        "registry.example:5000/team/vpn/ovpncp-agent@sha256:" + "b" * 64,
+        "registry.example:5000/team/vpn/rivet-agent@sha256:" + "b" * 64,
         "agent",
     )
 
@@ -88,7 +88,7 @@ def test_failed_launch_is_tracked_for_cleanup() -> None:
     )
     with pytest.raises(RuntimeError):
         run.launch("anchor", "image", [], ["python", "-c", "pass"])
-    assert run.containers == ["ovpncp-p6-aaaaaaaaaaaa-anchor"]
+    assert run.containers == ["rivet-p6-aaaaaaaaaaaa-anchor"]
 
 
 def test_cleanup_preserves_state_when_container_removal_fails(tmp_path: Path) -> None:
@@ -151,7 +151,7 @@ def test_cleanup_refuses_foreign_label(
         return_value=json.dumps(
             [
                 {
-                    "Config": {"Labels": {"ovpncp.rehearsal": "foreign"}},
+                    "Config": {"Labels": {"rivet.rehearsal": "foreign"}},
                     "Id": "a" * 64,
                 }
             ]
@@ -181,7 +181,7 @@ def test_cleanup_removes_ids_before_state(
             json.dumps(
                 [
                     {
-                        "Config": {"Labels": {"ovpncp.rehearsal": "ours"}},
+                        "Config": {"Labels": {"rivet.rehearsal": "ours"}},
                         "Id": "a" * 64,
                     }
                 ]
@@ -230,7 +230,7 @@ def test_anchor_rejects_host_before_network_command(
         {
             "State": {"Running": True, "Pid": 123},
             "HostConfig": {"NetworkMode": "none"},
-            "Config": {"Labels": {"ovpncp.rehearsal": run.token}},
+            "Config": {"Labels": {"rivet.rehearsal": run.token}},
         }
     ]
     command = Mock(side_effect=[b"id", json.dumps(info).encode()])
@@ -455,8 +455,8 @@ def test_http_api_uses_real_entrypoint_without_privileged_state(
     assert not any("--entrypoint" in value for value in options)
     assert not any("cap-add" in value or "/dev/net/tun" in value for value in options)
     assert not any("vpn-pki" in value or "vpn-projection" in value for value in options)
-    assert "--env=OVPNCP_VPN_BACKEND=agent" in options
-    assert "--env=OVPNCP_VPN_EVENTS=0" in options
+    assert "--env=RIVET_VPN_BACKEND=agent" in options
+    assert "--env=RIVET_VPN_EVENTS=0" in options
     assert any("dst=/run/ovpn-agent,readonly" in value for value in options)
 
 

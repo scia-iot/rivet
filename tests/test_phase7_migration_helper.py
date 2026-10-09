@@ -6,14 +6,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from sciaiot.ovpncp.migration import container_target
-from sciaiot.ovpncp.migration.models import ContainerTargetSpec, MigrationError
+from sciaiot.rivet.migration import container_target
+from sciaiot.rivet.migration.models import ContainerTargetSpec, MigrationError
 from tests.integration import phase7_container_rehearsal as runner
 from tests.integration import phase7_migration_helper as helper
 
-OPENVPN = "registry.example/team/ovpncp-openvpn@sha256:" + "a" * 64
-AGENT = "registry.example/team/ovpncp-agent@sha256:" + "b" * 64
-API = "registry.example/team/ovpncp-api@sha256:" + "c" * 64
+OPENVPN = "registry.example/team/rivet-openvpn@sha256:" + "a" * 64
+AGENT = "registry.example/team/rivet-agent@sha256:" + "b" * 64
+API = "registry.example/team/rivet-api@sha256:" + "c" * 64
 SOURCE_VERSIONS = {
     "openvpn": "2.6.19",
     "easyrsa": "3.1.7",
@@ -111,11 +111,11 @@ def test_policy_omits_transition_for_matching_source_versions(
 @pytest.mark.parametrize(
     ("role", "reference"),
     [
-        ("openvpn", "registry.example/team/ovpncp-openvpn:latest"),
-        ("agent", "registry.example/team/ovpncp-agent@sha256:" + "g" * 64),
-        ("agent", "registry.example/team/ovpncp-api@sha256:" + "b" * 64),
-        ("api", "registry.example/team/ovpncp-api@sha256:" + "c" * 63),
-        ("api", "registry.example/team/ovpncp-api@sha256:" + "c" * 64 + "\n"),
+        ("openvpn", "registry.example/team/rivet-openvpn:latest"),
+        ("agent", "registry.example/team/rivet-agent@sha256:" + "g" * 64),
+        ("agent", "registry.example/team/rivet-api@sha256:" + "b" * 64),
+        ("api", "registry.example/team/rivet-api@sha256:" + "c" * 63),
+        ("api", "registry.example/team/rivet-api@sha256:" + "c" * 64 + "\n"),
     ],
 )
 def test_policy_rejects_malformed_or_mutable_image_evidence(
@@ -156,7 +156,7 @@ def test_policy_requires_exact_image_roles(
     references = capabilities["image_refs"]
     assert isinstance(references, dict)
     if extra_role:
-        references["web"] = "registry.example/team/ovpncp-web@sha256:" + "d" * 64
+        references["web"] = "registry.example/team/rivet-web@sha256:" + "d" * 64
     else:
         references.pop("api")
     (tmp_path / "capabilities.json").write_text(json.dumps(capabilities))
@@ -182,7 +182,7 @@ def test_rehearsal_requires_all_three_images_to_match_observed_evidence(
         runner.Rehearsal(
             AGENT,
             OPENVPN,
-            "registry.example/team/ovpncp-api@sha256:" + "d" * 64,
+            "registry.example/team/rivet-api@sha256:" + "d" * 64,
             tmp_path,
             private_parent,
         )

@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-from sciaiot.ovpncp.application.vpn_control import archive, schemas, wire
-from sciaiot.ovpncp.application.vpn_control.errors import ControlError
+from sciaiot.rivet.application.vpn_control import archive, schemas, wire
+from sciaiot.rivet.application.vpn_control.errors import ControlError
 
 REQUEST_ID = "00000000-0000-4000-8000-000000000001"
 
@@ -103,7 +103,7 @@ def test_archive_response_cannot_substitute_identity(
 
 def test_failed_response_must_match_request_identity() -> None:
     """A fixed error cannot bypass correlation and fail another request."""
-    from sciaiot.ovpncp.application.vpn_control.errors import ErrorCode
+    from sciaiot.rivet.application.vpn_control.errors import ErrorCode
 
     request = schemas.Request(request_id=REQUEST_ID, command=schemas.Health())
     response = schemas.Response(
@@ -186,7 +186,7 @@ def test_consumer_exception_releases_partial_archive() -> None:
 
 def test_failed_mutation_cannot_advance_generation() -> None:
     """A known pre-effect failure must retain its admitted state revision."""
-    from sciaiot.ovpncp.application.vpn_control.errors import ErrorCode
+    from sciaiot.rivet.application.vpn_control.errors import ErrorCode
 
     operation_id = "00000000-0000-4000-8000-000000000002"
     request = schemas.Request(
@@ -212,7 +212,7 @@ def test_failed_mutation_cannot_advance_generation() -> None:
 
 def test_corrupted_mutation_reply_requires_reconciliation() -> None:
     """An unusable reply cannot establish that the requested write had no effect."""
-    from sciaiot.ovpncp.application.vpn_control.errors import (
+    from sciaiot.rivet.application.vpn_control.errors import (
         ErrorCode,
         RetryAction,
         retry_action,

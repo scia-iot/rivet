@@ -7,7 +7,7 @@ Phases 8–10 deferred to real deployment.
 Last updated: 2026-10-08
 
 This document is the source of truth for introducing a container-first
-production architecture for ovpncp and OpenVPN. The current UAT topology is not
+production architecture for rivet and OpenVPN. The current UAT topology is not
 a target constraint. Complete the phases in order and update the status table
 and completion log after every phase.
 
@@ -18,7 +18,7 @@ apply all Azure resource, routing, DNS, identity, and secret changes manually.
 
 - Isolate the public web tier, business API, privileged VPN control operations,
   and OpenVPN data plane.
-- Keep the ovpncp API container unprivileged and remove its direct access to
+- Keep the rivet API container unprivileged and remove its direct access to
   host commands, /dev/net/tun, OpenVPN PKI, CCD files, firewall state, and the
   container runtime.
 - Put privileged operations behind a small, versioned, allowlisted VPN-agent
@@ -39,13 +39,13 @@ apply all Azure resource, routing, DNS, identity, and secret changes manually.
   implementation.
 - Horizontally scaling one OpenVPN tunnel subnet in the first production
   release.
-- Giving ovpncp access to Docker, containerd, Kubernetes, or host service
+- Giving rivet access to Docker, containerd, Kubernetes, or host service
   manager sockets.
 - Replacing current business authorization or delegating authorization to the
   VPN agent.
 - Reworking every existing API and UI flow during containerization.
 - Reusing the UAT deployment topology or treating UAT data as production seed.
-- Migrating, cloning, or upgrading the ovpncp backend, its database or archive
+- Migrating, cloning, or upgrading the rivet backend, its database or archive
   storage, or the UI through the OpenVPN migration toolkit.
 
 ## Recommended baseline decisions
@@ -70,7 +70,7 @@ open. Phase 0 must record any deliberate change as an architecture decision.
   the Layer 4 UDP workload.
 - **Initial availability:** One active OpenVPN workload avoids conflicting
   tunnel pools, CCD writers, routes, and session state.
-- **Desired state:** The ovpncp database remains authoritative for business
+- **Desired state:** The rivet database remains authoritative for business
   ownership and requested configuration.
 - **Actual VPN state:** Agent-owned persistent volumes and the shared VPN
   network namespace remain inaccessible to the API.
@@ -94,7 +94,7 @@ flowchart LR
 
     subgraph web[Unprivileged web tier]
         nginx[Nginx<br/>static UI and /api proxy]
-        api[ovpncp API<br/>business rules and RBAC]
+        api[rivet API<br/>business rules and RBAC]
     end
 
     subgraph vpn[Stateful VPN workload]
@@ -139,7 +139,7 @@ health probes and network rules specific to OpenVPN.
 - **Nginx/UI:** Accepts private traffic from Application Gateway. It runs
   non-root without capabilities or mutable state and uses a read-only root
   filesystem.
-- **ovpncp API:** Accepts /api traffic from Nginx only. It has no Linux
+- **rivet API:** Accepts /api traffic from Nginx only. It has no Linux
   capabilities, TUN device, VPN/PKI mount, or container-runtime socket. It can
   reach only the agent UDS, application database, and bounded archive storage.
 - **VPN agent:** Has no public ingress or container-runtime socket. It receives
@@ -164,7 +164,7 @@ steady-state configuration.
 
 The agent is a narrow system adapter, not a second business API. It must not
 know Entra users, application roles, device ownership, or access-grant policy.
-The ovpncp API authenticates and authorizes the caller, determines the desired
+The rivet API authenticates and authorizes the caller, determines the desired
 operation, and sends only a typed command.
 
 The agent owns:
@@ -203,7 +203,7 @@ The exact schema is finalized in Phase 1. The initial operation groups are:
   address.
 - **Routes:** List managed routes; ensure or remove one validated internal
   route.
-- **Access rules:** List rules owned by ovpncp; ensure or remove one validated
+- **Access rules:** List rules owned by rivet; ensure or remove one validated
   rule.
 - **Shared profile:** Return sanitized client-compatible server settings; API
   owns atomic credential-free profile storage (Phase 0 D6).
@@ -249,7 +249,7 @@ state. The agent never writes application tables directly.
 
 Every mutation follows this sequence:
 
-1. Validate and authorize the external request in ovpncp.
+1. Validate and authorize the external request in rivet.
 2. Commit a durable pending operation record and the intended state.
 3. Send an idempotent command to the agent.
 4. Let the agent stage, validate, and atomically apply local changes.
@@ -295,7 +295,7 @@ delete the only PKI copy during migration.
 
 The migration toolkit is completed before the architecture phases. Its scope
 is only OpenVPN identity and configuration state, migrated without cloning a
-source machine. It does not migrate or deploy the ovpncp backend or UI.
+source machine. It does not migrate or deploy the rivet backend or UI.
 
 The portable bundle includes:
 
@@ -316,7 +316,7 @@ It deliberately excludes:
 - raw iptables, nftables, route, NAT, and cloud-network state;
 - executable hook scripts, which are inventoried and hashed but replaced by
   reviewed target-version code;
-- the ovpncp application, database, configuration, archive storage, and
+- the rivet application, database, configuration, archive storage, and
   authentication state;
 - UI source, build artifacts, configuration, and hosting state.
 
@@ -563,7 +563,7 @@ Deliverables:
 - Route all existing business services through VpnControl.
 - Preserve current host behavior in a HostVpnControl adapter.
 - Add an AgentVpnControl client and a deterministic in-process fake.
-- Add OVPNCP_VPN_BACKEND=host|agent, defaulting to host during the adapter
+- Add RIVET_VPN_BACKEND=host|agent, defaulting to host during the adapter
   transition, plus
   a validated agent socket setting.
 - Remove direct utility imports from route handlers.
@@ -588,7 +588,7 @@ Implementation and operational limits: [read-only agent](vpn-agent.md).
 
 Deliverables:
 
-- Add a separate ovpncp-vpn-agent entry point and minimal container image.
+- Add a separate rivet-agent entry point and minimal container image.
 - Read server configuration and status through bounded parsers.
 - Integrate the protected OpenVPN management Unix socket for readiness,
   connection state, and version checks.
@@ -982,7 +982,7 @@ Implementation:
 - Private mount/network/PID namespace rehearsal with bounded resources.
 
 Verification:
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 392 tests passed,
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: 392 tests passed,
   91% overall coverage; migration package 88%, every migration module above 80%.
 - `ruff format --check .`: 71 files pass; `ruff check .`: passes.
 - `mypy --exclude '^build/' .`: 62 files pass. The exclusion avoids the existing
@@ -1044,7 +1044,7 @@ Implementation:
 - Reusable tests-only conformance harness and independent security review tests.
 
 Verification:
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing`: 491 tests passed
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing`: 491 tests passed
   (including 99 new protocol/review tests), 92% overall application coverage;
   every new application module has 100% statement coverage.
 - `ruff format --check .`: 84 files pass; `ruff check .`: passes.
@@ -1090,8 +1090,8 @@ Delivered:
   exact-ID replay, generation fencing and credential invalidation. Shared
   conformance exercises actual fake/host/agent classes with disposable mocks
   and a synthetic test-only Unix-socket peer.
-- OVPNCP_VPN_BACKEND defaults to host. Explicit agent selection requires a
-  validated canonical socket path and trusted OVPNCP_AGENT_UID; invalid
+- RIVET_VPN_BACKEND defaults to host. Explicit agent selection requires a
+  validated canonical socket path and trusted RIVET_AGENT_UID; invalid
   configuration fails closed. Agent mode skips host hook installation and
   disables the legacy loopback authentication exemption.
 - API-owned workflow/step/cleanup tables persist complete desired intent and
@@ -1111,7 +1111,7 @@ Delivered:
   operation/rollback documentation are synchronized.
 
 Verification:
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing -q`: 555 tests
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing -q`: 555 tests
   passed in 23.30 seconds, including all 491 baseline tests and 64 additional
   Phase 2 checks; overall coverage 91%.
 - New substantive modules: AgentVpnControl 86%, FakeVpnControl 84%,
@@ -1154,7 +1154,7 @@ Operational limits and remaining phases:
 ### 2026-09-18 — Phase 3 completed
 
 Implementation:
-- Separate `ovpncp-vpn-agent` and module entry points implement only seven
+- Separate `rivet-agent` and module entry points implement only seven
   bounded read operations. Protected HTTP/JSON UDS authenticates the API UID
   before reading headers/body; there is no TCP listener or archive endpoint.
   Mutations, event acknowledgements, disconnect and reload are unavailable.
@@ -1179,7 +1179,7 @@ Implementation:
   synchronized. Phase 4 remains planned.
 
 Verification:
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing -q`: 605 tests
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing -q`: 605 tests
   passed in 24.34 seconds; overall coverage 91%. New substantive modules:
   shadow 93%, bounded readers 96%, CLI 93%, control 96%, files 96%, management
   92%, network 91%, server 90%, settings 100%.
@@ -1244,7 +1244,7 @@ Operational changes and limits:
 - Local checks: `ruff format --check .`, `ruff check .`, and
   `mypy --no-incremental --exclude '^build/' .` pass. The mypy exclusion avoids
   the pre-existing duplicate source tree in ignored `build/lib`.
-- `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing --tb=short`:
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing --tb=short`:
   **685 passed, 90% overall coverage**. All substantive new agent modules exceed
   80% coverage. Failure tests cover replacement and command errors, lost replies,
   partial effects, restart recovery, duplicate operations, database failures,
@@ -1304,7 +1304,7 @@ Operational changes and limits:
   engine, image build, image push, VPN service or host network was started.
 - Final local quality gates passed: `ruff format --check .` (151 files),
   `ruff check .`, `mypy --no-incremental --exclude '^build/' .` (134 source
-  files), and `pytest --cov=src/sciaiot/ovpncp --cov=deploy/containers
+  files), and `pytest --cov=src/sciaiot/rivet --cov=deploy/containers
   --cov-report=term-missing` (729 passed; 90% combined coverage, 94% container
   helper coverage). `git diff --check` passed. Hash-locked binary dependency
   resolution passed for the AMD64 API and ARM64 agent; no packages were
@@ -1339,11 +1339,11 @@ Operational changes and limits:
 
 ### 2026-09-23 — Remote image/migration preflight
 
-- Operator reports `ovpncp-agent`, `ovpncp-api`, `ovpncp-openvpn`, and
-  `ovpncp-web` built in the private verification registry and authorizes verification/migration on
+- Operator reports `rivet-agent`, `rivet-api`, `rivet-openvpn`, and
+  `rivet-web` built in the private verification registry and authorizes verification/migration on
   the approved test host.
 - Read-only checks confirm an Azure VM, x86_64, Docker 29.8.1, Compose
-  v5.5.1, no running containers and no cached ovpncp images. The existing
+  v5.5.1, no running containers and no cached rivet images. The existing
   `openvpn@server.service` is active; source OpenVPN is 2.6.19 with OpenSSL
   3.0.13. No VPN service, firewall, PKI, cloud identity or container was changed.
 - The operator corrected the login server to
@@ -1373,10 +1373,10 @@ Operational changes and limits:
 
   | Repository | Digest |
   | --- | --- |
-  | `ovpncp-agent` | `sha256:107c7297ea196086fdeb05e40efcc559f2c531e2e7c62499abd76d08c5f6c1f8` |
-  | `ovpncp-api` | `sha256:5e9fc7086070ff032c16694622ffd02d4f2ed91362dd1b7f5a048a5159410f3b` |
-  | `ovpncp-openvpn` | `sha256:d8b900e3891dbe5d7d77b8765a266b0f8b3c6f81a4ec4ba72775cfb839a100d1` |
-  | `ovpncp-web` | `sha256:c0e580ca2a81c3b1b35318981481f39ed9475ea2372ccafa88dde9b46016f4c9` |
+  | `rivet-agent` | `sha256:107c7297ea196086fdeb05e40efcc559f2c531e2e7c62499abd76d08c5f6c1f8` |
+  | `rivet-api` | `sha256:5e9fc7086070ff032c16694622ffd02d4f2ed91362dd1b7f5a048a5159410f3b` |
+  | `rivet-openvpn` | `sha256:d8b900e3891dbe5d7d77b8765a266b0f8b3c6f81a4ec4ba72775cfb839a100d1` |
+  | `rivet-web` | `sha256:c0e580ca2a81c3b1b35318981481f39ed9475ea2372ccafa88dde9b46016f4c9` |
 
 - Actual agent probe used `--network none`, no mounts, read-only root,
   `cap_drop=ALL`, `NET_ADMIN`, no-new-privileges, AppArmor and configured
@@ -1421,7 +1421,7 @@ Operational changes and limits:
   effective, inheritable or ambient after the drop.
 - This proves the bootstrap on the target kernel; it does not claim that a
   rebuilt image or the full agent service has been verified. Rebuild only
-  `ovpncp-agent` with the updated Dockerfile and pair it with updated Compose.
+  `rivet-agent` with the updated Dockerfile and pair it with updated Compose.
   The three other cached image digests remain available for further testing.
 - The API additionally started with synthetic Entra configuration, disabled
   background work, private tmpfs state and no network access. Its HTTP health
@@ -1429,7 +1429,7 @@ Operational changes and limits:
   were removed afterward.
 - Local gates passed: `ruff format --check .` (153 files), `ruff check .`,
   `mypy --no-incremental --exclude '^build/' .` (136 source files),
-  `pytest --cov=src/sciaiot/ovpncp --cov=deploy/containers
+  `pytest --cov=src/sciaiot/rivet --cov=deploy/containers
   --cov-report=term-missing` (746 passed, 90% combined coverage, 98% bootstrap
   coverage), and `git diff --check`. Both Compose manifests passed
   `config --quiet` with synthetic settings using Compose v5.5.1.
@@ -1439,7 +1439,7 @@ Operational changes and limits:
 
 ### 2026-09-23 — Rebuilt agent image verified
 
-- The operator built and pulled `ovpncp-agent:phase5-agent-capfix-20260923`.
+- The operator built and pulled `rivet-agent:phase5-agent-capfix-20260923`.
   Its repository digest is
   `sha256:2c9c0aaf0fc9637f8d509879ec6abe69e1f43c47025e9544acb43d1d5e450c4d`.
   Inspection confirms root bootstrap entrypoint and health check, both using
@@ -1570,7 +1570,7 @@ Operational changes and limits:
   tokens are never used for external registry login. No workflow deploys.
 - Local validation passed: `ruff format --check .` (160 files), `ruff check .`,
   `mypy --no-incremental --exclude '^build/' .` (139 source files), and
-  `pytest --cov=src/sciaiot/ovpncp --cov-report=term-missing` (799 passed, 90%).
+  `pytest --cov=src/sciaiot/rivet --cov-report=term-missing` (799 passed, 90%).
   Plain `mypy .` encounters duplicate modules in generated `build/lib`; that
   unrelated build output was retained and excluded from the successful check.
   Official checksum-verified actionlint v1.7.7 validated the new workflow with
@@ -1741,7 +1741,7 @@ The matching and chain-traversal basis is the
   recreated with changed runtime settings and rolled back.
 - Cleanup passed, source files and metadata matched, and all eleven stopped
   host-state comparisons passed both after cleanup and before restoration.
-  Both `ovpncp.service` and `openvpn@server.service` are active again.
+  Both `rivet.service` and `openvpn@server.service` are active again.
 - Together with the earlier isolated credential/lifecycle proof, this closes
   Phase 6 under the operator-approved existing-host verification scope. Each
   runner retains `full_phase6: false` because it proves only its own subset;

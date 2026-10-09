@@ -23,7 +23,7 @@ from tests.integration import vpn_container_rehearsal as phase6
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 HOOK = REPO / "deploy/containers/vpn_event.sh"
-MIGRATION = REPO / "src/sciaiot/ovpncp/migration"
+MIGRATION = REPO / "src/sciaiot/rivet/migration"
 
 
 def _private_dir(path: pathlib.Path) -> None:
@@ -81,7 +81,7 @@ class Rehearsal(phase6.Rehearsal):
         self.containers: list[str] = []
         self.namespaces: dict[str, int] = {}
         self.root = pathlib.Path(
-            tempfile.mkdtemp(prefix=f"ovpncp-p7-{self.token}-", dir=private_parent)
+            tempfile.mkdtemp(prefix=f"rivet-p7-{self.token}-", dir=private_parent)
         )
         self.state = self.root / "migration/active"
         self.stage = "initialized"
@@ -118,7 +118,7 @@ class Rehearsal(phase6.Rehearsal):
         if mutate and read_target:
             raise ValueError("Helper cannot be read-only and mutating.")
         self.helper_index += 1
-        name = f"ovpncp-p7-{self.token}-helper-{self.helper_index}"
+        name = f"rivet-p7-{self.token}-helper-{self.helper_index}"
         options = [
             "run",
             "--pull=never",
@@ -126,7 +126,7 @@ class Rehearsal(phase6.Rehearsal):
             "--name",
             name,
             "--label",
-            f"ovpncp.rehearsal={self.token}",
+            f"rivet.rehearsal={self.token}",
             "--network=none",
             "--read-only",
             "--user=0:65532",
@@ -147,7 +147,7 @@ class Rehearsal(phase6.Rehearsal):
             "--mount",
             (
                 f"type=bind,src={MIGRATION},"
-                "dst=/opt/app/sciaiot/ovpncp/migration,readonly"
+                "dst=/opt/app/sciaiot/rivet/migration,readonly"
             ),
             "--mount",
             (
@@ -204,7 +204,7 @@ class Rehearsal(phase6.Rehearsal):
         key_name = "checkpoint.key" if checkpoint else "migration.key"
         policy_name = "restore-policy.json" if restore else "policy.json"
         target_path = "/work/restore" if restore else "/work/migration"
-        argv = ["-m", "sciaiot.ovpncp.migration.cli", command]
+        argv = ["-m", "sciaiot.rivet.migration.cli", command]
         if command != "rollback":
             argv.extend(
                 [
@@ -247,14 +247,14 @@ class Rehearsal(phase6.Rehearsal):
             "container_runtime_hooks": True,
             "external_files": {
                 "/var/lib/openvpn/ipp.txt": "pool",
-                "/usr/local/bin/ovpncp-vpn-event": "hook",
+                "/usr/local/bin/rivet-vpn-event": "hook",
             },
         }
         descriptor = private / "source.json"
         descriptor.write_text(json.dumps(spec))
         os.chown(descriptor, 65532, 65532)
         descriptor.chmod(0o600)
-        checkpoint_name = f"ovpncp-p7-{self.token}-checkpoint"
+        checkpoint_name = f"rivet-p7-{self.token}-checkpoint"
         options = [
             "run",
             "--pull=never",
@@ -262,7 +262,7 @@ class Rehearsal(phase6.Rehearsal):
             "--name",
             checkpoint_name,
             "--label",
-            f"ovpncp.rehearsal={self.token}",
+            f"rivet.rehearsal={self.token}",
             "--network=none",
             "--read-only",
             "--user=65532:65532",
@@ -288,16 +288,16 @@ class Rehearsal(phase6.Rehearsal):
             "--mount",
             (f"type=bind,src={self.state / 'vpn-pool'},dst=/var/lib/openvpn,readonly"),
             "--mount",
-            f"type=bind,src={HOOK},dst=/usr/local/bin/ovpncp-vpn-event,readonly",
+            f"type=bind,src={HOOK},dst=/usr/local/bin/rivet-vpn-event,readonly",
             "--mount",
             (
                 f"type=bind,src={MIGRATION},"
-                "dst=/opt/app/sciaiot/ovpncp/migration,readonly"
+                "dst=/opt/app/sciaiot/rivet/migration,readonly"
             ),
             "--entrypoint=python",
             self.images["api"],
             "-m",
-            "sciaiot.ovpncp.migration.cli",
+            "sciaiot.rivet.migration.cli",
             "export",
             "--source",
             "/checkpoint/source.json",
@@ -359,15 +359,15 @@ class Rehearsal(phase6.Rehearsal):
         }
         options = ["--user=0:65532", "--group-add=65531", *caps]
         options.extend(
-            f"--env=OVPNCP_AGENT_{key}={value}" for key, value in paths.items()
+            f"--env=RIVET_AGENT_{key}={value}" for key, value in paths.items()
         )
         options.extend(
             [
-                "--env=OVPNCP_MANAGEMENT_SOCKET=/run/openvpn/management.sock",
-                "--env=OVPNCP_MANAGEMENT_UID=0",
-                "--env=OVPNCP_MANAGEMENT_GID=65532",
-                "--env=OVPNCP_OPENVPN_UID=65530",
-                "--env=OVPNCP_API_UID=65531",
+                "--env=RIVET_MANAGEMENT_SOCKET=/run/openvpn/management.sock",
+                "--env=RIVET_MANAGEMENT_UID=0",
+                "--env=RIVET_MANAGEMENT_GID=65532",
+                "--env=RIVET_OPENVPN_UID=65530",
+                "--env=RIVET_API_UID=65531",
             ]
         )
         for local, remote, readonly in (
@@ -575,7 +575,7 @@ class Rehearsal(phase6.Rehearsal):
         try:
             names = (
                 self.docker(
-                    "ps", "-aq", "--filter", f"label=ovpncp.rehearsal={self.token}"
+                    "ps", "-aq", "--filter", f"label=rivet.rehearsal={self.token}"
                 )
                 .decode()
                 .splitlines()
@@ -583,13 +583,13 @@ class Rehearsal(phase6.Rehearsal):
             for identifier in names:
                 try:
                     info = json.loads(self.docker("inspect", identifier))[0]
-                    owned = info["Config"]["Labels"].get("ovpncp.rehearsal")
+                    owned = info["Config"]["Labels"].get("rivet.rehearsal")
                     name = info["Name"].removeprefix("/")
                     if (
                         owned != self.token
                         or re.fullmatch(r"[a-f0-9]{64}", info["Id"]) is None
                         or not name.startswith(
-                            (f"ovpncp-p6-{self.token}-", f"ovpncp-p7-{self.token}-")
+                            (f"rivet-p6-{self.token}-", f"rivet-p7-{self.token}-")
                         )
                     ):
                         raise RuntimeError("Container cleanup ownership mismatch.")
