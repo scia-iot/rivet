@@ -10,7 +10,8 @@ from sciaiot.rivet import main
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 NGINX_TEMPLATE = REPOSITORY_ROOT / "deploy/nginx/rivet.conf.template"
-PRODUCTION_RUNBOOK = REPOSITORY_ROOT / "docs/production-deployment.md"
+DEPLOYMENT_RUNBOOK = REPOSITORY_ROOT / "docs/deployment.md"
+CONFIGURATION_GUIDE = REPOSITORY_ROOT / "docs/configuration.md"
 SYSTEMD_SERVICE = REPOSITORY_ROOT / "deploy/systemd/rivet.service"
 CLIENT_PROFILE_TEMPLATE = REPOSITORY_ROOT / "deploy/client.ovpn.example"
 
@@ -139,7 +140,7 @@ def test_application_gateway_backend_is_private_plain_http(
 
 def test_runbook_documents_the_application_gateway_trust_boundary() -> None:
     """Operators keep HTTP private and enforce HTTPS at the gateway listener."""
-    runbook = PRODUCTION_RUNBOOK.read_text(encoding="utf-8")
+    runbook = DEPLOYMENT_RUNBOOK.read_text(encoding="utf-8")
 
     assert "TLS terminates at Azure Application Gateway" in runbook
     assert "Backend protocol: `HTTP`" in runbook
@@ -165,7 +166,7 @@ def test_systemd_keeps_fastapi_on_the_trusted_loopback_boundary() -> None:
 
 def test_static_release_is_outside_the_api_writable_tree() -> None:
     """Nginx can read releases that the API cannot modify."""
-    runbook = PRODUCTION_RUNBOOK.read_text(encoding="utf-8")
+    runbook = DEPLOYMENT_RUNBOOK.read_text(encoding="utf-8")
     service = SYSTEMD_SERVICE.read_text(encoding="utf-8")
 
     assert "/srv/rivet/frontend/current" in runbook
@@ -199,7 +200,7 @@ def test_shared_client_profile_template_matches_deployed_server() -> None:
 
 def test_runbook_documents_shared_client_profile_generation() -> None:
     """Operators receive an explicit safe generation and migration procedure."""
-    runbook = PRODUCTION_RUNBOOK.read_text(encoding="utf-8")
+    runbook = CONFIGURATION_GUIDE.read_text(encoding="utf-8")
     normalized = " ".join(runbook.split())
 
     assert "RIVET_CLIENT_CONFIG_PATH" in runbook

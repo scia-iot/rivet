@@ -13,5 +13,5 @@ python -m pip install sciaiot-rivet-agent
 ```
 
 The agent requires Linux, OpenVPN, Easy-RSA, and reviewed service permissions.
-See the repository's `docs/native-deployment.md` for installation and
-`docs/rivet-rename.md` for upgrading an existing ovpncp deployment.
+See the native installation section of `docs/deployment.md` for setup.
+The archived `docs/archive/rivet-rename.md` covers upgrades from ovpncp.

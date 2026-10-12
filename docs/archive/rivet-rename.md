@@ -1,4 +1,8 @@
-# Rivet from SCIA IoT
+# Archived: ovpncp-to-Rivet rename
+
+> Historical transition guide, archived on 2026-10-09. Applies only to
+> installations upgrading from ovpncp. Use the [current documentation](../README.md)
+> for new deployments and review these steps against the selected release.
 
 Rivet is the OpenVPN control plane formerly named `ovpncp`. This release
 renames the public packages, commands, configuration, and deployment assets.
@@ -25,7 +29,7 @@ or VPN protocol.
 The agent distribution is a small metapackage requiring the exact matching
 `sciaiot-rivet` core version. It does not include the API extra or duplicate
 the implementation. Install the API and agent in separate environments as
-described in [native deployment](native-deployment.md). Optional Azure,
+described in [native deployment](../deployment.md#native-installation). Optional Azure,
 MySQL, and PostgreSQL extras remain available on `sciaiot-rivet`.
 
 Do not install the unrelated PyPI distribution `rivet`. The `rivet` command

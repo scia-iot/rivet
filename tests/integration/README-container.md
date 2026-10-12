@@ -42,9 +42,8 @@ Linux sends redirects when either the `all` or interface-specific setting is
 true, so both effective settings must be disabled; see the
 [Linux kernel IP sysctl documentation](https://kernel.org/doc/html/latest/networking/ip-sysctl.html).
 This prevents a TUN-to-TUN flow from advertising the destination client as a
-direct gateway. An earlier rehearsal observed the actual echo reply plus a
-host redirect; the redirect made the strict single-packet ping fail before
-accepting its echo reply. The test continues to require a successful ping.
+direct gateway. A host redirect can make the strict single-packet ping fail
+before accepting its echo reply; the test requires a successful ping.
 Production redirect policy is operator-owned: review and configure both the
 `all` and actual TUN settings, including creation/restart defaults, on the
 intended VPN gateway. This runner never changes those host settings, and the
@@ -214,8 +213,8 @@ the attested bridge, then requires the host firewall baseline to match before
 reporting cleanup. An uncertain cleanup retains the synthetic state and run ID
 for manual review.
 
-This is a reused reference host with fresh deployment state, not a pristine OS
-provisioning test. It proves actual host/bridge Compose startup, signed web/API
+This runner uses fresh deployment state on an existing host; it does not test
+pristine OS provisioning. It checks actual host/bridge Compose startup, signed web/API
 access, real UDP clients and access rules, and selected API/web upgrade and
 rollback while checking VPN process and traffic survival. Migration, reboot,
 restore and source-data cutover remain separate work.
@@ -226,10 +225,10 @@ Local ownership regressions are:
 pytest -q tests/test_compose_phase6_host_rehearsal.py
 ```
 
-## Opt-in Phase 7 encrypted OpenVPN migration rehearsal
+## Opt-in encrypted OpenVPN migration rehearsal
 
-`phase7_container_rehearsal.py` reuses the isolated Phase 6 network
-namespaces. It requires a separately prepared, authenticated M0 OpenVPN-only
+`phase7_container_rehearsal.py` reuses the isolated Compose network
+namespaces. It requires a separately prepared, authenticated OpenVPN-only
 bundle, its private key and independently observed pinned-image capabilities.
 It does not read the legacy application database or archive. A reviewed root
 maintenance guard must verify an SSH route outside the VPN, preserve and
@@ -239,7 +238,7 @@ disposable containers and namespaces are removed.
 
 Place `migration.bundle`, `migration.key` and `capabilities.json` as root-owned
 mode-0600 regular files in a root-owned mode-0700 input directory. Stage the
-reviewed migration package and Phase 7 helper beside this runner, with the
+reviewed migration package and migration helper beside this runner, with the
 pinned `vpn_event.sh`. Use a separate root-owned mode-0700 parent for retained
 evidence. Invoke `python3 -m tests.integration.phase7_container_rehearsal`
 through the bounded guard with `--input-dir`, `--private-parent`, and immutable
@@ -263,8 +262,8 @@ source service restoration and host invariance checks.
 
 This rehearsal establishes only OpenVPN state and VPN reconnect behavior.
 Full-VM restore, application/API data recovery, and coordinated agent
-network-policy RPO need separate evidence before the Phase 0 recovery gate can
-be accepted.
+network-policy RPO need separate [recovery acceptance](../../docs/data-management.md#backup-and-recovery)
+evidence.
 
 ## Native host and coordinated Compose verification
 
@@ -274,13 +273,11 @@ and HTTP boundaries, and provides typed canary mutations and marker-owned
 cleanup. It changes host services and must only run on an authorized test
 host after stopping conflicting deployments and reviewing its fixed paths.
 It is not part of ordinary pytest execution. See the
-[native installation plan](../../docs/native-installation-plan.md) for the
-completed host checks and [native deployment](../../docs/native-deployment.md)
-for the supported installation layout.
+[native deployment guide](../../docs/deployment.md#native-installation) for the supported
+installation layout.
 
-The 2026-10-07 coordinated Compose restore on the approved test host separately
-verified encrypted VPN/API/agent/deployment state, restored into fresh
-directories while original state was unavailable. Its scope and limits are
-recorded in the [architecture plan](../../docs/container-architecture-upgrade-plan.md#coordinated-compose-recovery-verification--2026-10-07).
-After native cleanup, all four Compose services were healthy and the final
-unchanged-client VPN, CCD, gateway traffic, session and UI/API checks passed.
+Coordinated Compose recovery is a separate operator procedure. Follow
+[recovery](../../docs/data-management.md#backup-and-recovery) to capture matching encrypted VPN/API/agent
+state, protect deployment settings, restore into fresh generations, and verify
+the complete stack. The guide distinguishes prior same-host evidence from
+remaining off-host and production acceptance checks.

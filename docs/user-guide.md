@@ -1,6 +1,6 @@
 # Client registration, certificates, and restricted network user guide
 
-This guide explains the rivet web interface. It assumes two users already
+This guide explains the Rivet web interface. It assumes two users already
 exist and can sign in: a **system administrator** (`sysadmin`) and a
 **device user** (`device_user`). User creation and deployment are covered
 elsewhere.
@@ -12,6 +12,19 @@ access. The device user downloads their laptop credentials and connects.
 Device users can go straight to
 [download credentials and connect][device-user-setup].
 Administrators should complete the setup steps first.
+
+- [1. Choose the correct account](#1-choose-the-correct-account)
+- [2. Understand the records you will create](#2-understand-the-records-you-will-create)
+- [3. Administrator: confirm the server is ready](#3-administrator-confirm-the-server-is-ready)
+- [4. Administrator: register the two VPN clients](#4-administrator-register-the-two-vpn-clients)
+- [5. Administrator: assign fixed VPN addresses](#5-administrator-assign-fixed-vpn-addresses)
+- [6. Administrator: assign ownership and register the device](#6-administrator-assign-ownership-and-register-the-device)
+- [7. Administrator: create the restricted network](#7-administrator-create-the-restricted-network)
+- [8. Administrator: install credentials on the edge device](#8-administrator-install-credentials-on-the-edge-device)
+- [9. Device user: download credentials and connect](#9-device-user-download-credentials-and-connect)
+- [10. Manage certificate expiry and replacement](#10-manage-certificate-expiry-and-replacement)
+- [11. Remove access or retire a client](#11-remove-access-or-retire-a-client)
+- [12. Troubleshooting](#12-troubleshooting)
 
 ## 1. Choose the correct account
 
@@ -91,7 +104,7 @@ Before enabling restricted networks, have the deployment operator confirm:
   service can read.
 
 These are host configuration prerequisites; the web interface does not set
-them up. See the [production deployment runbook](production-deployment.md)
+them up. See the [production deployment runbook](deployment.md#production-ingress-and-verification)
 for deployment and shared profile configuration.
 
 ## 4. Administrator: register the two VPN clients

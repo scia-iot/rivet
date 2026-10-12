@@ -1,14 +1,20 @@
-# Portable OpenVPN migration toolkit
+# Migration and recovery
 
-Phase M0 is **complete for the documented stopped-target migration profile**.
-The typed CLI supports reviewed file-based, direct-CA OpenVPN/Easy-RSA
-configurations. Unit/security tests, an independent real Easy-RSA offline
-integration and a real UDP/TUN migration rehearsal on a separately isolated
-Linux server passed. The real rehearsal used unchanged client credentials,
-observed the migrated CCD assignment, exercised target issuance/revocation/CRL
-generation and restored the exact nonempty prior target state. This is toolkit
-acceptance evidence, not approval to migrate a live installation or cut over
-production traffic.
+Moving or restoring a deployment requires a consistent, authenticated
+generation of its persistent state. OpenVPN migration handles VPN state;
+whole-application recovery also coordinates API/agent state, deployment
+settings, and keys. Neither procedure schedules backups or performs
+service cutover automatically.
+
+- [OpenVPN migration](#openvpn-migration)
+- [Backup and recovery](#backup-and-recovery)
+
+## OpenVPN migration
+
+`rivet-migrate` captures, validates, encrypts, and maps reviewed file-based,
+direct-CA OpenVPN/Easy-RSA state. It supports a generic stopped target and a
+stopped Compose target with fixed role/permission mapping. Neither profile
+performs service cutover automatically.
 
 The tool does not migrate rivet, its database, archive storage, authentication,
 UI, system services, host accounts, routes, firewall rules or cloud resources.
@@ -17,10 +23,10 @@ writers automatically. Its supported target adapter starts and ends with the
 target OpenVPN process **stopped**; a previously running service needs an
 operator-controlled maintenance and recovery procedure outside this adapter.
 
-## Install and command contract
+### Install and command contract
 
-Install the project with its existing runtime dependencies. No new dependency
-is required: authenticated encryption uses the existing `cryptography` package.
+Install `sciaiot-rivet-agent` or the matching `sciaiot-rivet` core package.
+The toolkit uses its core Pydantic/cryptography dependencies, without API extras.
 The installed command is `rivet-migrate`; from a checkout use
 `PYTHONPATH=src python -m sciaiot.rivet.migration.cli`.
 
@@ -54,7 +60,7 @@ Passphrases are held in process memory, excluded from all manifests, and must
 be supplied again for each invocation that validates encrypted keys. Original
 encrypted key bytes are preserved. Inventory does not need key passphrases.
 
-## Source approval and mutation freeze
+### Source approval and mutation freeze
 
 The source descriptor is private operational input. `openvpn_root` and
 `easyrsa_root` are explicit approved directory roots, including all referenced
@@ -102,13 +108,14 @@ The flag attests that this procedure has already happened. The tool reads twice
 and rejects inconsistent snapshots; this is additional detection, not a
 replacement for the external freeze. Source files are never edited.
 
-## Compatibility and target mapping
+### Compatibility and target mapping
 
-Schema 1 fails closed on version differences. There is no blanket `--force` or
+The generic schema-one profile requires matching observed versions. The
+container profile has only the explicit transition described below. There is no blanket `--force` or
 unreviewed cross-version transformation. A changed source profile requires a
 reviewed, tested transformation and a future schema/implementation change.
 
-### Phase 7 container profile
+#### Container target profile
 
 The container profile uses the existing authenticated M0 bundle and retains the
 M0 stopped-target transaction: a private migration-owned wrapper contains an
@@ -137,12 +144,10 @@ certificate bytes and does not permit an unreviewed option transformation.
 
 An inconsistent legacy source must be reconciled in an isolated, audited copy
 before export. The M0 validator keeps rejecting absent revocation enforcement,
-unindexed certificates and duplicate serials. The approved Phase 7 source copy
-passed those checks and produced an authenticated encrypted bundle; the
-original installation remains unchanged. External pool and hook references
+unindexed certificates and duplicate serials. External pool and hook references
 must be approved as exact files; broad access to application directories is
-forbidden. The source-specific repair and preservation evidence is recorded in
-the architecture upgrade plan.
+forbidden. Retain repair decisions and source-preservation evidence privately for that
+installation; do not generalize another source's repair policy.
 
 The source descriptor can name those exceptions as `external_files`, keyed by
 absolute file path with role `pool` or `hook`. Only an
@@ -179,9 +184,11 @@ agent-private and daemon projection mounts. It rejects source includes,
 host-specific `local`, TLS static-key options, unrecognized assets, and
 non-UDP/non-subnet profiles until a reviewed conversion exists. Every source
 hook replacement maps to the pinned image's
-`/usr/local/bin/rivet-vpn-event`, with SHA-256
-`bd29220d58469db027654ff9a5468f61f5c81d877511da1e28f04dc0fe31edb3`.
-Check this hash against the actual cached image file before import. The
+`/usr/local/bin/rivet-vpn-event`, with the exact `HOOK_SHA256` in the
+[target adapter](../src/sciaiot/rivet/migration/container_target.py). Compare
+that value with `sha256sum deploy/containers/vpn_event.sh` and the actual
+selected-image hook before import. Old source hooks are recognized only by
+their separately retained exact command/hash; new targets always use Rivet. The
 adapter refuses any other replacement hash or path.
 
 For the opt-in container rehearsal, `capabilities.json` must contain the
@@ -246,49 +253,20 @@ family requires exact owned `FORWARD` anchors, `OVPNCP_FORWARD` chain and
 terminal deny rule before startup. Provision and attest that baseline after
 Docker creates its bridge and before OpenVPN starts.
 
-### Coordinated recovery set design for Phase 7
+#### Whole-application recovery
 
-The VPN checkpoint above is only the OpenVPN part of a recovery generation.
-The separate deployment-operator recovery set will carry a generation ID and
-capture time, pinned image digests, an authenticated SHA-256 link to the
-encrypted M0 VPN bundle, a consistent SQLite backup from the API volume,
-API-owned profile and local archive files, and agent-owned operation/event
-journal and network-ownership intent. No backend artifact enters M0. The
-recovery manifest records each relative file path, byte count, hash, mode,
-owner and group inside authenticated encryption. The outer versioned format
-uses a fresh nonce and AES-256-GCM with a 32-byte key delivered separately from
-both encrypted artifacts. A record is valid only after the complete
-authentication tag, manifest, file inventory and linked M0 digest verify.
-Reject symlinks, hard links, special files, path traversal, extra members,
-duplicate names and unsupported schema or image versions before target writes.
+The VPN bundle is only one part of a recovery generation. The separate
+API/agent recovery-set implementation preserves the database, profile,
+archives, journals, and network intent. Deployment settings and secrets also
+need protected capture. Follow [backup and recovery](#backup-and-recovery); an OpenVPN
+import alone does not restore the complete application.
 
-The operator stops API mutations, agent mutations and OpenVPN pool writes,
-waits for in-flight operations to reach durable terminal state, then takes the
-SQLite online backup and captures the other owned volumes and M0 VPN bundle
-under one generation ID. A checkpoint is complete only when both encrypted
-artifacts, separately protected keys and off-host copies have been verified.
-The 15-minute cadence and 35-day retention need measured off-host evidence;
-the reference rehearsal must not infer them from one local snapshot. A failed
-checkpoint must preserve the last valid generation and alert the operator.
-
-Restore authenticates both artifacts while services remain stopped, creates a
-new private target generation, imports and verifies the M0 VPN state, restores
-the API/agent-owned state with its recorded owners and modes, then checks API
-database integrity, profile/archive inventory, agent operation generation and
-revocation/CRL consistency. Reconcile any acknowledged issuance or revocation
-after the checkpoint before reopening VPN ingress. Missing revocation evidence
-blocks ingress. Only then start agent, OpenVPN, API and web and measure
-authenticated API readiness, unchanged-client reconnect and allowed/denied
-traffic. Keep the previous generation for exact rollback. The isolated Phase 7
-rehearsal uses fresh synthetic API state and does not read legacy application
-data.
-
-### Existing stopped-target profile
+#### Existing stopped-target profile
 
 The following policy example applies to the original offline stopped-target
-profile. The Phase 7 container profile above additionally requires a pinned
+profile. The container profile above additionally requires a pinned
 image digest, exact target versions, fixed runtime identities and reviewed TUN
-mapping. Do not use this example as a Phase 7 container policy.
+mapping. Do not use this example as a container policy.
 
 The target policy records exact observed versions, the source serial allocation
 policy, existing target owner/group **names**, and option/cipher availability.
@@ -375,7 +353,7 @@ requires a reviewed extension and its own migration evidence before that
 profile is used. Do not decrypt/rewrite the sole CA key or edit the live source merely
 to work around an unsupported migration profile.
 
-## Encryption and schema
+### Encryption and schema
 
 Generate an independent 32-byte cryptographically random AES key in a private
 directory, with umask 077, using an approved secret-delivery mechanism. A local
@@ -411,7 +389,7 @@ logical ownership metadata; duplicates, absolute paths, traversal, links,
 devices, extension records, compression, trailing hidden bytes and unexpected
 entries are refused. No archive extraction API is used.
 
-## Activation and recovery
+### Activation and recovery
 
 Use a fresh mode-0700 destination or an exact previously migration-owned root.
 A non-empty arbitrary directory is refused. Successful initialization writes
@@ -446,7 +424,7 @@ credentials and revocations separately; do not expect the original exact-hash
 through the full rehearsal and operator acceptance. Snapshot retirement and
 service cutover remain reviewed operational steps.
 
-## Reproducible rehearsal and acceptance evidence
+### Reproducible rehearsal
 
 Ordinary `pytest` performs no privileged operations. The opt-in harness lives
 at `tests/integration/migration_rehearsal.py` and is not pytest-collected. Its
@@ -466,8 +444,8 @@ Only synthetic PKI is touched. Artifacts/logs remain in a private
 `/tmp/rivet-migration-rehearsal-*` directory. Redacted JSON labels OpenVPN
 metadata as a declared assumption and connectivity as unverified.
 
-The network variant is **not to be run in the current macOS-hosted development
-container**. Use a reviewed Linux server with TUN, OpenVPN, Easy-RSA, OpenSSL,
+The network variant requires real Linux namespace and TUN support; do not
+use an ordinary unprivileged development container or Docker Desktop host. Use a reviewed Linux server with TUN, OpenVPN, Easy-RSA, OpenSSL,
 iproute2, namespace privileges, and a private Python 3.14 runtime. An existing
 VPN on that server must remain untouched. Stage the reviewed code and runtime
 outside `/tmp`, `/run`, and the live `/etc/openvpn` tree. Never create the
@@ -514,57 +492,107 @@ pre-import target generation proves exact rollback hashes/modes/owners; the
 initial stopped state is restored. No live service manager, firewall rules,
 PKI, management sockets or host network configuration are touched.
 
-The namespace-isolated network harness passed on the approved remote Linux
-verification server on 2026-09-10. It was not run in the macOS-hosted development
-container. The live server's OpenVPN process and network state remained
-unchanged. The supported adapter still starts and ends with the target stopped;
-previously running services, separately owned runtime mounts and additional
-legacy-profile transformations require their own reviewed adapters/policies.
 
+For Compose, actual-topology, and native recovery verification, use the
+[integration harness guide](../tests/integration/README-container.md). New
+artifacts need fresh capability observations and runtime evidence; historical
+rehearsals do not approve a different source or deployment.
 
-### Recorded evidence (2026-09-10)
+## Backup and recovery
 
-An independent manual integration run against official Easy-RSA 3.2.1 source
-commit `3f60a68702713161ab44f9dd80ce01f588ca49ac` and OpenSSL 3.5.4 passed
-complete capture, encrypted seal/open, immutable dry-run, offline import and
-exact/semantic verify. It then issued and revoked a new certificate and
-generated a CRL using the imported PKI's own vars and OpenSSL config; existing
-client credentials, CA/server identities and earlier revocation remained
-unchanged. Rollback and all source file hashes passed. OpenVPN versions and
-capabilities were **declared assumptions**; no OpenVPN process or network
-operation ran. This evidence came from the manual integration, not a successful
-standalone harness run: a source checkout's unrendered `~VER~` version marker
-was correctly refused by the harness. Use a properly versioned release artifact
-for that harness.
+Recovery is an operator-controlled procedure with all persistent writers
+frozen. Rivet provides encrypted VPN migration and API/agent recovery tools;
+it does not schedule backups, retain off-host copies, recover keys, recreate
+a VM, or configure cloud networking automatically.
 
-The complete namespace rehearsal subsequently passed at
-`2026-09-10T07:11:20.779121+00:00` with OpenVPN 2.6.19, Easy-RSA 3.1.7,
-OpenSSL 3.0.13 and Python 3.14.3. OpenVPN version, supported options and ciphers
-were observed from the actual binary. Every acceptance field was true:
+### What a recovery generation contains
 
-- encrypted export, authentication/validation, immutable dry-run, staged import
-  and exact/semantic verification;
-- existing client authenticated over UDP using unchanged source credentials;
-- client TUN held the migrated CCD address;
-- new target certificate issuance, revocation and CRL generation succeeded;
-- pre-existing credentials and revocations were preserved;
-- exact nonempty pre-import target hashes/modes/owners were restored, with the
-  synthetic target service returned to its initially stopped state;
-- every source file hash remained unchanged.
+| Part | Contents and handling |
+| --- | --- |
+| Encrypted OpenVPN bundle | Complete validated PKI, configuration, CCD, pool, and reviewed hook identities; created by `rivet-migrate`. |
+| Encrypted API/agent set | SQLite database, shared profile, local archives, agent operation/event journal, network ownership, and journal identity anchors. Links to the encrypted VPN bundle's SHA-256 and all four image digests. |
+| Deployment settings | Rendered manifests or native units, environment/secret files, exact artifacts, identities, host networking/firewall/bootstrap requirements. Protect and retain separately; these do not enter the VPN bundle. |
+| Encryption keys | Separate protected delivery and off-host recovery channel; never store only beside the encrypted backup or in command arguments. |
 
-Independent before/after comparisons also matched the live host's links,
-addresses, routes, policy rules, normalized IPv4/IPv6 firewall configuration,
-and existing OpenVPN process identity/start time. The live host marker remained
-absent. No live OpenVPN PKI or configuration was read or migrated. Only synthetic
-PKI, private namespace state and the explicitly approved verification staging
-area were used. The packaged Easy-RSA 3.1.7 run resolves the earlier standalone
-harness version-placeholder gate. Runtime regressions are covered for the
-Easy-RSA 3.1 common-name override and OpenVPN's successful `--help` exit code 1.
+`sciaiot.rivet.recovery_set` is an operator Python API, not an installed
+backup CLI. `capture` requires a private Compose-layout root, 32-byte key,
+generation identifier, linked `m0_sha256`, the four `image_digests`, and an
+explicit `writers_frozen=True` attestation. `open_set` authenticates against
+the expected bundle hash and image set; `restore` writes only to a new private
+generation. Neither operation stops services. An operator wrapper must
+protect inputs/outputs and coordinate the full procedure.
 
+The implementation captures fixed reference paths, including
+`api-data/ovpncp.db`, its committed WAL contents, and
+`vpn-journal/operations.sqlite3`. It backs up SQLite from a bounded private
+scratch copy so read-only sources acquire no side files. It checks file
+inventory, size, ownership, mode, and stable source fingerprints. Restore
+rejects tampering, mismatched images/bundles, traversal, links, unexpected
+members, and an existing destination. It is not a general filesystem archiver
+or a MySQL/PostgreSQL backup tool. Native layouts or external databases need
+an explicit mapping and their own verified capture/restore procedure.
 
-Final local checks on 2026-09-10: `pytest --cov=src/sciaiot/rivet
---cov-report=term-missing` passed **392 tests with 91% overall coverage**.
-Migration package coverage is 88%, with each module above 80%. Ruff formatting
-and lint pass, `mypy --exclude '^build/' .` passes 62 files, shell syntax checks
-pass, and `git diff --check` passes. The mypy exclusion avoids the pre-existing
-ignored duplicate `build/lib/sciaiot` package, not any source or test module.
+### Capture
+
+1. Retain the last verified generation. Freeze API/agent mutations, external
+   PKI/CCD/configuration jobs, and OpenVPN pool writers. Inspect in-flight
+   operations; uncertain effects require preserved evidence and reconciliation.
+2. Export and validate the encrypted VPN bundle using the
+   [migration procedure](#openvpn-migration). Source files remain unchanged.
+3. Capture API/agent state from that same freeze window, binding it to the
+   VPN bundle digest and exact artifact set. Preserve complete CA revocation
+   history, replay fences, event receipts, and ownership records.
+4. Capture the matching deployment settings and secrets in protected storage.
+   Verify both encrypted artifacts and their linkage before ending the freeze.
+5. Store an encrypted off-host copy and independently recoverable keys. A
+   failed checkpoint must not replace the last verified generation.
+
+Do not treat a copy of live volumes as a consistent recovery set. Keep API
+state, the agent journal, and configuration identity anchors together;
+restoring a stale/missing journal under newer configuration is rejected.
+
+### Restore
+
+1. Stop all target writers and keep VPN ingress closed. Authenticate both
+   artifacts, their linked digest, generation, and selected image inventory
+   before writing state. Verify access to the separate deployment settings.
+2. Import and verify VPN state in a stopped private generation. Restore the
+   API/agent set into a separate new generation with recorded ownership/modes;
+   combine only the reviewed role directories under the deployment layout.
+   Preserve the previous generation for rollback.
+3. Check SQLite integrity/logical contents, shared profile and archive inventory,
+   journal generation/identity, CA index and CRL, CCD, and network ownership.
+   Reconcile every acknowledged issuance/revocation after the checkpoint.
+   Missing revocation evidence blocks reopening VPN ingress.
+4. Recreate ephemeral directories and owned host routes/firewall under the
+   deployment's reviewed policy. Create Docker networks before verifying
+   first-position TUN anchors. Start services in the selected deployment's
+   dependency order; do not bypass agent readiness failures.
+5. Verify authenticated API readiness, unchanged-client connection/address,
+   allowed and denied traffic, nonempty grants/routes, retained revocation,
+   operation replay protection, and event convergence. Measure recovery time
+   from the agreed incident/start point, not just container startup.
+
+An old full recovery set retains its original configuration bytes. It does
+not automatically rewrite paths for the [archived ovpncp upgrade procedure](archive/rivet-rename.md).
+Never roll a CA back across acknowledged revocations to meet a recovery-time
+target. Retain uncertain evidence until the operator can resolve it.
+
+### Acceptance and limits
+
+The engineering reference proposes checkpoints at most 15 minutes apart,
+daily full backups, at least 35 days of retention, and off-host restore drills
+quarterly and before cutover. Its VM-loss recovery-time target is 60 minutes.
+These are deployment objectives, not an implemented schedule or measured
+production guarantee. Confirm them against the actual environment.
+
+Prior checks covered coordinated same-host restoration into fresh directories,
+unchanged-client connectivity, SQLite/profile/archive/journal preservation,
+revocation history, and a nonempty owned route. They did not establish full VM
+rebuild, off-host key recovery, production RPO, nonempty access-grant restoration,
+or real Entra browser login. Renamed artifacts require fresh verification.
+Host/Docker restart ordering also remains a deployment acceptance item.
+
+Use the [integration harness guide](../tests/integration/README-container.md)
+for explicitly authorized disposable drills, and
+[release readiness](builds.md#release-verification) to track remaining acceptance.
