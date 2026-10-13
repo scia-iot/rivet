@@ -99,9 +99,9 @@ def test_event_commit_precedes_ack_and_replay_is_deduplicated(consumer):
         rows = session.exec(select(Connection)).all()
         assert len(rows) == 1
         assert rows[0].remote_address == "[2001:db8::1]:1194"
-        assert rows[0].connected_time == datetime.fromtimestamp(
+        assert rows[0].connected_time.replace(tzinfo=UTC) == datetime.fromtimestamp(
             1_700_000_000, UTC
-        ).replace(microsecond=123456, tzinfo=None)
+        ).replace(microsecond=123456)
         assert rows[0].disconnected_time.microsecond == 123458
     assert len(control.acks) == 1
 

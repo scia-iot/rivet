@@ -332,6 +332,7 @@ class VpnService:
                     operation_id=str(uuid.uuid4()),
                     expected_generation=health.generation,
                 )
+                assert original.operation_id is not None
                 step = VpnStep(
                     id=original.operation_id,
                     workflow_id=self.workflow_id,

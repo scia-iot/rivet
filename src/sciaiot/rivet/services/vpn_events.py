@@ -280,6 +280,7 @@ class EventConsumer:
                     operation_id=str(uuid.uuid4()),
                     expected_generation=health.generation,
                 )
+                assert original.operation_id is not None
                 pending: EventAcknowledgement | None = EventAcknowledgement(
                     id=original.operation_id,
                     request_json=wire.encode(original).decode(),

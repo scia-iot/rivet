@@ -24,7 +24,8 @@ def test_connection_history_model(db_session: Session):
     assert conn.id is not None
     assert conn.client_id == client.id
     assert conn.remote_address == "1.2.3.4"
-    assert conn.connected_time == start_time.replace(tzinfo=None)
+    # Older SQLModel versions drop UTC metadata when reading SQLite timestamps.
+    assert conn.connected_time.replace(tzinfo=UTC) == start_time
     assert conn.disconnected_time is None
 
     # Test updating disconnect time
@@ -34,7 +35,8 @@ def test_connection_history_model(db_session: Session):
     db_session.commit()
     db_session.refresh(conn)
 
-    assert conn.disconnected_time == end_time.replace(tzinfo=None)
+    assert conn.disconnected_time is not None
+    assert conn.disconnected_time.replace(tzinfo=UTC) == end_time
 
 
 def test_connection_relationship(db_session: Session):
