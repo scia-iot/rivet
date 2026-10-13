@@ -109,8 +109,9 @@ SBOM/provenance, vulnerability and signature gates apply to Azure builds.
 ### GitHub Actions
 
 `.github/workflows/containers.yml` runs all four AMD64 builds on pull requests,
-pushes, and manual dispatch. Ordinary builds have only `contents: read`, never
-log into a registry, and never publish. Checkout does not persist credentials.
+pushes, published GitHub releases, and manual dispatch. Ordinary builds have
+only `contents: read`, never log into a registry, and never publish.
+Checkout does not persist credentials.
 All new actions are pinned to immutable commits from the official action
 repositories.
 
@@ -127,11 +128,30 @@ For example, an installed OCI-aware `skopeo` can import it locally with
 `skopeo copy oci-archive:image.oci.tar docker-daemon:rivet-api:review`.
 Artifacts consume GitHub storage; large builds may need a higher account quota.
 
-Publishing requires a manual **Container builds** dispatch with `publish=true`
-on the repository's default branch. A separate job obtains package-write
-permission only after every nonpublishing build succeeds. It rebuilds the same
-revision and publishes `rivet-COMPONENT:sha-FULL_SHA`; it does not deploy. A
-manual dispatch on any other branch still builds but skips publishing.
+Publishing a GitHub release triggers **Container builds**, alongside the
+existing PyPI **Package** workflow. All four images are built from the release's
+tagged commit. After every nonpublishing build succeeds, a separate job obtains
+package-write permission and rebuilds that revision with two tags:
+
+- `rivet-COMPONENT:0.1.7` for a release tagged `v0.1.7` or `0.1.7`.
+- `rivet-COMPONENT:sha-FULL_SHA` for the release commit.
+
+Release tags must use `MAJOR.MINOR.PATCH`, optionally prefixed with `v` and
+followed by a prerelease suffix, such as `v0.1.8-rc.1`. Published prereleases
+receive the corresponding `0.1.8-rc.1` image tag. Build metadata (`+...`) is not
+supported, and the image tag must fit Docker's 128-character limit. Invalid
+release tags fail before any image is published. No `latest` tag is assigned.
+
+To publish a version, merge the workflow changes, update the Python package
+versions together, and create a GitHub release with a matching version tag
+on that commit. The tagged commit must contain this release-enabled workflow;
+publishing a release for an older commit uses its older workflow. Pushing a
+tag alone does not publish images, and editing an existing release does not
+trigger publication. The PyPI and container workflows run independently.
+
+A manual **Container builds** dispatch with `publish=true` on the default
+branch remains available and publishes only SHA tags. Manual dispatches on
+other branches build but skip publishing. Neither publishing path deploys.
 
 Repository configuration:
 
@@ -152,7 +172,7 @@ Published builds retain `published-COMPONENT-RUN_ID` metadata and image tags
 for 30 days. Use **published** `containerimage.digest` values when preparing
 runtime image references. A rebuild can differ from the earlier OCI artifact,
 and the four matrix pushes are not atomic: inspect all job results before
-selecting a deployment set. Re-running a publication may move the SHA tag;
+selecting a deployment set. Re-running a publication may move its image tags;
 immutable deployment digests remain the source of truth.
 
 SBOM attestations are requested for both OCI exports and published builds

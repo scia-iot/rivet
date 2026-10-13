@@ -22,13 +22,21 @@ def test_builds_are_read_only_and_publication_is_explicit() -> None:
     assert workflow["permissions"] == {"contents": "read"}
     events = workflow.get("on", workflow.get(True))
     assert isinstance(events, dict)
-    assert set(events) == {"pull_request", "push", "workflow_dispatch"}
+    assert set(events) == {"pull_request", "push", "release", "workflow_dispatch"}
+    assert events["release"] == {"types": ["published"]}
     assert events["workflow_dispatch"]["inputs"]["publish"]["default"] is False
     jobs = workflow["jobs"]
     publish = jobs["publish"]
     assert "github.event_name == 'workflow_dispatch'" in publish["if"]
     assert "inputs.publish" in publish["if"]
     assert "github.event.repository.default_branch" in publish["if"]
+    assert " ".join(publish["if"].split()) == (
+        "(github.event_name == 'release' && "
+        "github.event.action == 'published') || "
+        "(github.event_name == 'workflow_dispatch' && inputs.publish && "
+        "github.ref == format('refs/heads/{0}', "
+        "github.event.repository.default_branch))"
+    )
     assert publish["needs"] == ["target", "build"]
     assert publish["permissions"] == {"contents": "read", "packages": "write"}
     build = jobs["build"]
@@ -55,6 +63,99 @@ def test_builds_are_read_only_and_publication_is_explicit() -> None:
     assert "!= 'ghcr.io'" in external["if"]
     assert external["with"]["password"] == "${{ secrets.CONTAINER_REGISTRY_PASSWORD }}"
     assert "GITHUB_TOKEN" not in yaml.safe_dump(external)
+
+
+@pytest.mark.parametrize(
+    ("release_tag", "expected"),
+    [
+        ("v0.1.7", "0.1.7"),
+        ("0.1.7", "0.1.7"),
+        ("v0.1.8-rc.1", "0.1.8-rc.1"),
+        ("v1.0.0-beta-2", "1.0.0-beta-2"),
+        ("v1.0.0-" + "a" * 122, "1.0.0-" + "a" * 122),
+        ("v1.0.0-" + "a" * 123, None),
+        ("", None),
+        ("latest", None),
+        ("v01.2.3", None),
+        ("v1.2", None),
+        ("v1.2.3+build.4", None),
+        ("v1.2.3-rc..1", None),
+        ("v1.2.3\nversion=latest", None),
+        ("$(touch marker)", None),
+    ],
+)
+def test_release_version_validation(
+    tmp_path: Path, release_tag: str, expected: str | None
+) -> None:
+    """Release names produce one safe version output before any publishing."""
+    target = _workflow()["jobs"]["target"]
+    step = next(s for s in target["steps"] if s.get("id") == "version")
+    assert step["if"] == "github.event_name == 'release'"
+    assert step["env"]["RELEASE_TAG"] == "${{ github.event.release.tag_name }}"
+    assert target["outputs"]["version"] == "${{ steps.version.outputs.version }}"
+    output = tmp_path / "output"
+    result = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", step["run"]],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "RELEASE_TAG": release_tag,
+            "GITHUB_OUTPUT": str(output),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (result.returncode == 0) is (expected is not None)
+    if expected is not None:
+        assert output.read_text() == f"version={expected}\n"
+    else:
+        assert not output.exists()
+    assert not (tmp_path / "marker").exists()
+
+
+@pytest.mark.parametrize("version", ["", "0.1.7", "0.1.8-rc.1"])
+def test_publication_tags_one_build_with_version_and_revision(
+    tmp_path: Path, version: str
+) -> None:
+    """A release adds its version to the same image and recorded tag list."""
+    steps = _workflow()["jobs"]["publish"]["steps"]
+    step = next(s for s in steps if s.get("name") == "Build and publish AMD64 image")
+    assert step["env"]["VERSION"] == "${{ needs.target.outputs.version }}"
+    assert step["env"]["REVISION"] == "${{ github.sha }}"
+    docker = tmp_path / "docker"
+    docker.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$TEST_ARGS"\n')
+    docker.chmod(0o755)
+    arguments = tmp_path / "args"
+    image = "ghcr.io/example/rivet-api"
+    revision = "a" * 40
+    subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", step["run"]],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PATH": f"{tmp_path}:{os.environ['PATH']}",
+            "IMAGE": image,
+            "DOCKERFILE": "deploy/api/Dockerfile",
+            "REVISION": revision,
+            "VERSION": version,
+            "TEST_ARGS": str(arguments),
+        },
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    args = arguments.read_text().splitlines()
+    tags = [args[index + 1] for index, arg in enumerate(args) if arg == "--tag"]
+    expected = [f"{image}:sha-{revision}"]
+    if version:
+        expected.append(f"{image}:{version}")
+    assert tags == expected
+    assert args[:4] == ["buildx", "build", "--platform", "linux/amd64"]
+    assert "--push" in args
+    assert "--sbom=true" in args
+    assert f"org.opencontainers.image.revision={revision}" in args
+    assert (tmp_path / "artifacts/image.txt").read_text().splitlines() == expected
 
 
 @pytest.mark.parametrize(
