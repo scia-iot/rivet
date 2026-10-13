@@ -1,0 +1,38 @@
+# Reviewed OpenVPN 2.6 example. Replace the bind, tunnel pool and numeric UID.
+# Provision projection and firewall policy before accepting VPN traffic.
+local <vpn-bind-ip>
+port 1194
+proto udp
+dev tun0
+dev-type tun
+topology subnet
+server 10.8.0.0 255.255.255.0
+disable-dco
+persist-key
+persist-tun
+keepalive 10 120
+explicit-exit-notify 1
+user ovpn-openvpn
+group ovpn-runtime
+ca /var/lib/ovpn-agent/projection/ca.crt
+cert /var/lib/ovpn-agent/projection/server.crt
+key /var/lib/ovpn-agent/projection/server.key
+dh none
+crl-verify /var/lib/ovpn-agent/projection/crl.pem
+client-config-dir /var/lib/ovpn-agent/projection/ccd
+ccd-exclusive
+data-ciphers AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305
+data-ciphers-fallback AES-256-CBC
+tls-version-min 1.2
+management /run/openvpn/management.sock unix
+management-client-user ovpn-agent
+management-client-group ovpn-runtime
+status /run/openvpn/status.log 10
+status-version 3
+writepid /run/openvpn/openvpn.pid
+ifconfig-pool-persist /var/lib/openvpn/ipp.txt
+script-security 2
+client-connect "/usr/local/lib/rivet/agent-venv/bin/rivet-vpn-event --socket /run/ovpn-events/events.sock --management-socket /run/openvpn/management.sock --agent-uid REPLACE_WITH_AGENT_UID"
+client-disconnect "/usr/local/lib/rivet/agent-venv/bin/rivet-vpn-event --socket /run/ovpn-events/events.sock --management-socket /run/openvpn/management.sock --agent-uid REPLACE_WITH_AGENT_UID"
+log /dev/null
+verb 0

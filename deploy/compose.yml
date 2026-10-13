@@ -1,0 +1,166 @@
+# Linux deployment reference. Provision/review state before starting services.
+name: rivet
+x-runtime: &runtime
+  platform: ${RIVET_PLATFORM:-linux/amd64}
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true", "apparmor=docker-default"]
+  pids_limit: 128
+  mem_limit: 512m
+  cpus: 1.0
+  stop_grace_period: 30s
+  logging:
+    driver: local
+    options:
+      max-size: 10m
+      max-file: '3'
+x-bind: &bind
+  type: bind
+  bind:
+    create_host_path: false
+services:
+  openvpn:
+    <<: *runtime
+    image: ${RIVET_OPENVPN_IMAGE:?Set the verified OpenVPN image digest}
+    user: '0:65532'
+    network_mode: host
+    cap_add: [NET_ADMIN, SETUID, SETGID]
+    devices: [/dev/net/tun:/dev/net/tun:rwm]
+    tmpfs: ['/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777']
+    volumes:
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/vpn-projection
+        target: /var/lib/ovpn-agent/projection
+        read_only: true
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/vpn-pool
+        target: /var/lib/openvpn
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/management-socket
+        target: /run/openvpn
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/event-socket
+        target: /run/ovpn-events
+        # Hooks record a durable producer-gap marker when agent is unavailable.
+  agent:
+    <<: *runtime
+    depends_on:
+      openvpn:
+        condition: service_healthy
+    image: ${RIVET_AGENT_IMAGE:?Set the verified agent image digest}
+    # Bootstrap drops root and SETUID/SETGID before loading agent code.
+    user: '0:65532'
+    group_add: ['65531']
+    network_mode: host
+    cap_add: [NET_ADMIN, SETUID, SETGID]
+    tmpfs: ['/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777']
+    environment:
+      RIVET_AGENT_CONFIG: /var/lib/ovpn-agent/config/server.conf
+      RIVET_AGENT_PKI: /var/lib/ovpn-agent/pki
+      RIVET_AGENT_CCD: /var/lib/ovpn-agent/ccd
+      RIVET_AGENT_JOURNAL: /var/lib/ovpn-agent/journal
+      RIVET_AGENT_PROJECTION: /var/lib/ovpn-agent/projection
+      RIVET_AGENT_OWNERSHIP: /var/lib/ovpn-agent/config/ownership.json
+      RIVET_AGENT_SOCKET: /run/ovpn-agent/agent.sock
+      RIVET_AGENT_EVENT_SOCKET: /run/ovpn-events/events.sock
+      RIVET_MANAGEMENT_SOCKET: /run/openvpn/management.sock
+      RIVET_MANAGEMENT_UID: '0'
+      RIVET_MANAGEMENT_GID: '65532'
+      RIVET_OPENVPN_UID: '65530'
+      RIVET_API_UID: '65531'
+      RIVET_AGENT_ROUTE_PROTOCOL: ${RIVET_AGENT_ROUTE_PROTOCOL:?Allocate and review a route protocol}
+      RIVET_AGENT_MUTATIONS: ${RIVET_AGENT_MUTATIONS:-}
+      RIVET_AGENT_EASYRSA: /usr/share/easy-rsa/easyrsa
+    volumes:
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/vpn-config
+        target: /var/lib/ovpn-agent/config
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/vpn-pki
+        target: /var/lib/ovpn-agent/pki
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/vpn-ccd
+        target: /var/lib/ovpn-agent/ccd
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/vpn-journal
+        target: /var/lib/ovpn-agent/journal
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/vpn-projection
+        target: /var/lib/ovpn-agent/projection
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/agent-socket
+        target: /run/ovpn-agent
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/management-socket
+        target: /run/openvpn
+        read_only: true
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/event-socket
+        target: /run/ovpn-events
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/vpn-pool
+        target: /var/lib/openvpn
+        read_only: true
+  api:
+    <<: *runtime
+    depends_on:
+      agent:
+        condition: service_healthy
+    image: ${RIVET_API_IMAGE:?Set the verified API image digest}
+    user: '65531:65531'
+    tmpfs: ['/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777']
+    networks:
+      web:
+        ipv4_address: 172.30.250.3
+    environment:
+      RIVET_VPN_BACKEND: agent
+      RIVET_AGENT_SOCKET: /run/ovpn-agent/agent.sock
+      RIVET_AGENT_UID: '65532'
+      RIVET_CLIENT_CONFIG_PATH: /var/lib/ovpn-api/profile/client.ovpn
+      RIVET_VPN_EVENTS: ${RIVET_VPN_EVENTS:-0}
+      RIVET_VPN_RECONCILE: ${RIVET_VPN_RECONCILE:-0}
+      RIVET_PROXY_IP: 172.30.250.2
+      AZURE_ENTRAID_TENANT_ID: ${AZURE_ENTRAID_TENANT_ID:?Set the Entra tenant ID}
+      AZURE_ENTRAID_APP_CLIENT_ID: ${AZURE_ENTRAID_APP_CLIENT_ID:?Set the API application ID}
+      AZURE_ENTRAID_USER_ROLE: ${AZURE_ENTRAID_USER_ROLE:-device_user}
+      AZURE_ENTRAID_ADMIN_ROLE: ${AZURE_ENTRAID_ADMIN_ROLE:-sysadmin}
+      AZURE_ENTRAID_SERVICE_ADMIN_ROLE: ${AZURE_ENTRAID_SERVICE_ADMIN_ROLE:-ServiceAdmin}
+      AZURE_ENTRAID_AUTO_REGISTER_USERS: ${AZURE_ENTRAID_AUTO_REGISTER_USERS:-true}
+    volumes:
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/api-data
+        target: /opt/rivet
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/api-archives
+        target: /opt/rivet/certs
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/api-profile
+        target: /var/lib/ovpn-api/profile
+      - <<: *bind
+        source: ${RIVET_STATE_ROOT:?Set the private state root}/agent-socket
+        target: /run/ovpn-agent
+        read_only: true
+  web:
+    <<: *runtime
+    image: ${RIVET_WEB_IMAGE:?Set the verified Nginx UI image digest}
+    user: '101:101'
+    environment:
+      RIVET_UI_ENTRA_TENANT_ID: ${RIVET_UI_ENTRA_TENANT_ID:?Set the public UI tenant ID}
+      RIVET_UI_ENTRA_CLIENT_ID: ${RIVET_UI_ENTRA_CLIENT_ID:?Set the public SPA client ID}
+      RIVET_UI_ENTRA_API_SCOPE: ${RIVET_UI_ENTRA_API_SCOPE:?Set the public API scope}
+    depends_on:
+      api:
+        condition: service_healthy
+    tmpfs: ['/tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777']
+    networks:
+      web:
+        ipv4_address: 172.30.250.2
+    ports:
+      - '${RIVET_HTTP_BIND:-127.0.0.1}:${RIVET_HTTP_PORT:-8080}:8080'
+networks:
+  web:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.250.0/28

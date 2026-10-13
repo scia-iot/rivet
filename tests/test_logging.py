@@ -1,7 +1,7 @@
 import json
 import logging
 
-from sciaiot.ovpncp.utils.logging import JSONFormatter, mask_sensitive
+from sciaiot.rivet.utils.logging import JSONFormatter, mask_sensitive
 
 
 def test_mask_sensitive_sas():

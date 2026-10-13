@@ -1,0 +1,31 @@
+# Build/push only. Run from repository root with --env-file deploy/container.env.
+name: rivet-build
+x-build: &build
+  context: ..
+x-image: &image
+  platform: ${RIVET_PLATFORM:-linux/amd64}
+services:
+  openvpn:
+    <<: *image
+    image: ${RIVET_REGISTRY:?Set the registry host and optional namespace}/rivet-openvpn:${RIVET_IMAGE_TAG:-dev}
+    build:
+      <<: *build
+      dockerfile: deploy/openvpn/Dockerfile
+  agent:
+    <<: *image
+    image: ${RIVET_REGISTRY:?Set the registry host and optional namespace}/rivet-agent:${RIVET_IMAGE_TAG:-dev}
+    build:
+      <<: *build
+      dockerfile: deploy/agent/Dockerfile
+  api:
+    <<: *image
+    image: ${RIVET_REGISTRY:?Set the registry host and optional namespace}/rivet-api:${RIVET_IMAGE_TAG:-dev}
+    build:
+      <<: *build
+      dockerfile: deploy/api/Dockerfile
+  web:
+    <<: *image
+    image: ${RIVET_REGISTRY:?Set the registry host and optional namespace}/rivet-web:${RIVET_IMAGE_TAG:-dev}
+    build:
+      <<: *build
+      dockerfile: deploy/nginx/Dockerfile

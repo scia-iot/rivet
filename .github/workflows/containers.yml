@@ -1,0 +1,164 @@
+name: Container builds
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish images (default branch only)
+        type: boolean
+        default: false
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  target:
+    runs-on: ubuntu-24.04
+    outputs:
+      registry: ${{ steps.target.outputs.registry }}
+      namespace: ${{ steps.target.outputs.namespace }}
+      prefix: ${{ steps.target.outputs.prefix }}
+    steps:
+      - name: Validate registry target
+        id: target
+        shell: bash
+        env:
+          REGISTRY: ${{ vars.CONTAINER_REGISTRY }}
+          NAMESPACE: ${{ vars.CONTAINER_NAMESPACE }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          registry=${REGISTRY:-ghcr.io}
+          namespace=$NAMESPACE
+          if [[ "$registry" == ghcr.io && -z "$namespace" ]]; then
+            namespace=${OWNER,,}
+          fi
+          if [[ ! "$registry" =~ ^[a-z0-9]+([.-][a-z0-9]+)*(:[0-9]+)?$ ]] ||
+             [[ -n "$namespace" && ! "$namespace" =~ ^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*$ ]]; then
+            echo 'Set a lowercase registry host[:port] and repository namespace; Docker Hub requires an explicit namespace.' >&2
+            exit 1
+          fi
+          if [[ "$registry" == docker.io && -z "$namespace" ]]; then
+            echo 'Docker Hub requires CONTAINER_NAMESPACE.' >&2
+            exit 1
+          fi
+          prefix=$registry
+          if [[ -n "$namespace" ]]; then
+            prefix="$registry/$namespace"
+          fi
+          printf 'registry=%s\nnamespace=%s\nprefix=%s\n' "$registry" "$namespace" "$prefix" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: target
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: openvpn
+            dockerfile: deploy/openvpn/Dockerfile
+          - component: agent
+            dockerfile: deploy/agent/Dockerfile
+          - component: api
+            dockerfile: deploy/api/Dockerfile
+          - component: web
+            dockerfile: deploy/nginx/Dockerfile
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Build AMD64 OCI image without publishing
+        env:
+          IMAGE: ${{ needs.target.outputs.prefix }}/rivet-${{ matrix.component }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          REVISION: ${{ github.sha }}
+        run: |
+          mkdir -p artifacts
+          docker buildx build --platform linux/amd64 \
+            --file "$DOCKERFILE" --tag "$IMAGE:sha-$REVISION" \
+            --label "org.opencontainers.image.revision=$REVISION" \
+            --provenance=false --sbom=true \
+            --output type=oci,dest=artifacts/image.oci.tar \
+            --metadata-file artifacts/metadata.json .
+          printf '%s:sha-%s\n' "$IMAGE" "$REVISION" > artifacts/image.txt
+          sha256sum artifacts/image.oci.tar > artifacts/archive.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: container-${{ matrix.component }}-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 7
+          compression-level: 0
+          if-no-files-found: error
+
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.publish &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    needs: [target, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: openvpn
+            dockerfile: deploy/openvpn/Dockerfile
+          - component: agent
+            dockerfile: deploy/agent/Dockerfile
+          - component: api
+            dockerfile: deploy/api/Dockerfile
+          - component: web
+            dockerfile: deploy/nginx/Dockerfile
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Validate external registry credentials
+        if: needs.target.outputs.registry != 'ghcr.io'
+        env:
+          USERNAME: ${{ secrets.CONTAINER_REGISTRY_USERNAME }}
+          PASSWORD: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
+        run: |
+          if [[ -z "$USERNAME" || -z "$PASSWORD" ]]; then
+            echo 'External publishing requires CONTAINER_REGISTRY_USERNAME and CONTAINER_REGISTRY_PASSWORD secrets.' >&2
+            exit 1
+          fi
+      - name: Login to GHCR
+        if: needs.target.outputs.registry == 'ghcr.io'
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Login to external registry
+        if: needs.target.outputs.registry != 'ghcr.io'
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ${{ needs.target.outputs.registry }}
+          username: ${{ secrets.CONTAINER_REGISTRY_USERNAME }}
+          password: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
+      - name: Build and publish AMD64 image
+        env:
+          IMAGE: ${{ needs.target.outputs.prefix }}/rivet-${{ matrix.component }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          REVISION: ${{ github.sha }}
+        run: |
+          mkdir -p artifacts
+          docker buildx build --platform linux/amd64 \
+            --file "$DOCKERFILE" --tag "$IMAGE:sha-$REVISION" \
+            --label "org.opencontainers.image.revision=$REVISION" \
+            --provenance=false --sbom=true --push \
+            --metadata-file artifacts/metadata.json .
+          printf '%s:sha-%s\n' "$IMAGE" "$REVISION" > artifacts/image.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: published-${{ matrix.component }}-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 30
+          if-no-files-found: error

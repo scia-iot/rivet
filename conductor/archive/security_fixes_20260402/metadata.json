@@ -1,8 +1,0 @@
-{
-  "track_id": "security_fixes_20260402",
-  "type": "bug",
-  "status": "new",
-  "created_at": "2026-04-02T10:00:00Z",
-  "updated_at": "2026-04-02T10:00:00Z",
-  "description": "security fixes for the security report @final_report.md."
-}

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sciaiot-rivet-agent"
+version = "0.1.7"
+description = "Rivet VPN agent from SCIA IoT."
+readme = "README.md"
+license = { text = "Apache License 2.0" }
+authors = [{ name = "Nick Yao", email = "ipaddict@outlook.com" }]
+requires-python = ">=3.14"
+dependencies = ["sciaiot-rivet==0.1.7"]
+
+[project.urls]
+Homepage = "https://github.com/scia-iot"
+Source = "https://github.com/scia-iot/ovpncp"
+
+[tool.setuptools]
+packages = []

@@ -3,13 +3,17 @@ import os
 # Set dummy environment variables before importing the app to avoid security middleware failure
 os.environ["AZURE_ENTRAID_TENANT_ID"] = "mock"
 os.environ["AZURE_ENTRAID_APP_CLIENT_ID"] = "mock"
-os.environ["AZURE_ENTRAID_APP_ROLE"] = "mock"
+os.environ["AZURE_ENTRAID_USER_ROLE"] = "user"
+os.environ["AZURE_ENTRAID_ADMIN_ROLE"] = "admin"
+os.environ["AZURE_ENTRAID_SERVICE_ADMIN_ROLE"] = "ServiceAdmin"
+
+import logging
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sciaiot.ovpncp.main import app
-import logging
-from unittest.mock import patch
+
+from sciaiot.rivet.main import app
 
 
 # We will add a temporary route to 'app' for testing purposes
@@ -22,12 +26,12 @@ async def trigger_exception():
 def client_fixture():
     # Use a yield fixture with patch to ensure it persists during the test
     with patch(
-        "sciaiot.ovpncp.middlewares.azure_security.validate_token"
+        "sciaiot.rivet.middlewares.azure_security.validate_token"
     ) as mock_validate:
         mock_validate.return_value = {"sub": "test-user"}
         # Also patch the middleware's response to errors
         with patch(
-            "sciaiot.ovpncp.middlewares.azure_security.azure_security_middleware"
+            "sciaiot.rivet.middlewares.azure_security.azure_security_middleware"
         ) as mock_middleware:
             # Manually implement the middleware bypass
             async def side_effect(request, call_next):
@@ -80,11 +84,12 @@ def test_global_exception_handler_no_stack_trace(client: TestClient):
 
 def test_global_exception_handler_logs_error(client: TestClient, caplog):
     """
-    Test that the exception is logged.
+    Test that a fixed failure is logged without exception payloads.
     """
     caplog.clear()
     with caplog.at_level(logging.ERROR):
         client.get("/test-exception")
 
-    assert "Unhandled exception: Test exception" in caplog.text
-    assert "RuntimeError" in caplog.text
+    assert "Unhandled request failure." in caplog.text
+    assert "Test exception" not in caplog.text
+    assert "RuntimeError" not in caplog.text
