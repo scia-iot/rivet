@@ -1,12 +1,12 @@
-# Rivet from SCIA IoT
+# Rivet
 
 An OpenVPN control plane for restricted IoT and edge networks. Rivet provides
 a REST API, web UI, and private VPN agent for client certificates, fixed
 addresses, routes, and controlled access between VPN peers.
 
-[![Tests](https://github.com/scia-iot/ovpncp/actions/workflows/tests.yml/badge.svg)](https://github.com/scia-iot/ovpncp/actions/workflows/tests.yml)
-[![CodeQL](https://github.com/scia-iot/ovpncp/actions/workflows/codeql.yml/badge.svg)](https://github.com/scia-iot/ovpncp/actions/workflows/codeql.yml)
-[![Package](https://github.com/scia-iot/ovpncp/actions/workflows/package.yml/badge.svg)](https://github.com/scia-iot/ovpncp/actions/workflows/package.yml)
+[![Tests](https://github.com/scia-iot/rivet/actions/workflows/tests.yml/badge.svg)](https://github.com/scia-iot/rivet/actions/workflows/tests.yml)
+[![CodeQL](https://github.com/scia-iot/rivet/actions/workflows/codeql.yml/badge.svg)](https://github.com/scia-iot/rivet/actions/workflows/codeql.yml)
+[![Package](https://github.com/scia-iot/rivet/actions/workflows/package.yml/badge.svg)](https://github.com/scia-iot/rivet/actions/workflows/package.yml)
 
 ## Install
 
