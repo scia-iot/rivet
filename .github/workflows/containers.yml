@@ -3,6 +3,8 @@ name: Container builds
 on:
   pull_request:
   push:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       publish:
@@ -21,6 +23,7 @@ jobs:
       registry: ${{ steps.target.outputs.registry }}
       namespace: ${{ steps.target.outputs.namespace }}
       prefix: ${{ steps.target.outputs.prefix }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Validate registry target
         id: target
@@ -49,6 +52,25 @@ jobs:
             prefix="$registry/$namespace"
           fi
           printf 'registry=%s\nnamespace=%s\nprefix=%s\n' "$registry" "$namespace" "$prefix" >> "$GITHUB_OUTPUT"
+      - name: Validate release version
+        id: version
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=${RELEASE_TAG#v}
+          number='(0|[1-9][0-9]*)'
+          suffix='(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?'
+          pattern="^$number\.$number\.$number$suffix$"
+          if [[ ! "$version" =~ $pattern || ${#version} -gt 128 ]]; then
+            printf '%s\n' \
+              'Release tag must be MAJOR.MINOR.PATCH, optionally prefixed' \
+              'with v and followed by a prerelease suffix (maximum 128' \
+              'characters). Build metadata (+...) is not supported.' >&2
+            exit 1
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
   build:
     needs: target
@@ -95,8 +117,9 @@ jobs:
 
   publish:
     if: >-
-      github.event_name == 'workflow_dispatch' && inputs.publish &&
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      (github.event_name == 'release' && github.event.action == 'published') ||
+      (github.event_name == 'workflow_dispatch' && inputs.publish &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
     needs: [target, build]
     runs-on: ubuntu-24.04
     permissions:
@@ -144,18 +167,25 @@ jobs:
           username: ${{ secrets.CONTAINER_REGISTRY_USERNAME }}
           password: ${{ secrets.CONTAINER_REGISTRY_PASSWORD }}
       - name: Build and publish AMD64 image
+        shell: bash
         env:
           IMAGE: ${{ needs.target.outputs.prefix }}/rivet-${{ matrix.component }}
           DOCKERFILE: ${{ matrix.dockerfile }}
           REVISION: ${{ github.sha }}
+          VERSION: ${{ needs.target.outputs.version }}
         run: |
           mkdir -p artifacts
+          tags=(--tag "$IMAGE:sha-$REVISION")
+          printf '%s:sha-%s\n' "$IMAGE" "$REVISION" > artifacts/image.txt
+          if [[ -n "$VERSION" ]]; then
+            tags+=(--tag "$IMAGE:$VERSION")
+            printf '%s:%s\n' "$IMAGE" "$VERSION" >> artifacts/image.txt
+          fi
           docker buildx build --platform linux/amd64 \
-            --file "$DOCKERFILE" --tag "$IMAGE:sha-$REVISION" \
+            --file "$DOCKERFILE" "${tags[@]}" \
             --label "org.opencontainers.image.revision=$REVISION" \
             --provenance=false --sbom=true --push \
             --metadata-file artifacts/metadata.json .
-          printf '%s:sha-%s\n' "$IMAGE" "$REVISION" > artifacts/image.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: published-${{ matrix.component }}-${{ github.run_id }}
