@@ -9,7 +9,7 @@ version = "0.0.0.dev0"
 description = "Rivet VPN agent from SCIA IoT."
 readme = "README.md"
 license = { text = "Apache License 2.0" }
-authors = [{ name = "Nick Yao", email = "ipaddict@outlook.com" }]
+authors = [{ name = "Nick Yao", email = "ipaddicting@gmail.com" }]
 requires-python = ">=3.14"
 dependencies = ["sciaiot-rivet==0.0.0.dev0"]
 
