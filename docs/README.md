@@ -20,3 +20,5 @@ explicitly invoked live test harnesses.
 
 Completed transition documents are in the [archive](archive/README.md).
 Superseded plans and verification logs remain in Git history.
+
+Proposed work: [provider-independent storage and authentication](cloud-services-plan.md).

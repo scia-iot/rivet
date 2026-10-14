@@ -21,10 +21,18 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+
+      - name: Prepare release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python deploy/release_version.py --tag "$RELEASE_TAG" --write
 
       - name: Build release distributions
         run: |

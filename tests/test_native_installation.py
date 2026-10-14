@@ -3,6 +3,7 @@
 import os
 import shlex
 import shutil
+import site
 import stat
 import subprocess
 import sys
@@ -113,6 +114,13 @@ def test_built_wheel_contains_native_templates(tmp_path: Path) -> None:
         [sys.executable, "-m", "venv", "--system-site-packages", str(environment)],
         check=True,
         capture_output=True,
+    )
+    # A nested venv inherits base Python's packages, not its parent venv's.
+    # Make the documented dependency reuse work for venv-based test runners
+    # too, including the agent subprocess that deliberately clears its env.
+    installed = next(environment.glob("lib/python*/site-packages"))
+    (installed / "test-dependencies.pth").write_text(
+        "\n".join(site.getsitepackages()) + "\n"
     )
     python = environment / "bin/python"
     subprocess.run(

@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sciaiot-rivet"
-version = "0.1.7"
+# Release builds stamp this development placeholder from the GitHub tag.
+version = "0.0.0.dev0"
 license = { text = "Apache License 2.0" }
 description = "Rivet: OpenVPN control plane from SCIA IoT."
 authors = [{ name = "Nick Yao", email = "ipaddict@outlook.com" }]
