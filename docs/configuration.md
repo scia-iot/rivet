@@ -31,6 +31,7 @@ build arguments, browser variables, shell history, and logs.
 | `HOST`, `PORT` | Native API defaults to `127.0.0.1:8000`. Container entrypoint owns its listener settings. |
 | `RIVET_ROOT_PATH` | Native/source runner accepts empty or `/api`; native Nginx deployment uses `/api`. |
 | `RIVET_PROXY_IP` | Container API's sole trusted forwarded-header peer; must match the Nginx bridge address. |
+| `RIVET_STORAGE_PROVIDER` | `local` or `azure_blob`. If unset, a configured `AZURE_STORAGE_CONNECTION_STRING` selects Blob; otherwise local. Blank and unsupported values fail startup. Explicit `local` ignores legacy Blob credentials. |
 
 Agent configuration, mutation-family requirements, route protocol allocation,
 and ownership checks are defined in [agent operation](vpn-control.md#agent-operation).
@@ -110,11 +111,21 @@ change. Runtime configuration is the native/container reference.
 ## Optional database and Blob secrets
 
 Use `sciaiot-rivet[api,azure]` for native Blob support. Set
-`AZURE_STORAGE_CONNECTION_STRING` and retain the existing private container
-name `ovpncp`; the name is a persistent archive identifier. Credential download
-authorization still applies. Agent-backed downloads verify the agent's active
-archive generation rather than trusting an old Blob copy. Failed orphan Blob
-cleanup requires operator follow-up.
+`RIVET_STORAGE_PROVIDER=azure_blob` and `AZURE_STORAGE_CONNECTION_STRING`, or
+leave the provider unset to infer Blob from the legacy connection string. The
+private container remains `ovpncp`; its name and `<client>.zip` archive keys
+are persistent identifiers. `RIVET_STORAGE_PROVIDER=local` selects the
+configured certificate directory even when a legacy Blob connection string is
+present. Unsupported providers fail startup; changing providers requires an
+API restart and does not migrate existing archives.
+
+Both administrator and owned-client download routes use the selected store for
+host archives. Agent and shadow downloads always verify fresh agent bytes and
+active generation. Archives are bounded to 16 MiB and served as private ZIP
+attachments with `Cache-Control: no-store`. Blob upload failures fail the
+package request. Archive cleanup follows durable client deletion; if cleanup
+fails, deletion still returns `204` and the operator must remove the orphaned
+archive manually.
 
 The API container supports `SQLALCHEMY_DATABASE_URI_FILE` and
 `AZURE_STORAGE_CONNECTION_STRING_FILE` through a reviewed Compose override.
@@ -123,6 +134,10 @@ Use direct regular files beneath `/run/secrets`, owned by UID 65531, mode
 inline/file values fail startup. Native services use protected root-owned
 environment files or an explicitly configured credential-delivery mechanism;
 the container's `_FILE` loader is not a general native environment feature.
+An explicit `local` selection leaves any Blob credential file unused. For the
+reference Compose deployment, pass `RIVET_STORAGE_PROVIDER` through the same
+reviewed API service override used for optional Blob secrets; values in
+`deploy/container.env` are not forwarded automatically.
 
 The reference container lock uses SQLite. MySQL/PostgreSQL require a reviewed
 driver lock and image variant, plus database-specific backup/restore. Never

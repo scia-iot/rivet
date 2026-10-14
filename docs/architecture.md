@@ -22,6 +22,7 @@ flowchart LR
   caller <-->|Sign-in| entra[Microsoft Entra ID]
   api -->|Token verification| entra
   api <--> db[(API database and archives)]
+  api <-->|Private SDK calls when selected| blob[(Azure Blob archives)]
   api <-->|Typed HTTP over Unix socket| agent[VPN agent]
   agent <--> pki[(Private PKI, CCD, intent and journal)]
   agent --> projection[(Minimal runtime projection)]
@@ -265,15 +266,16 @@ history and cursor before immutable acknowledgements. Both flags default off
 and require agent mode. Inconclusive PKI/reload outcomes remain fenced for
 operator recovery; no automatic guess or CA rollback is permitted.
 
-Agent-backed certificate downloads always obtain fresh active-generation
-metadata, consume and verify a bounded archive, then recheck generation before
-returning the public ZIP. Partial bytes are never published. Optional Azure
-uploads and cleanup remain API concerns; Azure cached bytes cannot replace
-that verified agent response. Host Azure behavior is unchanged. Old local
-archives are invalidated after renewal/revocation/deletion, with failed local
-cleanup retained separately. Existing best-effort Blob orphan cleanup remains
-an operator responsibility and is not automatically retried by a Blob reconciler. Neither
-archive bytes nor SAS URLs or storage credentials cross JSON control messages.
+The API selects one `ArchiveStore` at startup: local files or the existing
+private Azure Blob container. The certificate service validates and packages
+archives, publishes bounded local staging atomically, and uploads Blob bytes
+when selected. Host downloads read from the selected store. Agent-backed
+downloads always obtain fresh active-generation metadata, consume and verify
+a bounded archive, then recheck generation before returning the public ZIP.
+Partial or cached cloud bytes never replace this verification. Stored archives
+are deleted only after the client database commit; failed post-commit cleanup
+keeps a truthful `204` and requires manual orphan removal. Neither archive
+bytes nor SAS URLs or storage credentials cross JSON control messages.
 
 ### Verification boundary
 

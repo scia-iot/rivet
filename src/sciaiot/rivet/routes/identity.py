@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import Session
 
 from sciaiot.rivet import dependencies
@@ -46,6 +46,7 @@ from sciaiot.rivet.services.client_config import (
     ClientConfigReadError,
     client_config_response,
 )
+from sciaiot.rivet.services.dispatch import threaded
 from sciaiot.rivet.services.identity import (
     AccessService,
     DeviceService,
@@ -232,6 +233,7 @@ def retrieve_current_device(
     status_code=status.HTTP_204_NO_CONTENT,
     openapi_extra={"x-current-user-resource": "owned-client"},
 )
+@threaded
 def package_current_client_certificate(
     client_name: str,
     principal: PrincipalDependency,
@@ -264,9 +266,9 @@ def package_current_client_certificate(
     },
     openapi_extra={"x-current-user-resource": "owned-client"},
 )
+@threaded
 def download_current_client_certificate(
     client_name: str,
-    request: Request,
     principal: PrincipalDependency,
     session: DBSession,
 ) -> Response:
@@ -276,14 +278,7 @@ def download_current_client_certificate(
     try:
         return CertificateArchiveService(
             dependencies.certs_directory
-        ).download_response(
-            client,
-            from_cloud_storage=getattr(
-                request.state,
-                "certificate_download_from_azure",
-                False,
-            ),
-        )
+        ).download_response(client)
     except CertificateArchiveError as error:
         raise _portal_certificate_failure(error) from error
 

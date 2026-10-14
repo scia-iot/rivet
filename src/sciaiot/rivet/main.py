@@ -37,22 +37,27 @@ async def lifespan(app: FastAPI):
     settings = BackendSettings.from_environment()
     background = BackgroundSettings.from_environment()
     control = get_vpn_control()
-    create_app_directory()
-    create_tables()
-    if settings.backend in {"host", "shadow"}:
-        init_scripts()
-    logger.info("Startup events finished.")
-
+    store = await asyncio.to_thread(dependencies.create_archive_store)
     worker = None
-    if settings.backend == "agent" and (background.events or background.reconcile):
-        worker = BackgroundWorker(dependencies.engine, control, background)
-        worker.start()
     try:
+        create_app_directory()
+        create_tables()
+        if settings.backend in {"host", "shadow"}:
+            init_scripts()
+        dependencies.archive_store = store
+        logger.info("Startup events finished.")
+        if settings.backend == "agent" and (background.events or background.reconcile):
+            worker = BackgroundWorker(dependencies.engine, control, background)
+            worker.start()
         yield
     finally:
-        if worker is not None:
-            await asyncio.to_thread(worker.close)
-        logger.info("Shutdown events finished.")
+        try:
+            if worker is not None:
+                await asyncio.to_thread(worker.close)
+        finally:
+            dependencies.archive_store = None
+            await asyncio.to_thread(store.close)
+            logger.info("Shutdown events finished.")
 
 
 app = FastAPI(
@@ -63,7 +68,7 @@ app = FastAPI(
 )
 
 # Register optional middlewares
-for mw in ["azure_security", "azure_storage"]:
+for mw in ["azure_security"]:
     try:
         module = importlib.import_module(f"sciaiot.rivet.middlewares.{mw}")
         app.middleware("http")(getattr(module, f"{mw}_middleware"))

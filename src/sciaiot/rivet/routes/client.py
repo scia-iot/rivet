@@ -2,7 +2,7 @@ import logging
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlmodel import Session, select
 
@@ -171,25 +171,18 @@ def package_client_cert(
         }
     },
 )
+@threaded
 def download_client_cert(
     client_name: str,
-    request: Request,
     session: DBSession,
     _principal: RequireClientsWrite,
 ):
-    logger.info(f"Downloading client certificate for {client_name}...")
+    logger.info("Downloading client certificate archive...")
     client = get_client_by_name(client_name, session)
     try:
         response = CertificateArchiveService(
             dependencies.certs_directory
-        ).download_response(
-            client,
-            from_cloud_storage=getattr(
-                request.state,
-                "certificate_download_from_azure",
-                False,
-            ),
-        )
+        ).download_response(client)
     except CertificateArchiveError as error:
         raise _certificate_failure("download") from error
     logger.info("Client certificate ready to be downloaded.")
@@ -328,6 +321,15 @@ def delete_client(
             "Staged VPN client cleanup failed after deletion; remove "
             ".rivet-delete-* artifacts from configured client directories "
             "manually."
+        )
+    try:
+        CertificateArchiveService(dependencies.certs_directory).delete_after_commit(
+            client.name
+        )
+    except Exception:  # noqa: BLE001 - preserve durable deletion response
+        logger.error(
+            "VPN client archive cleanup failed after deletion; remove "
+            "the orphaned archive from the selected store manually."
         )
     logger.info("Revoked VPN client deleted successfully.")
 

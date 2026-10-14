@@ -1,6 +1,6 @@
 # Provider-independent storage and authentication plan
 
-Status: proposed; implementation has not started.
+Status: storage implementation complete; authentication and browser work pending.
 
 Introduce application services and typed provider interfaces, then adapt the
 existing Azure implementations. Prepare Rivet for Amazon S3 or local MinIO
@@ -185,9 +185,17 @@ not a build containing embedded credentials.
 
 ## Implementation sequence
 
-All steps are pending. For each behavior change, add a failing focused test
-where practical, implement the smallest coherent change, then run focused and
-applicable broader suites. Keep this checklist current during implementation.
+Storage portions of steps 1, 2, 3, and 6 are implemented. Authentication and
+browser portions remain pending. For each behavior change, add a failing
+focused test where practical, implement the smallest coherent change, then run
+focused and applicable broader suites. Keep this checklist current.
+
+- [x] Storage characterization, typed contracts, local/Blob adapters, provider
+  settings, lifecycle, certificate route wiring, deletion ordering, and storage
+  documentation.
+- [ ] Authentication characterization, typed identity contracts, Entra adapter,
+  registration policy, and generic middleware.
+- [ ] Browser authentication context and deployment integration for identity.
 
 - [ ] 1. Characterize Azure/local behavior across both route families, VPN
   backends, package failures, deletion ordering, Entra roles, `/me`, startup,
@@ -195,7 +203,7 @@ applicable broader suites. Keep this checklist current during implementation.
 - [ ] 2. Add typed contracts, normalized identity, safe errors, fake adapters,
   settings, and factories. Test defaults, selection, aliases, invalid values,
   missing optional SDKs, and lifecycle cleanup.
-- [ ] 3. Extract local/Blob adapters and inject storage into the archive service.
+- [x] 3. Extract local/Blob adapters and inject storage into the archive service.
   Rewire package/download/delete flows, then remove Azure storage middleware.
 - [ ] 4. Extract the Entra adapter and authentication service/middleware. Remove
   Entra imports from authorization and identity routes; centralize validation.
@@ -203,6 +211,7 @@ applicable broader suites. Keep this checklist current during implementation.
   deployment integration while retaining existing Azure setup.
 - [ ] 6. Update architecture, configuration, deployment, user, and frontend docs;
   run quality gates and record results and outstanding manual verification.
+  Storage documentation is current; frontend and authentication remain pending.
 
 ## Verification and completion criteria
 
@@ -246,6 +255,12 @@ Target more than 80% coverage for changed application code. Ordinary tests
 mock Azure and privileged operations. Record live Azure sign-in, service-token,
 Blob, and deployed-browser smoke verification separately; unit tests alone do
 not establish live compatibility.
+
+Storage implementation verification (2026-10-14): `ruff format --check .`,
+`ruff check .`, `mypy .`, and the full `pytest --cov=src/sciaiot/rivet
+--cov-report=term-missing` suite passed. Storage adapters and the certificate
+service exceed 80% statement coverage. Live Blob behavior has not been
+verified against an Azure account; the tests use SDK mocks.
 
 Completion requires provider-independent application routes/services/policy,
 covered Azure/local behavior, fail-closed startup, and browser consumers that

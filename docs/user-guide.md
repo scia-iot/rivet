@@ -288,8 +288,10 @@ settings and does not contain the client's certificate or private key.
 
 The ZIP contains a private key without a password. Keep it and the extracted
 key in a private location; exclude them from shared folders and support
-attachments. If Azure certificate storage is enabled, the same download
-buttons apply; users do not need Azure storage credentials.
+attachments. If Azure certificate storage is selected, the same download
+buttons apply; users do not need Azure storage credentials. If archive cleanup
+fails after a VPN client is deleted, an administrator must remove the orphaned
+archive from the selected store.
 
 ## 9. Device user: download credentials and connect
 

@@ -6,6 +6,7 @@ import sys
 import uuid
 
 from sciaiot.rivet.adapters.vpn.settings import BackendSettings
+from sciaiot.rivet.services.provider_settings import StorageSettings
 
 AUTH_NAMES = (
     "AZURE_ENTRAID_TENANT_ID",
@@ -39,10 +40,12 @@ def validate_environment() -> None:
             uuid.UUID(os.environ[name])
         if os.environ.get("HOST", "127.0.0.1") not in ("127.0.0.1", "::1"):
             raise ValueError
+        StorageSettings.from_environment()
     except KeyError, ValueError:
         raise ValueError(
             "Invalid native API configuration; require agent backend, "
-            "trusted agent UID, loopback bind and complete Entra settings."
+            "trusted agent UID, loopback bind, complete Entra settings and "
+            "valid storage selection and credentials."
         ) from None
 
 

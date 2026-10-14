@@ -1,8 +1,9 @@
 """Authorization policy tests for trusted principals and management routes."""
 
+import logging
 from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -637,10 +638,10 @@ def test_current_user_can_package_and_download_only_owned_credentials(
     with (
         patch("sciaiot.rivet.utils.openvpn.package_client_cert") as package,
         patch(
-            "builtins.open",
-            mock_open(read_data=archive),
-            create=True,
+            "sciaiot.rivet.adapters.storage.local.LocalArchiveStore.get",
+            return_value=archive,
         ),
+        patch("sciaiot.rivet.adapters.storage.local.LocalArchiveStore.put"),
     ):
         packaged = test_client.put("/me/clients/owned-laptop/package-cert?user_id=3")
         downloaded = test_client.get("/me/clients/owned-laptop/download-cert?user_id=3")
@@ -649,10 +650,9 @@ def test_current_user_can_package_and_download_only_owned_credentials(
         missing_denial = test_client.get("/me/clients/missing-laptop/download-cert")
 
     assert packaged.status_code == 204
-    package.assert_called_once_with(
-        "owned-laptop",
-        dependencies.certs_directory,
-    )
+    assert package.call_count == 1
+    assert package.call_args.args[0] == "owned-laptop"
+    assert "rivet-archive-" in package.call_args.args[1]
     assert downloaded.status_code == 200
     assert downloaded.content == archive
     assert downloaded.headers["cache-control"] == "no-store"
@@ -664,6 +664,48 @@ def test_current_user_can_package_and_download_only_owned_credentials(
         assert denial.json()["detail"] == (
             "The current principal is not authorized for this resource."
         )
+
+
+def test_owned_cloud_archives_and_denials_use_selected_store(
+    authorization_context: tuple[TestClient, dict[str, object], Session],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Owned routes use Blob bytes while denied clients make no store calls."""
+    test_client, _, _ = authorization_context
+    store = MagicMock()
+    store.get.return_value = b"selected archive"
+    secret = "https://private.example/archive?sig=secret-token"
+    with (
+        patch("sciaiot.rivet.dependencies.get_archive_store", return_value=store),
+        patch("sciaiot.rivet.utils.openvpn.package_client_cert"),
+        patch(
+            "sciaiot.rivet.adapters.storage.local.LocalArchiveStore.get",
+            return_value=b"staged archive",
+        ) as local_get,
+        patch("sciaiot.rivet.adapters.storage.local.LocalArchiveStore.put"),
+        caplog.at_level(logging.ERROR),
+    ):
+        packaged = test_client.put("/me/clients/owned-laptop/package-cert")
+        downloaded = test_client.get("/me/clients/owned-laptop/download-cert")
+        denied = test_client.get("/me/clients/other-laptop/download-cert")
+        store.put.side_effect = RuntimeError(secret)
+        failed_upload = test_client.put("/me/clients/owned-laptop/package-cert")
+        store.get.side_effect = RuntimeError(secret)
+        failed_download = test_client.get("/me/clients/owned-laptop/download-cert")
+
+    assert packaged.status_code == 204
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"selected archive"
+    assert denied.status_code == 403
+    store.put.assert_any_call("owned-laptop", b"staged archive")
+    assert store.get.call_count == 2
+    store.get.assert_any_call("owned-laptop")
+    for failed in (failed_upload, failed_download):
+        assert failed.status_code == 500
+        assert failed.json()["detail"] == "The certificate operation failed."
+        assert secret not in failed.text
+    assert secret not in caplog.text
+    assert local_get.call_count == 2  # Staging for two package attempts only.
 
 
 @pytest.mark.parametrize(
@@ -814,20 +856,18 @@ def test_revoked_current_user_credentials_fail_before_archive_work(
     session.add(UserClient(user_id=user.id, client_id=revoked_client.id))
     session.commit()
 
-    container = MagicMock()
+    store = MagicMock()
     sensitive = "/private/revoked.zip?sig=secret-token"
     with (
         patch(
-            "sciaiot.rivet.middlewares.azure_storage.STORAGE_CONNECTION_STRING",
-            "configured",
-        ),
-        patch(
-            "sciaiot.rivet.middlewares.azure_storage.container_client",
-            container,
-            create=True,
+            "sciaiot.rivet.dependencies.get_archive_store",
+            return_value=store,
         ),
         patch("sciaiot.rivet.utils.openvpn.package_client_cert") as package,
-        patch("builtins.open", side_effect=AssertionError(sensitive)) as opened,
+        patch(
+            "sciaiot.rivet.adapters.storage.local.LocalArchiveStore.get",
+            side_effect=AssertionError(sensitive),
+        ) as opened,
     ):
         package_response = test_client.put("/me/clients/revoked-laptop/package-cert")
         download_response = test_client.get("/me/clients/revoked-laptop/download-cert")
@@ -840,4 +880,5 @@ def test_revoked_current_user_credentials_fail_before_archive_work(
         assert sensitive not in response.text
     package.assert_not_called()
     opened.assert_not_called()
-    container.get_blob_client.assert_not_called()
+    store.get.assert_not_called()
+    store.put.assert_not_called()

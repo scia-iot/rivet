@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from sciaiot.rivet.application.storage import ArchiveStore
     from sciaiot.rivet.application.vpn_control.port import VpnControl
 from pathlib import Path
 
@@ -63,6 +64,7 @@ def init_scripts():
 
 
 vpn_control: VpnControl | None = None
+archive_store: ArchiveStore | None = None
 
 
 @lru_cache(maxsize=1)
@@ -88,3 +90,28 @@ def _configured_vpn_control() -> VpnControl:
 def get_vpn_control() -> VpnControl:
     """Return the configured backend or an explicitly injected test port."""
     return vpn_control if vpn_control is not None else _configured_vpn_control()
+
+
+def create_archive_store() -> ArchiveStore:
+    """Construct the selected archive store once per application lifecycle."""
+    from sciaiot.rivet.adapters.storage.azure_blob import AzureBlobArchiveStore
+    from sciaiot.rivet.adapters.storage.local import LocalArchiveStore
+    from sciaiot.rivet.services.provider_settings import StorageSettings
+
+    settings = StorageSettings.from_environment()
+    if settings.provider == "azure_blob":
+        assert settings.connection_string is not None
+        return AzureBlobArchiveStore(settings.connection_string)
+    return LocalArchiveStore(certs_directory)
+
+
+def get_archive_store() -> ArchiveStore:
+    """Return the lifecycle store or a local test fallback."""
+    if archive_store is not None:
+        return archive_store
+    from sciaiot.rivet.adapters.storage.local import LocalArchiveStore
+    from sciaiot.rivet.services.provider_settings import StorageSettings
+
+    if StorageSettings.from_environment().provider != "local":
+        raise RuntimeError("Archive storage has not started.")
+    return LocalArchiveStore(certs_directory)

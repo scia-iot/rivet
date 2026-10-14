@@ -1,6 +1,7 @@
 """Application adapters and durable workflow regression tests."""
 
 from datetime import UTC
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -16,6 +17,46 @@ def test_default_backend_and_invalid_settings(monkeypatch):
     monkeypatch.setenv("RIVET_VPN_BACKEND", "invalid")
     with pytest.raises(ValueError):
         BackendSettings.from_environment()
+
+
+@pytest.mark.parametrize("shadow_mode", [False, True])
+def test_agent_and_shadow_download_ignore_cached_cloud_bytes(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    shadow_mode: bool,
+) -> None:
+    """Agent and shadow responses verify fresh bytes and active generation."""
+    from sciaiot.rivet import dependencies
+    from sciaiot.rivet.adapters.vpn.shadow import ShadowHostVpnControl
+    from sciaiot.rivet.data.server import Client
+    from sciaiot.rivet.services.certificates import (
+        CertificateArchiveError,
+        CertificateArchiveService,
+    )
+
+    fake = FakeVpnControl()
+    fake.execute(request(s.ChangeClient(client="edge_1", action="issue")))
+    control = fake
+    if shadow_mode:
+        shadow = ShadowHostVpnControl(fake)
+        monkeypatch.setattr(shadow, "execute", fake.execute)
+        monkeypatch.setattr(shadow, "open_archive", fake.open_archive)
+        control = shadow
+    monkeypatch.setattr(dependencies, "vpn_control", control)
+    store = MagicMock()
+    store.get.return_value = b"stale cloud archive"
+    client = Client(name="edge_1")
+    service = CertificateArchiveService(str(tmp_path), store)
+
+    response = service.download_response(client)
+    assert response.body == b"synthetic credential archive"
+    store.get.assert_not_called()
+    fake.state.clients["edge_1"] = fake.state.clients["edge_1"].model_copy(
+        update={"state": "revoked"}
+    )
+    with pytest.raises(CertificateArchiveError):
+        service.download_response(client)
+    store.get.assert_not_called()
 
 
 def test_fake_client_lifecycle_and_replay():

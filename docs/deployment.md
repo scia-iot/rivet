@@ -633,6 +633,14 @@ SQLite and local archives. Optional API credentials can be mounted as private
 `SQLALCHEMY_DATABASE_URI_FILE` or `AZURE_STORAGE_CONNECTION_STRING_FILE` in a
 reviewed Compose override. Database drivers outside the reference SQLite
 profile require a separately reviewed dependency lock/image build.
+The reference Compose file leaves the selector unset and therefore uses local
+archives by default. To use Blob, add `RIVET_STORAGE_PROVIDER=azure_blob` to
+the API service environment in a reviewed Compose override and supply
+`AZURE_STORAGE_CONNECTION_STRING` (or its reviewed `_FILE` secret mount). If
+the provider is unset, an existing connection string selects Blob for legacy
+compatibility. An explicit local selection does not read the Blob secret file.
+Provider changes take effect after API restart; copy and verify archives
+separately before a storage cutover.
 
 Validate the deployment configuration without starting services:
 
