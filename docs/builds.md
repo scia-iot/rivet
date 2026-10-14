@@ -136,18 +136,31 @@ package-write permission and rebuilds that revision with two tags:
 - `rivet-COMPONENT:0.1.7` for a release tagged `v0.1.7` or `0.1.7`.
 - `rivet-COMPONENT:sha-FULL_SHA` for the release commit.
 
-Release tags must use `MAJOR.MINOR.PATCH`, optionally prefixed with `v` and
-followed by a prerelease suffix, such as `v0.1.8-rc.1`. Published prereleases
-receive the corresponding `0.1.8-rc.1` image tag. Build metadata (`+...`) is not
-supported, and the image tag must fit Docker's 128-character limit. Invalid
-release tags fail before any image is published. No `latest` tag is assigned.
+The GitHub release tag is the version source for both Python distributions
+and all four container images. `deploy/release_version.py` validates tags in
+both workflows. Use `MAJOR.MINOR.PATCH`, optionally prefixed with `v`, and an
+optional `-alpha.N`, `-beta.N`, or `-rc.N` suffix (the suffix separator may
+also be a hyphen, for example `-beta-2`). Numbers must not have leading zeros.
+Other suffixes and build metadata (`+...`) are rejected before publishing;
+the image tag must fit Docker's 128-character limit.
 
-To publish a version, merge the workflow changes, update the Python package
-versions together, and create a GitHub release with a matching version tag
-on that commit. The tagged commit must contain this release-enabled workflow;
-publishing a release for an older commit uses its older workflow. Pushing a
-tag alone does not publish images, and editing an existing release does not
-trigger publication. The PyPI and container workflows run independently.
+For `v0.1.8-rc.1`, containers receive tag and OCI version label `0.1.8-rc.1`.
+Both Python distributions receive version `0.1.8rc1`, and the agent requires
+`sciaiot-rivet==0.1.8rc1`. This follows
+[Python prerelease normalization](https://packaging.python.org/en/latest/specifications/version-specifiers/#pre-releases).
+Stable release versions are identical across PyPI and containers. No `latest`
+image tag is assigned.
+
+To publish, create a GitHub release with the desired version tag on the
+reviewed commit. No package-version bump is needed: the Package workflow
+stamps both build manifests and the agent dependency in its temporary
+checkout before building wheels and source distributions. Checked-in Python
+versions are development placeholders (`0.0.0.dev0`), not release versions.
+
+The tagged commit must contain these workflows; publishing a release for an
+older commit uses its older workflow. Pushing a tag alone or editing an
+existing release does not trigger publication. The PyPI and container
+workflows run independently, so check both before announcing availability.
 
 A manual **Container builds** dispatch with `publish=true` on the default
 branch remains available and publishes only SHA tags. Manual dispatches on
@@ -213,11 +226,15 @@ state, Git metadata, node_modules and prior builds are not build inputs.
 ### Native Python and UI artifacts
 
 Build from a clean checkout/environment so stale `build/`, `dist/`, or
-egg-info output cannot enter an artifact. The package version and the agent
-metapackage's exact core dependency must move together.
+egg-info output cannot enter an artifact. To reproduce a release, check out
+its tagged commit and stamp the desired tag before building. The helper
+updates both package versions and the agent's exact core dependency together;
+it modifies only the disposable build checkout and does not create a commit.
+Without stamping, local builds use `0.0.0.dev0` and are not release artifacts.
 
 ```bash
 python -m pip install build
+python deploy/release_version.py --tag v0.1.8 --write
 python -m build
 python -m build packages/agent --outdir dist
 ```

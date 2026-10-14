@@ -72,7 +72,7 @@ def test_builds_are_read_only_and_publication_is_explicit() -> None:
         ("0.1.7", "0.1.7"),
         ("v0.1.8-rc.1", "0.1.8-rc.1"),
         ("v1.0.0-beta-2", "1.0.0-beta-2"),
-        ("v1.0.0-" + "a" * 122, "1.0.0-" + "a" * 122),
+        ("v1.0.0-" + "a" * 122, None),
         ("v1.0.0-" + "a" * 123, None),
         ("", None),
         ("latest", None),
@@ -95,7 +95,15 @@ def test_release_version_validation(
     assert target["outputs"]["version"] == "${{ steps.version.outputs.version }}"
     output = tmp_path / "output"
     result = subprocess.run(
-        ["bash", "-euo", "pipefail", "-c", step["run"]],
+        [
+            "bash",
+            "-euo",
+            "pipefail",
+            "-c",
+            step["run"].replace(
+                "deploy/release_version.py", str(ROOT / "deploy/release_version.py")
+            ),
+        ],
         cwd=tmp_path,
         env={
             **os.environ,
@@ -108,7 +116,8 @@ def test_release_version_validation(
     )
     assert (result.returncode == 0) is (expected is not None)
     if expected is not None:
-        assert output.read_text() == f"version={expected}\n"
+        package = expected.replace("-rc.", "rc").replace("-beta-", "b")
+        assert output.read_text() == (f"version={expected}\npython_version={package}\n")
     else:
         assert not output.exists()
     assert not (tmp_path / "marker").exists()
@@ -151,6 +160,12 @@ def test_publication_tags_one_build_with_version_and_revision(
     if version:
         expected.append(f"{image}:{version}")
     assert tags == expected
+    if version:
+        assert f"org.opencontainers.image.version={version}" in args
+    else:
+        assert not any(
+            arg.startswith("org.opencontainers.image.version=") for arg in args
+        )
     assert args[:4] == ["buildx", "build", "--platform", "linux/amd64"]
     assert "--push" in args
     assert "--sbom=true" in args
