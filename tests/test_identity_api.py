@@ -15,6 +15,7 @@ from sciaiot.rivet.data.identity import User, UserBase
 from sciaiot.rivet.dependencies import get_session
 from sciaiot.rivet.main import app
 from sciaiot.rivet.services.identity import UserService
+from tests.support.authentication import authenticated_claims
 
 
 @pytest.fixture(name="identity_client")
@@ -38,8 +39,7 @@ def identity_client_fixture() -> Generator[TestClient]:
             patch("sciaiot.rivet.main.create_tables"),
             patch("sciaiot.rivet.main.init_scripts"),
             patch("sciaiot.rivet.utils.openvpn.build_client"),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.validate_token",
+            authenticated_claims(
                 return_value={
                     "iss": "https://login.example/tenant/v2.0",
                     "sub": "test-subject",
@@ -47,12 +47,6 @@ def identity_client_fixture() -> Generator[TestClient]:
                     "roles": ["admin"],
                     "scp": "access_as_user",
                 },
-            ),
-            patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
-            patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-                "ServiceAdmin",
             ),
             patch(
                 "sciaiot.rivet.utils.openvpn.read_client_cert",
@@ -63,7 +57,7 @@ def identity_client_fixture() -> Generator[TestClient]:
                     "expires_on": datetime(2027, 1, 1, tzinfo=UTC),
                 },
             ),
-            TestClient(app) as test_client,
+            TestClient(app, headers={"Authorization": "Bearer fixture"}) as test_client,
         ):
             yield test_client
 
@@ -114,8 +108,7 @@ def test_current_principal_auto_registers_a_missing_local_user(
     identity_client: TestClient,
 ) -> None:
     """The first delegated `/me` request creates its local identity."""
-    with patch(
-        "sciaiot.rivet.middlewares.azure_security.validate_token",
+    with authenticated_claims(
         return_value={
             "iss": "https://login.example/tenant/v2.0",
             "sub": "new-subject",
@@ -152,8 +145,7 @@ def test_current_principal_preserves_an_existing_renamed_user(
     )
     assert created.status_code == 201
 
-    with patch(
-        "sciaiot.rivet.middlewares.azure_security.validate_token",
+    with authenticated_claims(
         return_value={
             "iss": "https://login.example/tenant/v2.0",
             "sub": "test-subject",
@@ -248,8 +240,7 @@ def test_auto_registration_errors_do_not_expose_validated_identity(
         "scp": "access_as_user",
     }
     with (
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.validate_token",
+        authenticated_claims(
             return_value=claims,
         ),
         patch.dict(
@@ -296,8 +287,7 @@ def test_auto_registration_uses_a_bounded_validated_claim_display_name(
         "name": name,
         "preferred_username": preferred_username,
     }
-    with patch(
-        "sciaiot.rivet.middlewares.azure_security.validate_token",
+    with authenticated_claims(
         return_value=claims,
     ):
         response = identity_client.get("/me")
@@ -311,8 +301,7 @@ def test_service_admin_is_never_auto_registered(
     identity_client: TestClient,
 ) -> None:
     """App-only service administration never creates a local User."""
-    with patch(
-        "sciaiot.rivet.middlewares.azure_security.validate_token",
+    with authenticated_claims(
         return_value={
             "iss": "https://login.example/tenant/v2.0",
             "sub": "service-object-id",
@@ -369,8 +358,7 @@ def test_current_principal_rejects_partial_validated_identity(
     identity_client: TestClient,
 ) -> None:
     """Missing stable token claims fail closed instead of selecting a user."""
-    with patch(
-        "sciaiot.rivet.middlewares.azure_security.validate_token",
+    with authenticated_claims(
         return_value={
             "iss": "https://login.example/tenant/v2.0",
             "roles": ["admin"],
@@ -379,7 +367,7 @@ def test_current_principal_rejects_partial_validated_identity(
         response = identity_client.get("/me")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "The validated token identity is incomplete."
+    assert response.json()["detail"] == "Incorrect claims!"
 
 
 def test_device_lifecycle(identity_client: TestClient) -> None:

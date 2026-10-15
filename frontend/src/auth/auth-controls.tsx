@@ -1,4 +1,3 @@
-import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { LogIn, LogOut, UserRound } from 'lucide-react'
 import { useState } from 'react'
@@ -8,16 +7,13 @@ import {
   isAuthenticationDisabled,
   isE2EAuthenticationMode,
 } from '@/auth/config'
+import { useBrowserAuthentication } from '@/auth/browser-authentication'
 import {
   PERMISSIONS,
   type Permission,
   permissionDescriptions,
   roleDescriptions,
 } from '@/auth/permissions'
-import {
-  redirectForLogin,
-  signOutAndClearSession,
-} from '@/auth/redirect-coordinator'
 import { usePrincipalSession } from '@/auth/use-principal-session'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -123,28 +119,23 @@ function AccountAccessMenu() {
 }
 
 function ConfiguredAuthControls() {
-  const authenticated = useIsAuthenticated()
-  const { instance } = useMsal()
+  const authentication = useBrowserAuthentication()
 
   const [signOutError, setSignOutError] = useState(false)
 
   async function handleSignOut(): Promise<void> {
     setSignOutError(false)
     try {
-      await signOutAndClearSession(
-        instance,
-        queryClient,
-        instance.getActiveAccount(),
-      )
+      await authentication.signOut(queryClient)
     } catch {
       setSignOutError(true)
     }
   }
 
   const queryClient = useQueryClient()
-  if (!authenticated) {
+  if (!authentication.signedIn) {
     return (
-      <Button size="sm" onClick={() => void redirectForLogin(instance)}>
+      <Button size="sm" onClick={() => void authentication.signIn()}>
         <LogIn aria-hidden="true" />
         Sign in
       </Button>

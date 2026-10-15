@@ -7,7 +7,10 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from sciaiot.rivet.application.storage import ArchiveStore
     from sciaiot.rivet.application.vpn_control.port import VpnControl
+    from sciaiot.rivet.services.authentication import AuthenticationService
+    from sciaiot.rivet.services.provider_settings import AuthenticationSettings
 from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine
@@ -63,6 +66,35 @@ def init_scripts():
 
 
 vpn_control: VpnControl | None = None
+archive_store: ArchiveStore | None = None
+authentication_service: AuthenticationService | None = None
+authentication_settings: AuthenticationSettings | None = None
+
+
+def create_authentication_service() -> AuthenticationService:
+    """Construct the selected identity provider for one application lifecycle."""
+    from sciaiot.rivet.adapters.authentication.entra import EntraIdentityProvider
+    from sciaiot.rivet.services.authentication import AuthenticationService
+    from sciaiot.rivet.services.provider_settings import AuthenticationSettings
+
+    settings = AuthenticationSettings.from_environment()
+    if settings.provider == "entra":
+        return AuthenticationService(EntraIdentityProvider(settings))
+    raise ValueError("RIVET_AUTH_PROVIDER must be entra.")
+
+
+def get_authentication_service() -> AuthenticationService:
+    """Return the active lifecycle authentication service, failing closed."""
+    if authentication_service is None:
+        raise RuntimeError("Authentication service has not started.")
+    return authentication_service
+
+
+def get_authentication_settings() -> AuthenticationSettings:
+    """Return the registration policy pinned at application startup."""
+    if authentication_settings is None:
+        raise RuntimeError("Authentication settings have not started.")
+    return authentication_settings
 
 
 @lru_cache(maxsize=1)
@@ -88,3 +120,28 @@ def _configured_vpn_control() -> VpnControl:
 def get_vpn_control() -> VpnControl:
     """Return the configured backend or an explicitly injected test port."""
     return vpn_control if vpn_control is not None else _configured_vpn_control()
+
+
+def create_archive_store() -> ArchiveStore:
+    """Construct the selected archive store once per application lifecycle."""
+    from sciaiot.rivet.adapters.storage.azure_blob import AzureBlobArchiveStore
+    from sciaiot.rivet.adapters.storage.local import LocalArchiveStore
+    from sciaiot.rivet.services.provider_settings import StorageSettings
+
+    settings = StorageSettings.from_environment()
+    if settings.provider == "azure_blob":
+        assert settings.connection_string is not None
+        return AzureBlobArchiveStore(settings.connection_string)
+    return LocalArchiveStore(certs_directory)
+
+
+def get_archive_store() -> ArchiveStore:
+    """Return the lifecycle store or a local test fallback."""
+    if archive_store is not None:
+        return archive_store
+    from sciaiot.rivet.adapters.storage.local import LocalArchiveStore
+    from sciaiot.rivet.services.provider_settings import StorageSettings
+
+    if StorageSettings.from_environment().provider != "local":
+        raise RuntimeError("Archive storage has not started.")
+    return LocalArchiveStore(certs_directory)

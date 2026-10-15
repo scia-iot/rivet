@@ -1,18 +1,13 @@
-import { InteractionStatus } from '@azure/msal-browser'
-import { useIsAuthenticated, useMsal } from '@azure/msal-react'
 import { LogIn } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 
 import { ApiProblemError } from '@/api/problem-details'
+import { useBrowserAuthentication } from '@/auth/browser-authentication'
 import { useCurrentPrincipal } from '@/auth/current-principal'
 import {
   isAuthenticationDisabled,
   isE2EAuthenticationMode,
 } from '@/auth/config'
-import {
-  clearAuthenticationRedirectGuard,
-  redirectForLogin,
-} from '@/auth/redirect-coordinator'
 import {
   PrincipalErrorLayout,
   PrincipalSessionProvider,
@@ -75,20 +70,18 @@ function UnauthenticatedLayout({
 }
 
 function ConfiguredAuthenticationGate({ children }: { children: ReactNode }) {
-  const authenticated = useIsAuthenticated()
-  const { accounts, inProgress, instance } = useMsal()
+  const authentication = useBrowserAuthentication()
+  const { clearRedirectGuard, signIn } = authentication
   const [redirectError, setRedirectError] = useState(false)
   const [loginPending, setLoginPending] = useState(false)
-  const account = instance.getActiveAccount() ?? accounts[0]
-  const readyForPrincipal =
-    authenticated && account !== undefined && inProgress === InteractionStatus.None
+  const readyForPrincipal = authentication.ready
   const principal = useCurrentPrincipal(readyForPrincipal)
 
   async function startLogin(): Promise<void> {
     setRedirectError(false)
     setLoginPending(true)
     try {
-      const started = await redirectForLogin(instance)
+      const started = await signIn()
       if (!started) {
         setLoginPending(false)
       }
@@ -99,30 +92,21 @@ function ConfiguredAuthenticationGate({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    if (!authenticated || account === undefined) {
-      return
-    }
-    if (instance.getActiveAccount()?.homeAccountId !== account.homeAccountId) {
-      instance.setActiveAccount(account)
-    }
-  }, [account, authenticated, instance])
-
-  useEffect(() => {
     if (principal.data !== undefined) {
-      clearAuthenticationRedirectGuard()
+      clearRedirectGuard()
     }
-  }, [principal.data])
+  }, [clearRedirectGuard, principal.data])
 
   useEffect(() => {
     if (
       principal.error instanceof ApiProblemError &&
       principal.error.problem.status === 401
     ) {
-      void redirectForLogin(instance).catch(() => setRedirectError(true))
+      void signIn().catch(() => setRedirectError(true))
     }
-  }, [instance, principal.error])
+  }, [signIn, principal.error])
 
-  if (!authenticated && inProgress === InteractionStatus.None) {
+  if (!authentication.signedIn && !authentication.busy) {
     return (
       <UnauthenticatedLayout
         loginPending={loginPending}

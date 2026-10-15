@@ -1,18 +1,37 @@
-import { MsalProvider } from '@azure/msal-react'
 import type { ReactNode } from 'react'
 
 import {
+  e2eAccessToken,
   isAuthenticationDisabled,
+  isAuthenticationConfigured,
   isE2EAuthenticationMode,
-  msalInstance,
 } from '@/auth/config'
+import { BrowserAuthenticationContext } from '@/auth/browser-authentication'
+import { EntraBrowserAuthenticationProvider } from '@/auth/entra-adapter'
 
 export function AuthenticationProvider({ children }: { children: ReactNode }) {
   if (isAuthenticationDisabled || isE2EAuthenticationMode) {
-    return children
+    return (
+      <BrowserAuthenticationContext.Provider value={{
+        ready: true,
+        signedIn: isE2EAuthenticationMode,
+        busy: false,
+        signIn: async () => false,
+        signOut: async () => undefined,
+        accessToken: async () => {
+          if (e2eAccessToken === null) {
+            throw new Error('A controlled E2E access token is required.')
+          }
+          return e2eAccessToken
+        },
+        clearRedirectGuard: () => undefined,
+      }}>
+        {children}
+      </BrowserAuthenticationContext.Provider>
+    )
   }
 
-  if (msalInstance === null) {
+  if (!isAuthenticationConfigured) {
     return (
       <main className="grid min-h-svh place-items-center bg-muted/30 p-6">
         <section
@@ -30,5 +49,5 @@ export function AuthenticationProvider({ children }: { children: ReactNode }) {
     )
   }
 
-  return <MsalProvider instance={msalInstance}>{children}</MsalProvider>
+  return <EntraBrowserAuthenticationProvider>{children}</EntraBrowserAuthenticationProvider>
 }
