@@ -52,4 +52,3 @@ export async function acquireAccessToken(
     throw new Error('An access token could not be acquired.')
   }
 }
-
