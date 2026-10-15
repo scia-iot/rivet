@@ -7,7 +7,10 @@ from pathlib import Path
 
 import uvicorn
 
-from sciaiot.rivet.services.provider_settings import StorageSettings
+from sciaiot.rivet.services.provider_settings import (
+    AuthenticationSettings,
+    StorageSettings,
+)
 
 SECRET_NAMES = ("SQLALCHEMY_DATABASE_URI", "AZURE_STORAGE_CONNECTION_STRING")
 
@@ -37,15 +40,7 @@ def configure() -> str:
     """Require agent isolation, explicit authentication, and a narrow proxy IP."""
     if os.environ.get("RIVET_VPN_BACKEND") != "agent":
         raise ValueError("Container requires agent backend.")
-    for name in (
-        "AZURE_ENTRAID_TENANT_ID",
-        "AZURE_ENTRAID_APP_CLIENT_ID",
-        "AZURE_ENTRAID_USER_ROLE",
-        "AZURE_ENTRAID_ADMIN_ROLE",
-        "AZURE_ENTRAID_SERVICE_ADMIN_ROLE",
-    ):
-        if not os.environ.get(name, "").strip():
-            raise ValueError("Container requires complete authentication settings.")
+    AuthenticationSettings.from_environment()
     proxy = str(ipaddress.IPv4Address(os.environ["RIVET_PROXY_IP"]))
     selected_storage = os.environ.get("RIVET_STORAGE_PROVIDER")
     if selected_storage is not None and selected_storage not in {

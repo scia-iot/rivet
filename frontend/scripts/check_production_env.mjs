@@ -8,6 +8,7 @@ const UUID_PATTERN =
 const PRODUCTION_ENVIRONMENT_KEYS = new Set([
   'VITE_API_BASE_URL',
   'VITE_AUTH_DISABLED',
+  'VITE_AUTH_PROVIDER',
   'VITE_ENTRA_API_SCOPE',
   'VITE_ENTRA_CLIENT_ID',
   'VITE_ENTRA_TENANT_ID',
@@ -48,6 +49,12 @@ export function validateProductionEnvironment(environment) {
 
   if (environment.VITE_AUTH_DISABLED !== 'false') {
     failures.push('VITE_AUTH_DISABLED must be false')
+  }
+  if (
+    environment.VITE_AUTH_PROVIDER !== undefined &&
+    environment.VITE_AUTH_PROVIDER !== 'entra'
+  ) {
+    failures.push('VITE_AUTH_PROVIDER must be entra')
   }
   if (environment.VITE_API_BASE_URL !== '/api') {
     failures.push('VITE_API_BASE_URL must be /api')

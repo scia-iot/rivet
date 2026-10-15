@@ -1,223 +1,210 @@
+"""Generic HTTP authentication, safe failures, and narrow bypass regressions."""
+
+import asyncio
 import json
-from unittest.mock import MagicMock, patch
+import threading
+from dataclasses import replace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException, Request
-from fastapi.testclient import TestClient
+from fastapi import HTTPException, Request, Response
 
-from sciaiot.rivet.main import app
-from sciaiot.rivet.middlewares.azure_security import (
-    azure_security_middleware,
-    get_token,
-)
-
-client = TestClient(app)
+from sciaiot.rivet import dependencies
+from sciaiot.rivet.application.authentication import AuthenticationError
+from sciaiot.rivet.authorization import get_authenticated_principal
+from sciaiot.rivet.middlewares.authentication import authentication_middleware
+from tests.support.authentication import DEFAULT_CLAIMS, normalize_claims
 
 
-@patch("sciaiot.rivet.middlewares.azure_security.TENANT_ID", "mocked_tenant_id")
-@patch("sciaiot.rivet.middlewares.azure_security.APP_CLIENT_ID", "mocked_app_client_id")
-@patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user")
-@patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin")
-@patch("sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
-@patch(
-    "sciaiot.rivet.middlewares.azure_security.validate_token",
-    return_value={"sub": "mocked_sub"},
-)
-def test_azure_security_middleware_success(mock_validate_token):
-    # Success case should still work
-    response = client.get("/")
-    # Middleware passes, FastAPI returns 404 because "/" doesn't exist
-    assert response.status_code == 404
-    mock_validate_token.assert_called_once()
-
-
-@patch("sciaiot.rivet.middlewares.azure_security.TENANT_ID", "mocked_tenant_id")
-@patch("sciaiot.rivet.middlewares.azure_security.APP_CLIENT_ID", "mocked_app_client_id")
-@patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user")
-@patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin")
-@patch("sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
-@patch(
-    "sciaiot.rivet.middlewares.azure_security.validate_token",
-    side_effect=HTTPException(status_code=401, detail="Mocked Exception"),
-)
-def test_azure_security_middleware_failure(mock_validate_token):
-    response = client.get("/")
-    assert response.status_code == 401
-    assert response.json() == {
-        "type": "/errors/unauthorized",
-        "title": "Unauthorized",
-        "status": 401,
-        "detail": "Mocked Exception",
-        "instance": "http://testserver/",
-    }
-
-
-@patch("sciaiot.rivet.middlewares.azure_security.TENANT_ID", None)
-def test_azure_security_middleware_missing_env_error():
-    # Verify that missing env vars now results in 500 error
-    request = MagicMock(spec=Request)
-    request.url = MagicMock()
-    request.url.__str__.return_value = "http://example.com/"
-
-    async def call_next(req):
-        return MagicMock()
-
-    import asyncio
-
-    response = asyncio.run(azure_security_middleware(request, call_next))
-
-    assert response.status_code == 500
-    assert (
-        "Authentication service is misconfigured"
-        in json.loads(response.body.decode())["detail"]
+def request_for(
+    path: str = "/me",
+    *,
+    method: str = "GET",
+    peer: str = "203.0.113.10",
+    root_path: str = "",
+    authorization: str | None = "Bearer fixture",
+) -> Request:
+    """Build a real ASGI request with explicit trusted peer and root path."""
+    headers = (
+        [] if authorization is None else [(b"authorization", authorization.encode())]
+    )
+    return Request(
+        {
+            "type": "http",
+            "method": method,
+            "path": path,
+            "root_path": root_path,
+            "scheme": "http",
+            "server": ("localhost", 8000),
+            "client": (peer, 43210),
+            "headers": headers,
+            "query_string": b"",
+        }
     )
 
 
-@patch(
-    "sciaiot.rivet.middlewares.azure_security.validate_token",
-    return_value={"iss": "issuer", "sub": "subject", "roles": ["role"]},
+def test_authentication_publishes_only_verified_identity_off_event_loop() -> None:
+    """Provider work runs on a worker and only normalized facts reach routes."""
+    identity = normalize_claims(DEFAULT_CLAIMS)
+    service = MagicMock()
+    main_thread = threading.get_ident()
+
+    def authenticate(token: str):
+        assert token == "fixture"
+        assert threading.get_ident() != main_thread
+        return identity
+
+    service.authenticate.side_effect = authenticate
+    request = request_for()
+    downstream = AsyncMock(return_value=Response(status_code=204))
+    with patch.object(dependencies, "authentication_service", service):
+        response = asyncio.run(authentication_middleware(request, downstream))
+    assert response.status_code == 204
+    assert request.state.verified_identity is identity
+    assert not hasattr(request.state, "token_payload")
+    downstream.assert_awaited_once_with(request)
+
+
+@pytest.mark.parametrize(
+    "header", [None, "", " ", "Bearer", "Basic secret", "Bearer a b"]
 )
-def test_localhost_me_still_requires_authentication(mock_validate_token):
-    """Local frontend traffic cannot bypass authentication for `/me`."""
-    request = MagicMock(spec=Request)
-    request.url = MagicMock()
-    request.url.__str__.return_value = "http://127.0.0.1:8000/me"
-    request.method = "GET"
-
-    async def call_next(req):
-        return MagicMock()
-
-    import asyncio
-
-    asyncio.run(azure_security_middleware(request, call_next))
-
-    mock_validate_token.assert_called_once_with(request)
-
-
-@patch("sciaiot.rivet.middlewares.azure_security.validate_token")
-def test_localhost_connection_hook_has_narrow_authentication_bypass(
-    mock_validate_token,
-):
-    """Only the exact local OpenVPN connection hook remains unauthenticated."""
-    request = MagicMock(spec=Request)
-    request.url = MagicMock()
-    request.url.__str__.return_value = (
-        "http://127.0.0.1:8000/clients/edge-client/connections"
-    )
-    request.method = "POST"
-    request.client.host = "127.0.0.1"
-
-    async def call_next(req):
-        return MagicMock()
-
-    import asyncio
-
-    asyncio.run(azure_security_middleware(request, call_next))
-
-    mock_validate_token.assert_not_called()
-
-
-@patch("sciaiot.rivet.middlewares.azure_security.validate_token")
-def test_localhost_connection_hook_survives_the_production_root_path(
-    mock_validate_token,
-):
-    """The `/api` ASGI root must not disable the exact local hook."""
-    request = MagicMock(spec=Request)
-    request.url = MagicMock()
-    request.url.__str__.return_value = (
-        "http://127.0.0.1:8000/api/clients/edge-client/connections"
-    )
-    request.scope = {"root_path": "/api"}
-    request.method = "POST"
-    request.client.host = "127.0.0.1"
-
-    async def call_next(req):
-        return MagicMock()
-
-    import asyncio
-
-    asyncio.run(azure_security_middleware(request, call_next))
-
-    mock_validate_token.assert_not_called()
-
-
-@patch(
-    "sciaiot.rivet.middlewares.azure_security.validate_token",
-    return_value={"iss": "issuer", "sub": "subject", "roles": ["role"]},
-)
-def test_remote_peer_cannot_spoof_local_connection_hook(mock_validate_token):
-    """A loopback Host header cannot grant a remote peer the hook bypass."""
-    request = MagicMock(spec=Request)
-    request.url = MagicMock()
-    request.url.__str__.return_value = (
-        "http://127.0.0.1:8000/clients/edge-client/connections"
-    )
-    request.method = "POST"
-    request.client.host = "203.0.113.10"
-
-    async def call_next(req):
-        return MagicMock()
-
-    import asyncio
-
-    asyncio.run(azure_security_middleware(request, call_next))
-
-    mock_validate_token.assert_called_once_with(request)
-
-
-def test_get_token_valid():
-    request = MagicMock(spec=Request)
-    request.headers.get.return_value = "Bearer some_token"
-    token = get_token(request)
-    assert token == "some_token"
-
-
-def test_get_token_no_authorization_header():
-    request = MagicMock(spec=Request)
-    request.headers.get.return_value = None
-    with pytest.raises(HTTPException) as exc:
-        get_token(request)
-    assert exc.value.status_code == 401
-
-
-@patch("sciaiot.rivet.middlewares.azure_security.TENANT_ID", "mocked_tenant_id")
-@patch(
-    "sciaiot.rivet.middlewares.azure_security.APP_CLIENT_ID",
-    "mocked_app_client_id",
-)
-@patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user")
-@patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin")
-@patch("sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE", "ServiceAdmin")
-def test_blank_authorization_header_returns_problem_401():
-    """Whitespace-only bearer input is a handled authentication failure."""
-    request = MagicMock(spec=Request)
-    request.url = MagicMock()
-    request.url.__str__.return_value = "http://example.com/me"
-    request.method = "GET"
-    request.headers.get.return_value = "   "
-    request.client.host = "203.0.113.10"
-
-    async def call_next(req):
-        return MagicMock()
-
-    import asyncio
-
-    response = asyncio.run(azure_security_middleware(request, call_next))
-    body = json.loads(response.body.decode())
-
+def test_malformed_bearer_never_calls_provider(header: str | None) -> None:
+    """Malformed HTTP credentials fail safely before invoking any provider."""
+    request = request_for(authorization=header)
+    service = MagicMock()
+    downstream = AsyncMock()
+    with patch.object(dependencies, "authentication_service", service):
+        response = asyncio.run(authentication_middleware(request, downstream))
     assert response.status_code == 401
     assert response.headers["content-type"].startswith("application/problem+json")
-    assert body["status"] == 401
-    assert body["detail"] == "Authorization header must be Bearer token!"
+    service.authenticate.assert_not_called()
+    downstream.assert_not_called()
 
 
-@patch(
-    "sciaiot.rivet.middlewares.azure_security.validate_token",
-    side_effect=RuntimeError("secret-token stable-oauth-subject"),
-)
-def test_security_errors_do_not_log_token_or_subject(mock_validate_token, caplog):
-    response = client.get("/")
+@pytest.mark.parametrize("status", [401, 403, 500])
+def test_safe_provider_errors_preserve_http_status(status: int) -> None:
+    """Typed provider errors retain authentication/access/server semantics."""
+    service = MagicMock()
+    service.authenticate.side_effect = AuthenticationError(status, "Safe failure.")
+    downstream = AsyncMock()
+    with patch.object(dependencies, "authentication_service", service):
+        response = asyncio.run(authentication_middleware(request_for(), downstream))
+    assert response.status_code == status
+    assert json.loads(bytes(response.body))["detail"] == "Safe failure."
+    downstream.assert_not_called()
 
+
+def test_unexpected_provider_failure_is_redacted(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Raw provider tokens, identities, addresses, and URLs never reach logs."""
+    service = MagicMock()
+    private = "secret-token stable-subject 198.51.100.4 https://private/?sig=secret"
+    service.authenticate.side_effect = RuntimeError(private)
+    with patch.object(dependencies, "authentication_service", service):
+        response = asyncio.run(authentication_middleware(request_for(), AsyncMock()))
     assert response.status_code == 500
-    assert "secret-token" not in caplog.text
-    assert "stable-oauth-subject" not in caplog.text
+    assert private not in caplog.text + bytes(response.body).decode()
+    assert "secret-token" not in caplog.text + bytes(response.body).decode()
+
+
+def test_unstarted_authentication_service_fails_closed() -> None:
+    """Requests cannot silently bypass authentication without a lifespan."""
+    downstream = AsyncMock()
+    with patch.object(dependencies, "authentication_service", None):
+        response = asyncio.run(authentication_middleware(request_for(), downstream))
+    assert response.status_code == 500
+    downstream.assert_not_called()
+
+
+@pytest.mark.parametrize("root_path", ["", "/api"])
+@pytest.mark.parametrize("path", ["/docs", "/openapi.json"])
+def test_exact_documentation_paths_bypass_provider(root_path: str, path: str) -> None:
+    """Documentation exceptions survive the trusted application root prefix."""
+    service = MagicMock()
+    downstream = AsyncMock(return_value=Response(status_code=200))
+    request = request_for(root_path + path, root_path=root_path, authorization=None)
+    with patch.object(dependencies, "authentication_service", service):
+        response = asyncio.run(authentication_middleware(request, downstream))
+    assert response.status_code == 200
+    service.authenticate.assert_not_called()
+
+
+@pytest.mark.parametrize("backend", ["host", "shadow", "agent"])
+@pytest.mark.parametrize("root_path", ["", "/api"])
+@pytest.mark.parametrize("method", ["POST", "PUT", "GET", "DELETE"])
+def test_local_hook_exception_is_backend_and_method_specific(
+    monkeypatch: pytest.MonkeyPatch,
+    backend: str,
+    root_path: str,
+    method: str,
+) -> None:
+    """Only host/shadow loopback mutation hooks bypass token verification."""
+    monkeypatch.setenv("RIVET_VPN_BACKEND", backend)
+    request = request_for(
+        root_path + "/clients/edge-client/connections",
+        root_path=root_path,
+        method=method,
+        peer="127.0.0.1",
+        authorization=None,
+    )
+    downstream = AsyncMock(return_value=Response(status_code=204))
+    response = asyncio.run(authentication_middleware(request, downstream))
+    allowed = backend in {"host", "shadow"} and method in {"POST", "PUT"}
+    assert response.status_code == (204 if allowed else 401)
+    assert getattr(request.state, "local_connection_hook", False) is allowed
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/me",
+        "/docs/private",
+        "/openapi.json/",
+        "/clients/a/connections/private",
+        "/api-extra/docs",
+    ],
+)
+def test_local_non_hook_paths_still_require_authentication(path: str) -> None:
+    """Loopback peers and prefix lookalikes cannot bypass normal resources."""
+    request = request_for(path, peer="127.0.0.1", root_path="/api", authorization=None)
+    response = asyncio.run(authentication_middleware(request, AsyncMock()))
+    assert response.status_code == 401
+
+
+def test_remote_peer_cannot_spoof_local_connection_hook() -> None:
+    """A localhost URL cannot grant a remote peer the local-hook exception."""
+    request = request_for("/clients/a/connections", method="POST", authorization=None)
+    response = asyncio.run(authentication_middleware(request, AsyncMock()))
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("kind", "unknown"),
+        ("kind", "service"),
+        ("role", "unknown"),
+        ("role", "service_admin"),
+        ("issuer", ""),
+        ("subject", ""),
+        ("subject", 42),
+    ],
+)
+def test_application_policy_rejects_invalid_normalized_identity(field, invalid) -> None:
+    """An invalid provider result cannot acquire application permissions."""
+    request = request_for()
+    identity = normalize_claims(DEFAULT_CLAIMS)
+    request.state.verified_identity = replace(identity, **{field: invalid})
+    with pytest.raises(HTTPException) as failure:
+        get_authenticated_principal(request)
+    assert failure.value.status_code == 401
+
+
+def test_raw_claim_dictionary_cannot_select_application_policy() -> None:
+    """Only the typed verified result is accepted at the authorization boundary."""
+    request = request_for()
+    request.state.token_payload = dict(DEFAULT_CLAIMS)
+    with pytest.raises(HTTPException) as failure:
+        get_authenticated_principal(request)
+    assert failure.value.status_code == 401

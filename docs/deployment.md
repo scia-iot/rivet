@@ -626,6 +626,12 @@ The UI's runtime-only `RIVET_UI_ENTRA_TENANT_ID`,
 are separate from the API's `AZURE_ENTRAID_*` settings. Nginx renders these
 public values at startup; the browser loads `/runtime-config.js` before auth
 initializes. The same web image can be promoted unchanged between environments.
+`RIVET_AUTH_PROVIDER` and `RIVET_UI_AUTH_PROVIDER` default to `entra`; no other
+identity provider is implemented. Use `RIVET_AUTH_AUTO_REGISTER_USERS` for the
+registration policy, or retain `AZURE_ENTRAID_AUTO_REGISTER_USERS`. If both are
+set, they must agree. Blank selections and invalid/conflicting booleans fail
+validation. Recreate the API container to change provider or registration
+policy; native services require an API restart for the same changes.
 Recreate the web container after changing its settings; no rebuild is needed. Never
 put credentials in build arguments or commit this file. The reference uses
 SQLite and local archives. Optional API credentials can be mounted as private
@@ -641,6 +647,12 @@ the provider is unset, an existing connection string selects Blob for legacy
 compatibility. An explicit local selection does not read the Blob secret file.
 Provider changes take effect after API restart; copy and verify archives
 separately before a storage cutover.
+
+Authentication settings are validated by the same code for direct ASGI,
+native, and container startup. Keep existing Entra tenant/client IDs and role
+mappings during rollout. New web configuration includes the `entra` provider
+tag; updated browsers still accept the prior three-field public payload.
+Changing a future identity provider does not migrate users or access grants.
 
 Validate the deployment configuration without starting services:
 

@@ -15,6 +15,7 @@ from sciaiot.rivet.adapters.storage.local import LocalArchiveStore
 from sciaiot.rivet.application.storage import ArchiveNotFoundError, ArchiveStoreError
 from sciaiot.rivet.application.vpn_control.schemas import MAX_ARCHIVE_BYTES
 from sciaiot.rivet.services.provider_settings import StorageSettings
+from tests.support.authentication import AUTH_ENVIRONMENT
 
 
 def test_storage_settings_infer_legacy_blob_and_honor_explicit_local(
@@ -184,6 +185,7 @@ def test_blob_partial_construction_closes_resources() -> None:
 
 
 @pytest.mark.parametrize("fail_startup", [False, True])
+@pytest.mark.usefixtures("authentication_configuration")
 def test_storage_lifecycle_closes_on_shutdown_or_startup_failure(
     monkeypatch: pytest.MonkeyPatch, fail_startup: bool
 ) -> None:
@@ -234,8 +236,8 @@ def test_startup_paths_share_storage_validation(
     monkeypatch.setenv("RIVET_PROXY_IP", "172.30.250.2")
     monkeypatch.setenv("HOST", "127.0.0.1")
     monkeypatch.setattr(native_api.os, "geteuid", lambda: 1234)
-    for name in native_api.AUTH_NAMES:
-        monkeypatch.setenv(name, "11111111-1111-4111-8111-111111111111")
+    for name, value in AUTH_ENVIRONMENT.items():
+        monkeypatch.setenv(name, value)
     configure = native_api.validate_environment
     if entrypoint == "container":
         configure = runpy.run_path("deploy/containers/api_entrypoint.py")["configure"]
@@ -248,6 +250,7 @@ def test_startup_paths_share_storage_validation(
             configure()
 
 
+@pytest.mark.usefixtures("authentication_configuration")
 def test_lifespan_rejects_blob_without_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
     """Direct ASGI startup cannot silently substitute local storage for Blob."""
     monkeypatch.setenv("RIVET_VPN_BACKEND", "host")

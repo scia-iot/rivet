@@ -1,5 +1,4 @@
 import asyncio
-import importlib
 import importlib.resources
 import logging
 import logging.config
@@ -18,8 +17,10 @@ from sciaiot.rivet.dependencies import (
     get_vpn_control,
     init_scripts,
 )
+from sciaiot.rivet.middlewares.authentication import authentication_middleware
 from sciaiot.rivet.problems import PROBLEM_RESPONSES, problem_response
 from sciaiot.rivet.routes import client, identity, network, server
+from sciaiot.rivet.services.provider_settings import AuthenticationSettings
 from sciaiot.rivet.services.vpn_recovery import BackgroundSettings, BackgroundWorker
 
 HOST = os.environ.get("HOST", "127.0.0.1")
@@ -36,8 +37,16 @@ async def lifespan(app: FastAPI):
 
     settings = BackendSettings.from_environment()
     background = BackgroundSettings.from_environment()
+    authentication_settings = AuthenticationSettings.from_environment()
     control = get_vpn_control()
-    store = await asyncio.to_thread(dependencies.create_archive_store)
+    authentication_service = await asyncio.to_thread(
+        dependencies.create_authentication_service
+    )
+    try:
+        store = await asyncio.to_thread(dependencies.create_archive_store)
+    except BaseException:
+        await asyncio.to_thread(authentication_service.close)
+        raise
     worker = None
     try:
         create_app_directory()
@@ -45,6 +54,8 @@ async def lifespan(app: FastAPI):
         if settings.backend in {"host", "shadow"}:
             init_scripts()
         dependencies.archive_store = store
+        dependencies.authentication_settings = authentication_settings
+        dependencies.authentication_service = authentication_service
         logger.info("Startup events finished.")
         if settings.backend == "agent" and (background.events or background.reconcile):
             worker = BackgroundWorker(dependencies.engine, control, background)
@@ -56,8 +67,13 @@ async def lifespan(app: FastAPI):
                 await asyncio.to_thread(worker.close)
         finally:
             dependencies.archive_store = None
-            await asyncio.to_thread(store.close)
-            logger.info("Shutdown events finished.")
+            dependencies.authentication_settings = None
+            dependencies.authentication_service = None
+            try:
+                await asyncio.to_thread(store.close)
+            finally:
+                await asyncio.to_thread(authentication_service.close)
+                logger.info("Shutdown events finished.")
 
 
 app = FastAPI(
@@ -67,13 +83,7 @@ app = FastAPI(
     responses=PROBLEM_RESPONSES,
 )
 
-# Register optional middlewares
-for mw in ["azure_security"]:
-    try:
-        module = importlib.import_module(f"sciaiot.rivet.middlewares.{mw}")
-        app.middleware("http")(getattr(module, f"{mw}_middleware"))
-    except ImportError:
-        logger.debug(f"Optional middleware {mw} not loaded: dependencies missing.")
+app.middleware("http")(authentication_middleware)
 
 app.include_router(server.router, prefix="/server", tags=["server"])
 app.include_router(client.router, prefix="/clients", tags=["client"])

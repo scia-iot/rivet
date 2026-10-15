@@ -35,7 +35,6 @@ from sciaiot.rivet.data.identity import (
 )
 from sciaiot.rivet.data.server import Client
 from sciaiot.rivet.dependencies import get_session
-from sciaiot.rivet.middlewares import azure_security
 from sciaiot.rivet.services.certificates import (
     CertificateArchiveError,
     CertificateArchiveService,
@@ -70,8 +69,8 @@ def retrieve_current_principal(
 ) -> CurrentPrincipal:
     """Resolve the authenticated external identity to its local principal."""
     try:
-        auto_register = azure_security.auto_register_users_enabled()
-    except ValueError as configuration_error:
+        auto_register = dependencies.get_authentication_settings().auto_register_users
+    except (RuntimeError, ValueError) as configuration_error:
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "Automatic user registration is misconfigured.",

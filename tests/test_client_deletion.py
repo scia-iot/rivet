@@ -13,6 +13,7 @@ from sciaiot.rivet.data.identity import AccessGrant, Device, User, UserClient
 from sciaiot.rivet.data.server import Cert, Client, Connection, VirtualAddress
 from sciaiot.rivet.dependencies import get_session
 from sciaiot.rivet.main import app
+from tests.support.authentication import authenticated_claims
 
 
 @pytest.fixture(name="deletion_context")
@@ -75,8 +76,7 @@ def deletion_context_fixture() -> Generator[tuple[TestClient, Session, Client]]:
             patch("sciaiot.rivet.main.create_app_directory"),
             patch("sciaiot.rivet.main.create_tables"),
             patch("sciaiot.rivet.main.init_scripts"),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.validate_token",
+            authenticated_claims(
                 return_value={
                     "iss": "https://login.example/tenant/v2.0",
                     "sub": "service-object-id",
@@ -84,13 +84,7 @@ def deletion_context_fixture() -> Generator[tuple[TestClient, Session, Client]]:
                     "roles": ["ServiceAdmin"],
                 },
             ),
-            patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
-            patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-                "ServiceAdmin",
-            ),
-            TestClient(app) as test_client,
+            TestClient(app, headers={"Authorization": "Bearer fixture"}) as test_client,
         ):
             yield test_client, session, client
 

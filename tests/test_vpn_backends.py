@@ -8,6 +8,7 @@ import pytest
 from sciaiot.rivet.adapters.vpn.fake import FakeVpnControl
 from sciaiot.rivet.adapters.vpn.settings import BackendSettings
 from sciaiot.rivet.application.vpn_control import schemas as s
+from tests.support.authentication import authenticated_claims
 from tests.vpn_control_conformance import request
 
 
@@ -98,25 +99,15 @@ def fake_api(tmp_path, monkeypatch):
             yield session
 
     app.dependency_overrides[dependencies.get_session] = session_override
-    from sciaiot.rivet.middlewares import azure_security
 
-    monkeypatch.setattr(azure_security, "USER_ROLE", "user")
-    monkeypatch.setattr(azure_security, "ADMIN_ROLE", "admin")
-    monkeypatch.setattr(azure_security, "TENANT_ID", "fixture-tenant")
-    monkeypatch.setattr(azure_security, "APP_CLIENT_ID", "fixture-client")
     with (
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.validate_token",
+        authenticated_claims(
             return_value={
                 "iss": "https://login.example/tenant/v2.0",
                 "sub": "service-id",
                 "oid": "service-id",
                 "roles": ["ServiceAdmin"],
             },
-        ),
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-            "ServiceAdmin",
         ),
         patch(
             "subprocess.run",

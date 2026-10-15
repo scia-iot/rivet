@@ -12,6 +12,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from sciaiot.rivet import dependencies
+from sciaiot.rivet.application.authentication import AuthenticationError
 from sciaiot.rivet.authorization import (
     AuthenticatedPrincipal,
     Permission,
@@ -23,11 +24,16 @@ from sciaiot.rivet.data.identity import AccessGrant, Device, User, UserClient
 from sciaiot.rivet.data.server import Client
 from sciaiot.rivet.dependencies import get_session
 from sciaiot.rivet.main import app
-from sciaiot.rivet.middlewares.azure_security import validate_token
 from sciaiot.rivet.services.client_config import (
     MAX_CLIENT_CONFIG_BYTES,
     ClientConfigReadError,
     client_config_response,
+)
+from sciaiot.rivet.services.provider_settings import AuthenticationSettings
+from tests.support.authentication import (
+    AUTH_ENVIRONMENT,
+    authenticated_claims,
+    normalize_claims,
 )
 
 
@@ -109,20 +115,13 @@ def authorization_context_fixture() -> Generator[
 
         app.dependency_overrides[get_session] = get_session_override
         with (
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.validate_token",
+            authenticated_claims(
                 side_effect=lambda request: dict(claims),
             ),
             patch("sciaiot.rivet.main.create_app_directory"),
             patch("sciaiot.rivet.main.create_tables"),
             patch("sciaiot.rivet.main.init_scripts"),
-            patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
-            patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-                "ServiceAdmin",
-            ),
-            TestClient(app) as test_client,
+            TestClient(app, headers={"Authorization": "Bearer fixture"}) as test_client,
         ):
             yield test_client, claims, session
 
@@ -321,7 +320,7 @@ def test_service_admin_receives_authoritative_permissions(
 def _principal_request(claims: dict[str, object]) -> MagicMock:
     """Build a request carrying middleware-validated claims."""
     request = MagicMock()
-    request.state.token_payload = claims
+    request.state.verified_identity = normalize_claims(claims)
     return request
 
 
@@ -362,16 +361,8 @@ def test_missing_unknown_and_ambiguous_roles_fail_closed(
     claims: dict[str, object],
 ) -> None:
     """Only one explicitly configured app role can select a policy."""
-    with (
-        patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
-        patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-            "ServiceAdmin",
-        ),
-        pytest.raises(HTTPException) as error,
-    ):
-        get_authenticated_principal(_principal_request(claims))
+    with pytest.raises(AuthenticationError) as error:
+        normalize_claims(claims)
 
     assert error.value.status_code == 403
     assert error.value.detail == "The token has no recognized application role."
@@ -419,16 +410,8 @@ def test_delegated_roles_require_user_token_and_access_scope(
     claims: dict[str, object],
 ) -> None:
     """Human roles cannot authorize app-only or unscoped tokens."""
-    with (
-        patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
-        patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-            "ServiceAdmin",
-        ),
-        pytest.raises(HTTPException) as error,
-    ):
-        get_authenticated_principal(_principal_request(claims))
+    with pytest.raises(AuthenticationError) as error:
+        normalize_claims(claims)
 
     assert error.value.status_code == 403
     assert error.value.detail == "The token is not valid for delegated access."
@@ -456,16 +439,8 @@ def test_service_admin_requires_unscoped_app_only_token(
     claims: dict[str, object],
 ) -> None:
     """ServiceAdmin cannot authorize delegated or ambiguously scoped tokens."""
-    with (
-        patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
-        patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-            "ServiceAdmin",
-        ),
-        pytest.raises(HTTPException) as error,
-    ):
-        get_authenticated_principal(_principal_request(claims))
+    with pytest.raises(AuthenticationError) as error:
+        normalize_claims(claims)
 
     assert error.value.status_code == 403
     assert error.value.detail == "The token is not valid for app-only access."
@@ -486,26 +461,15 @@ def test_missing_or_duplicate_role_configuration_fails_closed(
     service_role: str,
 ) -> None:
     """Role mappings must be present and mutually distinct."""
-    claims: dict[str, object] = {
-        "iss": "https://login.example/tenant/v2.0",
-        "sub": "subject",
-        "oid": "object-id",
-        "roles": ["user"],
-        "scp": "access_as_user",
-    }
-    with (
-        patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", user_role),
-        patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", admin_role),
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-            service_role,
-        ),
-        pytest.raises(HTTPException) as error,
-    ):
-        get_authenticated_principal(_principal_request(claims))
-
-    assert error.value.status_code == 500
-    assert error.value.detail == "Authorization service is misconfigured."
+    values = dict(AUTH_ENVIRONMENT)
+    if user_role is None:
+        values.pop("AZURE_ENTRAID_USER_ROLE")
+    else:
+        values["AZURE_ENTRAID_USER_ROLE"] = user_role
+    values["AZURE_ENTRAID_ADMIN_ROLE"] = admin_role
+    values["AZURE_ENTRAID_SERVICE_ADMIN_ROLE"] = service_role
+    with pytest.raises(ValueError):
+        AuthenticationSettings.from_environment(values)
 
 
 def test_owned_client_and_granted_device_policies(
@@ -535,50 +499,21 @@ def test_owned_client_and_granted_device_policies(
     assert device_error.value.status_code == 403
 
 
-def test_validate_token_accepts_complete_role_configuration() -> None:
-    """Signature validation accepts explicit authorization configuration."""
-    request = MagicMock()
-    request.headers.get.return_value = "Bearer signed-token"
-    keys = MagicMock()
-    keys.read.return_value = (
-        b'{"keys":[{"kid":"key-1","kty":"RSA","use":"sig","n":"n","e":"AQAB"}]}'
+def test_verified_identity_receives_only_application_permissions() -> None:
+    """Provider identities cannot supply arbitrary application permissions."""
+    request = _principal_request(
+        {
+            "iss": "https://login.example/tenant/v2.0",
+            "sub": "human-subject",
+            "oid": "human-object-id",
+            "roles": ["user"],
+            "scp": "access_as_user",
+            "permissions": ["server:write"],
+        }
     )
-
-    with (
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.TENANT_ID",
-            "tenant",
-        ),
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.APP_CLIENT_ID",
-            "client",
-        ),
-        patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
-        patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-            "ServiceAdmin",
-        ),
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.urlopen",
-            return_value=keys,
-        ),
-        patch(
-            ("sciaiot.rivet.middlewares.azure_security.jwt.get_unverified_header"),
-            return_value={"kid": "key-1"},
-        ),
-        patch(
-            "sciaiot.rivet.middlewares.azure_security.jwt.decode",
-            return_value={
-                "iss": "https://login.microsoftonline.com/tenant/v2.0",
-                "sub": "device-user-subject",
-                "roles": ["user"],
-            },
-        ),
-    ):
-        claims = validate_token(request)
-
-    assert claims["sub"] == "device-user-subject"
+    principal = get_authenticated_principal(request)
+    assert principal.roles == ("device_user",)
+    assert principal.permissions == frozenset()
 
 
 def test_current_user_portal_lists_only_owned_and_granted_resources(

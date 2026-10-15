@@ -17,6 +17,7 @@ from sciaiot.rivet.main import app
 from sciaiot.rivet.routes.server import load_from_config
 from sciaiot.rivet.utils import openvpn
 from tests.support.api import MOCKED_ROUTES, SERVER_CONFIG_LINES, SERVER_STATUS_ACTIVE
+from tests.support.authentication import authenticated_claims
 
 
 @pytest.fixture(name="client")
@@ -30,8 +31,7 @@ def client_fixture(db_session: Session) -> Generator[TestClient]:
     app.dependency_overrides[get_session] = get_session_override
     try:
         with (
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.validate_token",
+            authenticated_claims(
                 return_value={
                     "iss": "https://login.example/tenant/v2.0",
                     "sub": "service-object-id",
@@ -39,22 +39,8 @@ def client_fixture(db_session: Session) -> Generator[TestClient]:
                     "roles": ["ServiceAdmin"],
                 },
             ),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.TENANT_ID",
-                "mocked_tenant_id",
-            ),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.APP_CLIENT_ID",
-                "mocked_app_client_id",
-            ),
-            patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
-            patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-                "ServiceAdmin",
-            ),
         ):
-            client = TestClient(app)
+            client = TestClient(app, headers={"Authorization": "Bearer fixture"})
             try:
                 yield client
             finally:

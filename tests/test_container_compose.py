@@ -155,3 +155,19 @@ def test_event_producer_can_record_ingestion_loss() -> None:
     mounts = {mount["target"]: mount for mount in services["openvpn"]["volumes"]}
     assert not mounts["/run/ovpn-events"].get("read_only", False)
     assert mounts["/var/lib/ovpn-agent/projection"]["read_only"] is True
+
+
+def test_compose_preserves_explicit_auth_values_for_startup_validation() -> None:
+    """Blank selectors and conflicting aliases must reach strict validation."""
+    services = yaml.safe_load((ROOT / "deploy/compose.yml").read_text())["services"]
+    api = services["api"]["environment"]
+    assert api["RIVET_AUTH_PROVIDER"] == "${RIVET_AUTH_PROVIDER-entra}"
+    assert api["RIVET_AUTH_AUTO_REGISTER_USERS"] == (
+        "${RIVET_AUTH_AUTO_REGISTER_USERS-${AZURE_ENTRAID_AUTO_REGISTER_USERS-true}}"
+    )
+    assert api["AZURE_ENTRAID_AUTO_REGISTER_USERS"] == (
+        "${AZURE_ENTRAID_AUTO_REGISTER_USERS-${RIVET_AUTH_AUTO_REGISTER_USERS-true}}"
+    )
+    assert services["web"]["environment"]["RIVET_UI_AUTH_PROVIDER"] == (
+        "${RIVET_UI_AUTH_PROVIDER-entra}"
+    )

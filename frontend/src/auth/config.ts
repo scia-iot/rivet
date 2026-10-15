@@ -1,18 +1,10 @@
-import {
-  BrowserCacheLocation,
-  PublicClientApplication,
-  type Configuration,
-  type RedirectRequest,
-} from '@azure/msal-browser'
-
 import { runtimeConfiguration, usesRuntimeConfiguration } from '@/runtime-config'
-import { rootRedirectUri } from '@/auth/redirect-uri'
 import { allowsE2EAuthenticationMode } from '@/test/e2e-auth-mode'
 
-const tenantId = usesRuntimeConfiguration
+export const tenantId = usesRuntimeConfiguration
   ? runtimeConfiguration?.tenantId
   : import.meta.env.VITE_ENTRA_TENANT_ID?.trim()
-const clientId = usesRuntimeConfiguration
+export const clientId = usesRuntimeConfiguration
   ? runtimeConfiguration?.clientId
   : import.meta.env.VITE_ENTRA_CLIENT_ID?.trim()
 const apiScope = usesRuntimeConfiguration
@@ -40,28 +32,11 @@ export const e2eAccessToken = isE2EAuthenticationMode
   : null
 
 export const isAuthenticationConfigured = Boolean(
-  tenantId && clientId && apiScope,
+  tenantId && clientId && apiScope &&
+  (usesRuntimeConfiguration ||
+    import.meta.env.VITE_AUTH_PROVIDER === undefined ||
+    import.meta.env.VITE_AUTH_PROVIDER === 'entra') &&
+  (!usesRuntimeConfiguration || runtimeConfiguration?.provider === 'entra'),
 )
 
 export const apiScopes = apiScope ? [apiScope] : []
-
-const msalConfiguration: Configuration = {
-  auth: {
-    clientId: clientId ?? '',
-    authority: `https://login.microsoftonline.com/${tenantId ?? 'common'}`,
-    redirectUri: rootRedirectUri(window.location.origin),
-    postLogoutRedirectUri: rootRedirectUri(window.location.origin),
-  },
-  cache: {
-    cacheLocation: BrowserCacheLocation.SessionStorage,
-  },
-}
-
-export const loginRequest: RedirectRequest = {
-  scopes: apiScopes,
-}
-
-export const msalInstance =
-  !isAuthenticationDisabled && isAuthenticationConfigured
-    ? new PublicClientApplication(msalConfiguration)
-    : null

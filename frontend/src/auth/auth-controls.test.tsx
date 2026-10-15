@@ -1,4 +1,3 @@
-import type { AccountInfo } from '@azure/msal-browser'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -7,18 +6,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AuthControls } from '@/auth/auth-controls'
 import { PrincipalSessionProvider } from '@/auth/principal-session'
 
-const account = {
-  homeAccountId: 'home-account',
-  environment: 'login.example',
-  tenantId: 'tenant',
-  username: 'operator@example.com',
-  localAccountId: 'local-account',
-} satisfies AccountInfo
-
-const instance = vi.hoisted(() => ({
-  getActiveAccount: vi.fn(() => account),
-  logoutRedirect: vi.fn(async () => undefined),
-  setActiveAccount: vi.fn(),
+const authentication = vi.hoisted(() => ({
+  signedIn: true,
+  signIn: vi.fn(async () => true),
+  signOut: vi.fn(async () => undefined),
 }))
 
 vi.mock('@/auth/config', () => ({
@@ -26,9 +17,8 @@ vi.mock('@/auth/config', () => ({
   isAuthenticationDisabled: false,
   isE2EAuthenticationMode: false,
 }))
-vi.mock('@azure/msal-react', () => ({
-  useIsAuthenticated: () => true,
-  useMsal: () => ({ instance }),
+vi.mock('@/auth/browser-authentication', () => ({
+  useBrowserAuthentication: () => authentication,
 }))
 
 const principal = {
@@ -78,7 +68,7 @@ describe('authentication controls', () => {
     const errorSpy = vi
       .spyOn(console, 'error')
       .mockImplementation(() => undefined)
-    instance.logoutRedirect.mockRejectedValueOnce(
+    authentication.signOut.mockRejectedValueOnce(
       new Error('stable-oauth-subject sensitive-account'),
     )
 

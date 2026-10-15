@@ -85,14 +85,14 @@ def test_api_startup_requires_authentication_and_agent(monkeypatch) -> None:
         monkeypatch.delenv(name, raising=False)
     with pytest.raises(ValueError):
         configure()
-    for name in (
-        "AZURE_ENTRAID_TENANT_ID",
-        "AZURE_ENTRAID_APP_CLIENT_ID",
-        "AZURE_ENTRAID_USER_ROLE",
-        "AZURE_ENTRAID_ADMIN_ROLE",
-        "AZURE_ENTRAID_SERVICE_ADMIN_ROLE",
-    ):
-        monkeypatch.setenv(name, "configured")
+    for name, value in {
+        "AZURE_ENTRAID_TENANT_ID": "11111111-1111-4111-8111-111111111111",
+        "AZURE_ENTRAID_APP_CLIENT_ID": "22222222-2222-4222-8222-222222222222",
+        "AZURE_ENTRAID_USER_ROLE": "user",
+        "AZURE_ENTRAID_ADMIN_ROLE": "admin",
+        "AZURE_ENTRAID_SERVICE_ADMIN_ROLE": "ServiceAdmin",
+    }.items():
+        monkeypatch.setenv(name, value)
     monkeypatch.setenv("RIVET_PROXY_IP", "172.30.250.2")
     assert configure() == "172.30.250.2"
     monkeypatch.setenv("RIVET_PROXY_IP", "*")

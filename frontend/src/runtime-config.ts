@@ -1,40 +1,23 @@
-/** Public deployment configuration supplied before application startup. */
-interface RuntimeConfiguration {
-  tenantId: string
-  clientId: string
-  apiScope: string
-}
+import {
+  type EntraRuntimeConfiguration,
+  validateEntraRuntimeConfiguration,
+} from '@/auth/entra-runtime-configuration'
 
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const SCOPE_PATTERN =
-  /^(api|https):\/\/[A-Za-z0-9][A-Za-z0-9.-]*\/[A-Za-z0-9._~/-]+$/
-
-function validateRuntimeConfiguration(value: unknown): RuntimeConfiguration | null {
+/** Dispatch public configuration only to a supported browser provider. */
+function validateRuntimeConfiguration(value: unknown): EntraRuntimeConfiguration | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return null
   }
   const config = value as Record<string, unknown>
+  const count = Object.keys(config).length
   if (
-    Object.keys(config).length !== 3 ||
-    typeof config.tenantId !== 'string' ||
-    typeof config.clientId !== 'string' ||
-    typeof config.apiScope !== 'string' ||
-    config.tenantId.length !== 36 ||
-    config.clientId.length !== 36 ||
-    /\s/.test(config.apiScope) ||
-    !UUID_PATTERN.test(config.tenantId) ||
-    !UUID_PATTERN.test(config.clientId) ||
-    config.apiScope.length > 2048 ||
-    !SCOPE_PATTERN.test(config.apiScope)
+    (count !== 3 && count !== 4) ||
+    (count === 4 && config.provider !== 'entra') ||
+    (count === 3 && Object.prototype.hasOwnProperty.call(config, 'provider'))
   ) {
     return null
   }
-  return {
-    tenantId: config.tenantId,
-    clientId: config.clientId,
-    apiScope: config.apiScope,
-  }
+  return validateEntraRuntimeConfiguration(config)
 }
 
 // Presence is authoritative even when the payload is malformed. Container builds

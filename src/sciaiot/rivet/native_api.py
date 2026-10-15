@@ -3,18 +3,13 @@
 import importlib.util
 import os
 import sys
-import uuid
 
 from sciaiot.rivet.adapters.vpn.settings import BackendSettings
-from sciaiot.rivet.services.provider_settings import StorageSettings
-
-AUTH_NAMES = (
-    "AZURE_ENTRAID_TENANT_ID",
-    "AZURE_ENTRAID_APP_CLIENT_ID",
-    "AZURE_ENTRAID_USER_ROLE",
-    "AZURE_ENTRAID_ADMIN_ROLE",
-    "AZURE_ENTRAID_SERVICE_ADMIN_ROLE",
+from sciaiot.rivet.services.provider_settings import (
+    AuthenticationSettings,
+    StorageSettings,
 )
+
 API_MODULES = ("fastapi", "jose", "sqlmodel", "uvicorn", "yaml")
 
 
@@ -34,10 +29,7 @@ def validate_environment() -> None:
             os.geteuid(),
         ):
             raise ValueError
-        if any(not os.environ.get(name, "").strip() for name in AUTH_NAMES):
-            raise ValueError
-        for name in AUTH_NAMES[:2]:
-            uuid.UUID(os.environ[name])
+        AuthenticationSettings.from_environment()
         if os.environ.get("HOST", "127.0.0.1") not in ("127.0.0.1", "::1"):
             raise ValueError
         StorageSettings.from_environment()

@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sciaiot.rivet.application.storage import ArchiveStore
     from sciaiot.rivet.application.vpn_control.port import VpnControl
+    from sciaiot.rivet.services.authentication import AuthenticationService
+    from sciaiot.rivet.services.provider_settings import AuthenticationSettings
 from pathlib import Path
 
 from sqlmodel import Session, SQLModel, create_engine
@@ -65,6 +67,34 @@ def init_scripts():
 
 vpn_control: VpnControl | None = None
 archive_store: ArchiveStore | None = None
+authentication_service: AuthenticationService | None = None
+authentication_settings: AuthenticationSettings | None = None
+
+
+def create_authentication_service() -> AuthenticationService:
+    """Construct the selected identity provider for one application lifecycle."""
+    from sciaiot.rivet.adapters.authentication.entra import EntraIdentityProvider
+    from sciaiot.rivet.services.authentication import AuthenticationService
+    from sciaiot.rivet.services.provider_settings import AuthenticationSettings
+
+    settings = AuthenticationSettings.from_environment()
+    if settings.provider == "entra":
+        return AuthenticationService(EntraIdentityProvider(settings))
+    raise ValueError("RIVET_AUTH_PROVIDER must be entra.")
+
+
+def get_authentication_service() -> AuthenticationService:
+    """Return the active lifecycle authentication service, failing closed."""
+    if authentication_service is None:
+        raise RuntimeError("Authentication service has not started.")
+    return authentication_service
+
+
+def get_authentication_settings() -> AuthenticationSettings:
+    """Return the registration policy pinned at application startup."""
+    if authentication_settings is None:
+        raise RuntimeError("Authentication settings have not started.")
+    return authentication_settings
 
 
 @lru_cache(maxsize=1)

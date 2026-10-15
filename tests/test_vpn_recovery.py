@@ -101,6 +101,7 @@ def test_background_worker_stops_and_redacts_unexpected_failures(recovery, caplo
     assert "private-address-and-token" not in caplog.text
 
 
+@pytest.mark.usefixtures("authentication_configuration")
 def test_read_only_api_lifespan_never_starts_agent_jobs(monkeypatch):
     import asyncio
 
@@ -125,6 +126,7 @@ def test_read_only_api_lifespan_never_starts_agent_jobs(monkeypatch):
     asyncio.run(run())
 
 
+@pytest.mark.usefixtures("authentication_configuration")
 def test_agent_lifespan_starts_and_closes_only_enabled_jobs(monkeypatch):
     import asyncio
 

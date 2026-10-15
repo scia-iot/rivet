@@ -5,9 +5,10 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-from fastapi import HTTPException, Request, Response
+from fastapi import Request, Response
 
-from sciaiot.rivet.middlewares import azure_security
+from sciaiot.rivet.application.authentication import AuthenticationError
+from sciaiot.rivet.middlewares import authentication
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT"])
@@ -28,18 +29,18 @@ def test_agent_backend_authenticates_loopback_connection_requests(
             "scheme": "http",
             "server": ("localhost", 8000),
             "client": (address, 43210),
-            "headers": [],
+            "headers": [(b"authorization", b"Bearer fixture")],
             "query_string": b"",
         }
     )
     downstream = mock.AsyncMock(return_value=Response(status_code=204))
     with mock.patch.object(
-        azure_security,
-        "validate_token",
-        side_effect=HTTPException(401, "Authentication required."),
+        authentication,
+        "_bearer_token",
+        side_effect=AuthenticationError(401, "Authentication required."),
     ) as authenticate:
         response = asyncio.run(
-            azure_security.azure_security_middleware(request, downstream)
+            authentication.authentication_middleware(request, downstream)
         )
     assert response.status_code == 401
     authenticate.assert_called_once_with(request)

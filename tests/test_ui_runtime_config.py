@@ -38,6 +38,7 @@ def test_settings_change_without_rebuilding() -> None:
     assert first.stdout.startswith(prefix)
     settings = json.loads(first.stdout.removeprefix(prefix).rstrip(";\n"))
     assert settings == {
+        "provider": "entra",
         "tenantId": VALID["RIVET_UI_ENTRA_TENANT_ID"],
         "clientId": VALID["RIVET_UI_ENTRA_CLIENT_ID"],
         "apiScope": VALID["RIVET_UI_ENTRA_API_SCOPE"],
@@ -100,7 +101,10 @@ def test_image_build_is_independent_of_entra_values() -> None:
     build = yaml.safe_load((ROOT / "deploy/compose.build.yml").read_text())
     assert not build["services"]["web"]["build"].get("args")
     runtime = yaml.safe_load((ROOT / "deploy/compose.yml").read_text())
-    assert set(runtime["services"]["web"]["environment"]) == set(VALID)
+    assert set(runtime["services"]["web"]["environment"]) == {
+        *VALID,
+        "RIVET_UI_AUTH_PROVIDER",
+    }
     config = (ROOT / "deploy/nginx/container.conf").read_text()
     assert "location = /runtime-config.js" in config
     assert "alias /tmp/rivet-runtime-config.js;" in config
@@ -128,3 +132,24 @@ def test_startup_writes_private_config_then_executes(tmp_path: Path) -> None:
     assert generated.read_text() == render(VALID).stdout
     assert generated.stat().st_mode & 0o777 == 0o600
     assert set(tmp_path.iterdir()) == {launcher, generated}
+
+
+@pytest.mark.parametrize("provider", ["", "cognito", "keycloak", "entra "])
+@pytest.mark.parametrize(
+    "renderer",
+    [ENTRYPOINT, ROOT / "src/sciaiot/rivet/native_assets/web-config.sh"],
+)
+def test_runtime_renderers_reject_unsupported_provider(
+    provider: str, renderer: Path
+) -> None:
+    """Both deployment paths reject invalid selection before emitting config."""
+    result = subprocess.run(
+        ["/bin/sh", str(renderer), "--print-config"],
+        env={"PATH": "/usr/bin:/bin", **VALID, "RIVET_UI_AUTH_PROVIDER": provider},
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert not result.stdout
