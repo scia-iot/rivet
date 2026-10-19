@@ -18,7 +18,7 @@ peer range; `.npmrc` does not permit bypassing peer resolution.
 | --- | --- |
 | `src/api` | Generated schema, authenticated client, problems, query keys, downloads |
 | `src/app` | Providers, query client, error boundary |
-| `src/auth` | MSAL, principal session, redirects, permission presentation |
+| `src/auth` | Browser authentication context, Entra adapter, principal session, permission presentation |
 | `src/features` | Domain API hooks, forms, and pages |
 | `src/components/shared` | Reusable forms, status/error/loading states, dialogs |
 | `src/components/ui` | Local UI primitives |
@@ -29,6 +29,12 @@ principal comes from `/me`; the UI does not assign roles by decoding unverified
 claims. Permission-based navigation is presentation, never authorization.
 Portal calls derive ownership from the authenticated principal and do not send
 a user ID. An AccessGrant is distinct from VPN traffic enforcement.
+
+Authentication gates, account controls, and API access consume
+`BrowserAuthentication`. Only the Entra adapter owns MSAL account selection,
+token refresh, and redirect coordination. It preserves the session token cache,
+redirect-loop guard, and query-cache cleanup on sign-out. Add future providers
+behind this boundary; application components must not import MSAL hooks.
 
 Feature hooks own explicit query keys and mutation invalidation. Keep domain
 behavior out of generic components. Credential downloads use no-store Blobs
@@ -73,11 +79,18 @@ deployment. It ignores dotenv and build-time `VITE_*` values, fixes `/api`,
 and requires authentication. Supply the validated public Entra settings through
 `window.__RIVET_CONFIG__` in `/runtime-config.js`; see
 [configuration](../docs/configuration.md#browser-configuration).
+Runtime payloads include `provider: 'entra'`; legacy payloads containing only
+`tenantId`, `clientId`, and `apiScope` remain accepted. Unknown providers or
+invalid runtime configuration block authentication without falling back to
+build settings. `RIVET_UI_AUTH_PROVIDER` selects the renderer's provider;
+Entra is the only supported value.
 
 The optional `npm run build:production` mode reads reviewed public settings
 from `.env.production.local`. Its guard requires authentication, concrete
 Entra identifiers, and a same-origin API base. These assets must be rebuilt
 when the embedded settings change; runtime builds avoid that requirement.
+If supplied, `VITE_AUTH_PROVIDER` must be `entra`. Development/E2E authentication
+modes remain excluded from production runtime deployments.
 
 Serve static output from a root-owned release separate from API-writable
 state, through the supplied Nginx boundary and a deployment-owned HTTPS

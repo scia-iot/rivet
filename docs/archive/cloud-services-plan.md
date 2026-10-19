@@ -1,6 +1,7 @@
 # Provider-independent storage and authentication plan
 
-Status: proposed; implementation has not started.
+Status: storage, authentication, and browser implementation complete.
+Live Azure and deployed-browser smoke verification remains outstanding.
 
 Introduce application services and typed provider interfaces, then adapt the
 existing Azure implementations. Prepare Rivet for Amazon S3 or local MinIO
@@ -185,23 +186,30 @@ not a build containing embedded credentials.
 
 ## Implementation sequence
 
-All steps are pending. For each behavior change, add a failing focused test
-where practical, implement the smallest coherent change, then run focused and
-applicable broader suites. Keep this checklist current during implementation.
+Storage, authentication, and browser portions are implemented. Behavior
+changes are covered by focused and full regression suites. Live Azure smoke
+verification is tracked separately below.
 
-- [ ] 1. Characterize Azure/local behavior across both route families, VPN
+- [x] Storage characterization, typed contracts, local/Blob adapters, provider
+  settings, lifecycle, certificate route wiring, deletion ordering, and storage
+  documentation.
+- [x] Authentication characterization, typed identity contracts, Entra adapter,
+  registration policy, and generic middleware.
+- [x] Browser authentication context and deployment integration for identity.
+
+- [x] 1. Characterize Azure/local behavior across both route families, VPN
   backends, package failures, deletion ordering, Entra roles, `/me`, startup,
   and browser token handling.
-- [ ] 2. Add typed contracts, normalized identity, safe errors, fake adapters,
+- [x] 2. Add typed contracts, normalized identity, safe errors, fake adapters,
   settings, and factories. Test defaults, selection, aliases, invalid values,
   missing optional SDKs, and lifecycle cleanup.
-- [ ] 3. Extract local/Blob adapters and inject storage into the archive service.
+- [x] 3. Extract local/Blob adapters and inject storage into the archive service.
   Rewire package/download/delete flows, then remove Azure storage middleware.
-- [ ] 4. Extract the Entra adapter and authentication service/middleware. Remove
+- [x] 4. Extract the Entra adapter and authentication service/middleware. Remove
   Entra imports from authorization and identity routes; centralize validation.
-- [ ] 5. Isolate MSAL behind browser context; update public configuration and
+- [x] 5. Isolate MSAL behind browser context; update public configuration and
   deployment integration while retaining existing Azure setup.
-- [ ] 6. Update architecture, configuration, deployment, user, and frontend docs;
+- [x] 6. Update architecture, configuration, deployment, user, and frontend docs;
   run quality gates and record results and outstanding manual verification.
 
 ## Verification and completion criteria
@@ -246,6 +254,40 @@ Target more than 80% coverage for changed application code. Ordinary tests
 mock Azure and privileged operations. Record live Azure sign-in, service-token,
 Blob, and deployed-browser smoke verification separately; unit tests alone do
 not establish live compatibility.
+
+Storage implementation verification (2026-10-14): `ruff format --check .`,
+`ruff check .`, `mypy .`, and the full `pytest --cov=src/sciaiot/rivet
+--cov-report=term-missing` suite passed. Storage adapters and the certificate
+service exceed 80% statement coverage. Live Blob behavior has not been
+verified against an Azure account; the tests use SDK mocks.
+
+
+Authentication implementation verification (2026-10-15):
+
+- Added the immutable identity contract, Entra adapter, authentication service,
+  generic middleware, application-owned permissions, and startup-pinned
+  registration policy. Shared validation covers ASGI, native, and container
+  startup; unsupported providers and conflicting registration aliases fail.
+- Entra verification uses RS256, the configured issuer/audience, required
+  expiration, bounded trusted key retrieval, and existing exact role and
+  delegated/app-only rules. Real signed-token tests use generated local keys.
+- Browser gates, controls, and API requests use the authentication context;
+  the Entra adapter owns MSAL. Runtime configuration accepts the legacy
+  three-field payload and the new explicit `entra` discriminator.
+- `ruff format --check .`, `ruff check .`, and `mypy .` passed.
+- `pytest --cov=src/sciaiot/rivet --cov-report=term-missing` passed:
+  1,159 tests, 90% overall coverage. Entra adapter coverage is 94%; generic
+  middleware and provider settings are 98%; the authentication contract,
+  service, and application lifespan are 100%.
+- Frontend `CI=true npm run lint`, `CI=true npm run typecheck`,
+  `CI=true npm test` (193 tests), `CI=true npm run build:runtime`,
+  `CI=true npm run test:production` (9 tests),
+  `CI=true npm run test:e2e:production-guard`, and
+  `CI=true npm run api:check` passed. The existing large-chunk build warning
+  remains; the generated API schema is unchanged.
+- Azure services and privileged operations were mocked. Live Entra human
+  sign-in, service-token validation, and deployed-browser smoke checks have
+  not been run. Live Blob verification also remains outstanding from storage.
 
 Completion requires provider-independent application routes/services/policy,
 covered Azure/local behavior, fail-closed startup, and browser consumers that

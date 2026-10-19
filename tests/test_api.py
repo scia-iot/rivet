@@ -17,6 +17,7 @@ from sciaiot.rivet.main import app
 from sciaiot.rivet.routes.server import load_from_config
 from sciaiot.rivet.utils import openvpn
 from tests.support.api import MOCKED_ROUTES, SERVER_CONFIG_LINES, SERVER_STATUS_ACTIVE
+from tests.support.authentication import authenticated_claims
 
 
 @pytest.fixture(name="client")
@@ -30,8 +31,7 @@ def client_fixture(db_session: Session) -> Generator[TestClient]:
     app.dependency_overrides[get_session] = get_session_override
     try:
         with (
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.validate_token",
+            authenticated_claims(
                 return_value={
                     "iss": "https://login.example/tenant/v2.0",
                     "sub": "service-object-id",
@@ -39,22 +39,8 @@ def client_fixture(db_session: Session) -> Generator[TestClient]:
                     "roles": ["ServiceAdmin"],
                 },
             ),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.TENANT_ID",
-                "mocked_tenant_id",
-            ),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.APP_CLIENT_ID",
-                "mocked_app_client_id",
-            ),
-            patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
-            patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-                "ServiceAdmin",
-            ),
         ):
-            client = TestClient(app)
+            client = TestClient(app, headers={"Authorization": "Bearer fixture"})
             try:
                 yield client
             finally:
@@ -883,18 +869,28 @@ def test_get_client(client: TestClient):
 )
 @pytest.mark.usefixtures("seeded_clients")
 def test_package_client_cert(mock_package_client_cert, client: TestClient):
-    response = client.put("/clients/test_client_1/package-cert")
+    with (
+        patch(
+            "sciaiot.rivet.adapters.storage.local.LocalArchiveStore.get",
+            return_value=b"archive",
+        ),
+        patch("sciaiot.rivet.adapters.storage.local.LocalArchiveStore.put"),
+    ):
+        response = client.put("/clients/test_client_1/package-cert")
     assert response.status_code == 204
     assert response.content == b""
 
-    mock_package_client_cert.assert_called_once_with(
-        "test_client_1", "/opt/rivet/certs"
-    )
+    assert mock_package_client_cert.call_count == 1
+    assert mock_package_client_cert.call_args.args[0] == "test_client_1"
+    assert "rivet-archive-" in mock_package_client_cert.call_args.args[1]
 
 
-@patch("builtins.open", new_callable=mock_open, read_data=b"file content in bytes")
+@patch(
+    "sciaiot.rivet.adapters.storage.local.LocalArchiveStore.get",
+    return_value=b"file content in bytes",
+)
 @pytest.mark.usefixtures("seeded_clients")
-def test_download_client_cert(mock_open, client: TestClient):
+def test_download_client_cert(mock_get, client: TestClient):
     response = client.get("/clients/test_client_1/download-cert")
     assert response.status_code == 200
     assert response.headers["Content-Type"] == "application/zip"
@@ -904,53 +900,96 @@ def test_download_client_cert(mock_open, client: TestClient):
         response.headers["Content-Disposition"]
         == 'attachment; filename="test_client_1.zip"'
     )
-    mock_open.assert_called_once_with("/opt/rivet/certs/test_client_1.zip", "rb")
+    mock_get.assert_called_once_with("test_client_1")
 
 
-@patch("builtins.open", side_effect=OSError("local archive unavailable"))
+@patch(
+    "sciaiot.rivet.adapters.storage.local.LocalArchiveStore.get",
+    side_effect=OSError("local archive unavailable"),
+)
 @pytest.mark.usefixtures("seeded_clients")
 def test_download_client_cert_uses_azure_without_local_archive(
-    mock_open,
+    mock_get,
     client: TestClient,
 ) -> None:
     """Azure downloads do not depend on a leftover local archive."""
-    downloader = MagicMock()
-    downloader.readall.return_value = b"azure archive"
-    blob = MagicMock()
-    blob.download_blob.return_value = downloader
-    container = MagicMock()
-    container.get_blob_client.return_value = blob
-
-    with (
-        patch(
-            "sciaiot.rivet.middlewares.azure_storage.STORAGE_CONNECTION_STRING",
-            "configured",
-        ),
-        patch(
-            "sciaiot.rivet.middlewares.azure_storage.container_client",
-            container,
-            create=True,
-        ),
-    ):
+    store = MagicMock()
+    store.get.return_value = b"azure archive"
+    with patch("sciaiot.rivet.dependencies.get_archive_store", return_value=store):
         response = client.get("/clients/test_client_1/download-cert")
 
     assert response.status_code == 200
     assert response.content == b"azure archive"
     assert response.headers["Cache-Control"] == "no-store"
-    mock_open.assert_not_called()
-    container.get_blob_client.assert_called_once_with("test_client_1.zip")
+    mock_get.assert_not_called()
+    store.get.assert_called_once_with("test_client_1")
 
 
-@patch("builtins.open")
+@pytest.mark.usefixtures("seeded_clients")
+def test_admin_cloud_failure_never_falls_back_to_local(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A selected cloud outage cannot expose a cached local archive."""
+    store = MagicMock()
+    secret = "https://private.example/archive?sig=secret-token"
+    store.get.side_effect = RuntimeError(secret)
+    with (
+        patch("sciaiot.rivet.dependencies.get_archive_store", return_value=store),
+        patch(
+            "sciaiot.rivet.adapters.storage.local.LocalArchiveStore.get",
+            return_value=b"cached private archive",
+        ) as local_get,
+        caplog.at_level(logging.ERROR),
+    ):
+        response = client.get("/clients/test_client_1/download-cert")
+    assert response.status_code == 500
+    assert response.json()["detail"] == "The certificate operation failed."
+    assert secret not in response.text
+    assert secret not in caplog.text
+    local_get.assert_not_called()
+
+
+@pytest.mark.usefixtures("seeded_clients")
+def test_admin_blob_package_and_upload_failure_are_safe(
+    client: TestClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Packaging uses the selected store and reports upload failure safely."""
+    store = MagicMock()
+    secret = "https://private.example/archive?sig=secret-token"
+    with (
+        patch("sciaiot.rivet.dependencies.get_archive_store", return_value=store),
+        patch("sciaiot.rivet.utils.openvpn.package_client_cert"),
+        patch(
+            "sciaiot.rivet.adapters.storage.local.LocalArchiveStore.get",
+            return_value=b"archive",
+        ),
+        patch("sciaiot.rivet.adapters.storage.local.LocalArchiveStore.put"),
+        caplog.at_level(logging.ERROR),
+    ):
+        successful = client.put("/clients/test_client_1/package-cert")
+        store.put.side_effect = RuntimeError(secret)
+        failed = client.put("/clients/test_client_1/package-cert")
+
+    assert successful.status_code == 204
+    store.put.assert_any_call("test_client_1", b"archive")
+    assert failed.status_code == 500
+    assert failed.json()["detail"] == "The certificate operation failed."
+    assert secret not in failed.text
+    assert secret not in caplog.text
+
+
+@patch("sciaiot.rivet.adapters.storage.local.LocalArchiveStore.get")
 @pytest.mark.usefixtures("seeded_clients")
 def test_download_client_cert_failure_is_safe(
-    mock_open,
+    mock_get,
     client: TestClient,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Local archive failures expose neither filesystem nor token details."""
     sensitive = "/server/private/archive.zip?sig=secret-token"
-    mock_open.side_effect = OSError(sensitive)
+    mock_get.side_effect = OSError(sensitive)
 
     caplog.clear()
     with caplog.at_level(logging.ERROR):

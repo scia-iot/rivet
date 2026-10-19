@@ -22,6 +22,7 @@ flowchart LR
   caller <-->|Sign-in| entra[Microsoft Entra ID]
   api -->|Token verification| entra
   api <--> db[(API database and archives)]
+  api <-->|Private SDK calls when selected| blob[(Azure Blob archives)]
   api <-->|Typed HTTP over Unix socket| agent[VPN agent]
   agent <--> pki[(Private PKI, CCD, intent and journal)]
   agent --> projection[(Minimal runtime projection)]
@@ -49,6 +50,32 @@ database does not establish multi-replica or high-availability support.
 `sciaiot-rivet[api]` and `sciaiot-rivet-agent` install the same core version
 in separate environments. The agent metapackage does not pull API extras or
 duplicate the implementation. See [native installation](deployment.md#native-installation).
+
+### Authentication and application authorization
+
+Generic HTTP middleware extracts a bearer token and invokes the authentication
+service on a worker thread. The selected `IdentityProvider` verifies the token
+and returns an immutable `VerifiedIdentity`: issuer, subject, canonical role,
+human/service kind, and bounded display name. Raw tokens and provider claim
+dictionaries do not enter application request state.
+
+The Entra adapter owns RS256 verification, trusted signing-key retrieval,
+issuer/audience/time checks, external role mapping, and delegated versus
+app-only claim rules. Application authorization maps canonical roles to Rivet
+permissions and enforces ownership and grants. The adapter cannot supply
+permissions. Existing identities retain their `(issuer, subject)` keys.
+
+Authentication and storage are independent startup selections. Entra is the
+only implemented identity provider; unsupported selections fail explicitly.
+All launch paths validate authentication configuration, and application
+lifespan owns provider construction and cleanup. Provider and registration
+changes require a restart; they do not migrate identities or grants.
+
+Browser gates, account controls, and the API client use a shared authentication
+context. Its Entra adapter encapsulates MSAL, active-account selection, silent
+token acquisition, redirect coordination, and sign-out. `/me` remains the
+authority for application roles and permissions. See
+[configuration](configuration.md) for settings and rollout compatibility.
 
 ### Deployment and privilege boundaries
 
@@ -265,15 +292,16 @@ history and cursor before immutable acknowledgements. Both flags default off
 and require agent mode. Inconclusive PKI/reload outcomes remain fenced for
 operator recovery; no automatic guess or CA rollback is permitted.
 
-Agent-backed certificate downloads always obtain fresh active-generation
-metadata, consume and verify a bounded archive, then recheck generation before
-returning the public ZIP. Partial bytes are never published. Optional Azure
-uploads and cleanup remain API concerns; Azure cached bytes cannot replace
-that verified agent response. Host Azure behavior is unchanged. Old local
-archives are invalidated after renewal/revocation/deletion, with failed local
-cleanup retained separately. Existing best-effort Blob orphan cleanup remains
-an operator responsibility and is not automatically retried by a Blob reconciler. Neither
-archive bytes nor SAS URLs or storage credentials cross JSON control messages.
+The API selects one `ArchiveStore` at startup: local files or the existing
+private Azure Blob container. The certificate service validates and packages
+archives, publishes bounded local staging atomically, and uploads Blob bytes
+when selected. Host downloads read from the selected store. Agent-backed
+downloads always obtain fresh active-generation metadata, consume and verify
+a bounded archive, then recheck generation before returning the public ZIP.
+Partial or cached cloud bytes never replace this verification. Stored archives
+are deleted only after the client database commit; failed post-commit cleanup
+keeps a truthful `204` and requires manual orphan removal. Neither archive
+bytes nor SAS URLs or storage credentials cross JSON control messages.
 
 ### Verification boundary
 

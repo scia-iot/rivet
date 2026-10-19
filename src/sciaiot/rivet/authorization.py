@@ -10,9 +10,9 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.routing import APIRoute
 from sqlmodel import Session, col, select
 
+from sciaiot.rivet.application.authentication import VerifiedIdentity
 from sciaiot.rivet.data.identity import AccessGrant, Device, User, UserClient
 from sciaiot.rivet.data.server import Client
-from sciaiot.rivet.middlewares import azure_security
 
 
 class Permission(StrEnum):
@@ -31,7 +31,7 @@ class Permission(StrEnum):
 
 
 SYSADMIN_PERMISSIONS = tuple(Permission)
-AUTO_REGISTRATION_DISPLAY_NAME = "Microsoft Entra user"
+AUTO_REGISTRATION_DISPLAY_NAME = "External user"
 MAX_USER_DISPLAY_NAME_LENGTH = 255
 
 
@@ -69,118 +69,48 @@ class AuthenticatedPrincipal:
     registration_display_name: str = AUTO_REGISTRATION_DISPLAY_NAME
 
 
-def _registration_display_name(payload: dict[str, object]) -> str:
-    """Derive a bounded display name only from verified token claims."""
-    for claim in ("name", "preferred_username"):
-        value = payload.get(claim)
-        if not isinstance(value, str):
-            continue
-        candidate = value.strip()
-        if candidate and all(character.isprintable() for character in candidate):
-            return candidate[:MAX_USER_DISPLAY_NAME_LENGTH]
-    return AUTO_REGISTRATION_DISPLAY_NAME
-
-
 def get_authenticated_principal(request: Request) -> AuthenticatedPrincipal:
-    """Normalize middleware-validated claims into an application principal.
+    """Grant application permissions to a provider-verified identity.
 
     Args:
-        request: Current FastAPI request containing verified token claims.
+        request: Current FastAPI request containing a verified identity.
 
     Returns:
         A canonical principal with application roles and permissions.
 
     Raises:
-        HTTPException: If authentication state or authorization configuration
-            is missing or invalid.
+        HTTPException: If authentication state is missing or invalid.
     """
-    payload = getattr(request.state, "token_payload", None)
-    if not isinstance(payload, dict):
+    identity = getattr(request.state, "verified_identity", None)
+    if not isinstance(identity, VerifiedIdentity):
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
             "A validated authentication token is required.",
         )
-
-    issuer = payload.get("iss")
-    subject = payload.get("sub")
     if (
-        not isinstance(issuer, str)
-        or not issuer
-        or not isinstance(subject, str)
-        or not subject
+        not isinstance(identity.issuer, str)
+        or not identity.issuer
+        or not isinstance(identity.subject, str)
+        or not identity.subject
+        or identity.role not in {"device_user", "sysadmin", "service_admin"}
+        or identity.kind not in {"human", "service"}
+        or (identity.role == "service_admin") != (identity.kind == "service")
     ):
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
             "The validated token identity is incomplete.",
         )
-
-    role_config = {
-        "device_user": azure_security.USER_ROLE,
-        "sysadmin": azure_security.ADMIN_ROLE,
-        "service_admin": azure_security.SERVICE_ADMIN_ROLE,
-    }
-    configured_roles = tuple(role_config.values())
-    if not all(
-        isinstance(role, str) and bool(role) and role == role.strip()
-        for role in configured_roles
-    ) or len(set(configured_roles)) != len(configured_roles):
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            "Authorization service is misconfigured.",
-        )
-
-    token_roles = payload.get("roles")
-    if (
-        not isinstance(token_roles, list)
-        or len(token_roles) != 1
-        or not isinstance(token_roles[0], str)
-        or token_roles[0] not in configured_roles
-    ):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "The token has no recognized application role.",
-        )
-
-    token_role = token_roles[0]
-    canonical_role = next(
-        name for name, configured in role_config.items() if configured == token_role
+    permissions = (
+        frozenset(SYSADMIN_PERMISSIONS)
+        if identity.role in {"sysadmin", "service_admin"}
+        else frozenset()
     )
-    object_id = payload.get("oid")
-    is_app_only = (
-        isinstance(object_id, str) and bool(object_id) and object_id == subject
-    )
-    has_human_object_id = (
-        isinstance(object_id, str) and bool(object_id) and object_id != subject
-    )
-    if canonical_role == "service_admin":
-        if not is_app_only or payload.get("scp") is not None:
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN,
-                "The token is not valid for app-only access.",
-            )
-        roles = (canonical_role,)
-        permissions = frozenset(SYSADMIN_PERMISSIONS)
-    else:
-        token_scope = payload.get("scp")
-        scopes = token_scope.split() if isinstance(token_scope, str) else []
-        if not has_human_object_id or azure_security.DELEGATED_SCOPE not in scopes:
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN,
-                "The token is not valid for delegated access.",
-            )
-        roles = (canonical_role,)
-        permissions = (
-            frozenset(SYSADMIN_PERMISSIONS)
-            if canonical_role == "sysadmin"
-            else frozenset()
-        )
-
     return AuthenticatedPrincipal(
-        issuer=issuer,
-        subject=subject,
-        roles=roles,
+        issuer=identity.issuer,
+        subject=identity.subject,
+        roles=(identity.role,),
         permissions=permissions,
-        registration_display_name=_registration_display_name(payload),
+        registration_display_name=identity.display_name,
     )
 
 

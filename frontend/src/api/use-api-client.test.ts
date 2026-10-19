@@ -5,7 +5,7 @@ import {
 } from '@azure/msal-browser'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { acquireAccessToken } from '@/api/use-api-client'
+import { acquireAccessToken } from '@/auth/entra-client'
 import { clearAuthenticationRedirectGuard } from '@/auth/redirect-coordinator'
 
 const account = {

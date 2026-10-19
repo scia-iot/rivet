@@ -13,6 +13,7 @@ from sciaiot.rivet.data.identity import AccessGrant, Device, User, UserClient
 from sciaiot.rivet.data.server import Cert, Client, Connection, VirtualAddress
 from sciaiot.rivet.dependencies import get_session
 from sciaiot.rivet.main import app
+from tests.support.authentication import authenticated_claims
 
 
 @pytest.fixture(name="deletion_context")
@@ -75,8 +76,7 @@ def deletion_context_fixture() -> Generator[tuple[TestClient, Session, Client]]:
             patch("sciaiot.rivet.main.create_app_directory"),
             patch("sciaiot.rivet.main.create_tables"),
             patch("sciaiot.rivet.main.init_scripts"),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.validate_token",
+            authenticated_claims(
                 return_value={
                     "iss": "https://login.example/tenant/v2.0",
                     "sub": "service-object-id",
@@ -84,13 +84,7 @@ def deletion_context_fixture() -> Generator[tuple[TestClient, Session, Client]]:
                     "roles": ["ServiceAdmin"],
                 },
             ),
-            patch("sciaiot.rivet.middlewares.azure_security.USER_ROLE", "user"),
-            patch("sciaiot.rivet.middlewares.azure_security.ADMIN_ROLE", "admin"),
-            patch(
-                "sciaiot.rivet.middlewares.azure_security.SERVICE_ADMIN_ROLE",
-                "ServiceAdmin",
-            ),
-            TestClient(app) as test_client,
+            TestClient(app, headers={"Authorization": "Bearer fixture"}) as test_client,
         ):
             yield test_client, session, client
 
@@ -231,6 +225,7 @@ def test_delete_database_failure_restores_staged_files_and_records(
             return_value=staged,
         ),
         patch.object(session, "commit", side_effect=RuntimeError("db failed")),
+        patch("sciaiot.rivet.dependencies.archive_store") as store,
     ):
         response = test_client.delete(f"/clients/{client.name}")
 
@@ -241,11 +236,54 @@ def test_delete_database_failure_restores_staged_files_and_records(
     )
     staged.restore.assert_called_once_with()
     staged.discard.assert_not_called()
+    store.delete.assert_not_called()
     assert session.exec(select(Client).where(Client.id == client_id)).one()
     assert session.exec(select(Cert)).one()
     assert session.exec(select(Connection)).one()
     assert session.exec(select(UserClient)).one()
     assert session.exec(select(Device)).one().client_id == client_id
+
+
+@pytest.mark.parametrize("storage_failure", [False, True])
+def test_archive_cleanup_follows_durable_deletion(
+    deletion_context: tuple[TestClient, Session, Client],
+    caplog: pytest.LogCaptureFixture,
+    storage_failure: bool,
+) -> None:
+    """Storage runs after SQL commit and staging discard without changing 204."""
+    test_client, session, client = deletion_context
+    client_id = client.id
+    client_name = client.name
+    staged = MagicMock()
+    secret = "https://private.example/archive?sig=credential"
+
+    def delete_archive(name: str) -> None:
+        assert name == client_name
+        assert (
+            session.exec(select(Client).where(Client.id == client_id)).first() is None
+        )
+        staged.discard.assert_called_once_with()
+        if storage_failure:
+            raise RuntimeError(secret)
+
+    with (
+        patch(
+            "sciaiot.rivet.utils.openvpn.stage_client_file_removal",
+            return_value=staged,
+        ),
+        patch("sciaiot.rivet.dependencies.archive_store") as store,
+        caplog.at_level("ERROR"),
+    ):
+        store.delete.side_effect = delete_archive
+        response = test_client.delete(f"/clients/{client_name}")
+    assert response.status_code == 204
+    assert response.content == b""
+    store.delete.assert_called_once_with(client_name)
+    staged.restore.assert_not_called()
+    if storage_failure:
+        assert "manually" in caplog.text
+    assert secret not in caplog.text
+    assert secret not in response.text
 
 
 def test_import_skips_names_revoked_in_ca_index(

@@ -7,6 +7,11 @@ from pathlib import Path
 
 import uvicorn
 
+from sciaiot.rivet.services.provider_settings import (
+    AuthenticationSettings,
+    StorageSettings,
+)
+
 SECRET_NAMES = ("SQLALCHEMY_DATABASE_URI", "AZURE_STORAGE_CONNECTION_STRING")
 
 
@@ -35,17 +40,17 @@ def configure() -> str:
     """Require agent isolation, explicit authentication, and a narrow proxy IP."""
     if os.environ.get("RIVET_VPN_BACKEND") != "agent":
         raise ValueError("Container requires agent backend.")
-    for name in (
-        "AZURE_ENTRAID_TENANT_ID",
-        "AZURE_ENTRAID_APP_CLIENT_ID",
-        "AZURE_ENTRAID_USER_ROLE",
-        "AZURE_ENTRAID_ADMIN_ROLE",
-        "AZURE_ENTRAID_SERVICE_ADMIN_ROLE",
-    ):
-        if not os.environ.get(name, "").strip():
-            raise ValueError("Container requires complete authentication settings.")
+    AuthenticationSettings.from_environment()
     proxy = str(ipaddress.IPv4Address(os.environ["RIVET_PROXY_IP"]))
+    selected_storage = os.environ.get("RIVET_STORAGE_PROVIDER")
+    if selected_storage is not None and selected_storage not in {
+        "local",
+        "azure_blob",
+    }:
+        raise ValueError("Invalid storage provider.")
     for name in SECRET_NAMES:
+        if name == "AZURE_STORAGE_CONNECTION_STRING" and selected_storage == "local":
+            continue
         location = os.environ.get(f"{name}_FILE")
         if location is not None:
             if name in os.environ:
@@ -54,6 +59,7 @@ def configure() -> str:
             if path.parent != Path("/run/secrets"):
                 raise ValueError("Credential file must be a direct secret mount.")
             os.environ[name] = load_secret(path)
+    StorageSettings.from_environment()
     return proxy
 
 

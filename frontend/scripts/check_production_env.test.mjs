@@ -85,3 +85,15 @@ test('rejects unreviewed browser variables without echoing values', () => {
     false,
   )
 })
+
+
+test('accepts only the supported explicit production auth provider', () => {
+  assert.deepEqual(validateProductionEnvironment({
+    ...validEnvironment, VITE_AUTH_PROVIDER: 'entra',
+  }), [])
+  for (const provider of ['', 'cognito', 'keycloak', 'entra ']) {
+    assert.deepEqual(validateProductionEnvironment({
+      ...validEnvironment, VITE_AUTH_PROVIDER: provider,
+    }), ['VITE_AUTH_PROVIDER must be entra'])
+  }
+})

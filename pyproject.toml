@@ -8,7 +8,7 @@ name = "sciaiot-rivet"
 version = "0.0.0.dev0"
 license = { text = "Apache License 2.0" }
 description = "Rivet: OpenVPN control plane from SCIA IoT."
-authors = [{ name = "Nick Yao", email = "ipaddict@outlook.com" }]
+authors = [{ name = "Nick Yao", email = "ipaddicting@gmail.com" }]
 requires-python = ">=3.14"
 dependencies = [
     "cryptography",

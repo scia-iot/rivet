@@ -26,8 +26,9 @@ describe('runtime authentication configuration', () => {
     expect(config.isE2EAuthenticationMode).toBe(false)
     expect(config.e2eAccessToken).toBeNull()
     expect(config.apiScopes).toEqual([runtime.apiScope])
-    expect(config.msalInstance?.getConfiguration().auth.clientId).toBe(runtime.clientId)
-    expect(config.msalInstance?.getConfiguration().auth.authority).toBe(
+    const { msalInstance } = await import('./entra-client')
+    expect(msalInstance?.getConfiguration().auth.clientId).toBe(runtime.clientId)
+    expect(msalInstance?.getConfiguration().auth.authority).toBe(
       `https://login.microsoftonline.com/${runtime.tenantId}`,
     )
     expect((await import('@/api/client')).apiBaseUrl).toBe('/api')
@@ -43,6 +44,10 @@ describe('runtime authentication configuration', () => {
     { ...runtime, apiScope: 'api://host/' },
     { ...runtime, apiScope: `api://host/${'a'.repeat(2048)}` },
     { ...runtime, authDisabled: true },
+    { ...runtime, provider: '' },
+    { ...runtime, provider: 'keycloak' },
+    { ...runtime, provider: 'ENTRA' },
+    { ...runtime, provider: 'entra', extra: 'ignored' },
   ])('fails closed for invalid runtime configuration %#', async (value) => {
     vi.stubEnv('VITE_RUNTIME_CONFIG', 'true')
     vi.stubEnv('VITE_AUTH_DISABLED', 'true')
@@ -54,7 +59,7 @@ describe('runtime authentication configuration', () => {
     expect(config.isAuthenticationDisabled).toBe(false)
     expect(config.isAuthenticationConfigured).toBe(false)
     expect(config.apiScopes).toEqual([])
-    expect(config.msalInstance).toBeNull()
+    expect((await import('./entra-client')).msalInstance).toBeNull()
   })
 
   it('rejects malformed runtime data without falling back to local bypass', async () => {
@@ -62,7 +67,7 @@ describe('runtime authentication configuration', () => {
     vi.stubEnv('VITE_AUTH_DISABLED', 'true')
     const config = await import('./config')
     expect(config.isAuthenticationDisabled).toBe(false)
-    expect(config.msalInstance).toBeNull()
+    expect((await import('./entra-client')).msalInstance).toBeNull()
   })
 
   it('preserves explicit local development configuration without runtime data', async () => {
@@ -70,4 +75,34 @@ describe('runtime authentication configuration', () => {
     const config = await import('./config')
     expect(config.isAuthenticationDisabled).toBe(true)
   })
+
+  it.each([runtime, { ...runtime, provider: 'entra' }])(
+    'accepts legacy and provider-tagged runtime configuration %#', async (value) => {
+      window.__RIVET_CONFIG__ = value
+      const config = await import('./config')
+      expect(config.isAuthenticationConfigured).toBe(true)
+      expect((await import('@/runtime-config')).runtimeConfiguration).toEqual({
+        ...runtime, provider: 'entra',
+      })
+    },
+  )
+
+  it('does not construct MSAL for disabled local authentication', async () => {
+    vi.stubEnv('VITE_AUTH_DISABLED', 'true')
+    vi.stubEnv('VITE_ENTRA_TENANT_ID', runtime.tenantId)
+    vi.stubEnv('VITE_ENTRA_CLIENT_ID', runtime.clientId)
+    vi.stubEnv('VITE_ENTRA_API_SCOPE', runtime.apiScope)
+    expect((await import('./entra-client')).msalInstance).toBeNull()
+  })
+
+  it.each(['', 'keycloak', 'ENTRA'])(
+    'rejects an unsupported build-time provider %s', async (provider) => {
+      vi.stubEnv('VITE_AUTH_PROVIDER', provider)
+      vi.stubEnv('VITE_ENTRA_TENANT_ID', runtime.tenantId)
+      vi.stubEnv('VITE_ENTRA_CLIENT_ID', runtime.clientId)
+      vi.stubEnv('VITE_ENTRA_API_SCOPE', runtime.apiScope)
+      expect((await import('./config')).isAuthenticationConfigured).toBe(false)
+      expect((await import('./entra-client')).msalInstance).toBeNull()
+    },
+  )
 })

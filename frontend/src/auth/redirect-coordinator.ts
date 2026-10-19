@@ -4,7 +4,7 @@ import type {
 } from '@azure/msal-browser'
 import type { QueryClient } from '@tanstack/react-query'
 
-import { apiScopes, loginRequest } from '@/auth/config'
+import { apiScopes } from '@/auth/config'
 
 const REDIRECT_GUARD_KEY = 'rivet.authentication.redirect'
 
@@ -29,7 +29,7 @@ export async function redirectForLogin(
 
   try {
     await instance.loginRedirect({
-      ...loginRequest,
+      scopes: apiScopes,
       redirectStartPage: window.location.href,
     })
     return true

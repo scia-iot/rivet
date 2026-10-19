@@ -19,6 +19,8 @@ validate_uuid() {
 tenant_id=${RIVET_UI_ENTRA_TENANT_ID:-}
 client_id=${RIVET_UI_ENTRA_CLIENT_ID:-}
 api_scope=${RIVET_UI_ENTRA_API_SCOPE:-}
+provider=${RIVET_UI_AUTH_PROVIDER-entra}
+[ "$provider" = 'entra' ] || invalid_config
 validate_uuid "$tenant_id"
 validate_uuid "$client_id"
 case "$api_scope" in
@@ -27,4 +29,4 @@ esac
 [ "${#api_scope}" -le 2048 ] || invalid_config
 printf '%s\n' "$api_scope" | grep -Eq '^(api|https)://[A-Za-z0-9][A-Za-z0-9.-]*/[A-Za-z0-9._~/-]+$' || invalid_config
 
-printf 'window.__RIVET_CONFIG__ = {"tenantId":"%s","clientId":"%s","apiScope":"%s"};\n' "$tenant_id" "$client_id" "$api_scope"
+printf 'window.__RIVET_CONFIG__ = {"provider":"entra","tenantId":"%s","clientId":"%s","apiScope":"%s"};\n' "$tenant_id" "$client_id" "$api_scope"

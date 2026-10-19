@@ -1,4 +1,4 @@
-# Rivet agent from SCIA IoT
+# Rivet Agent
 
 `sciaiot-rivet-agent` installs the matching `sciaiot-rivet` core release
 without the optional API, database, or Azure dependencies. The core provides

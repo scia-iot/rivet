@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from sciaiot.rivet.main import app
+from tests.support.authentication import authenticated_claims
 
 
 @app.get("/test-http-error", include_in_schema=False)
@@ -153,11 +154,10 @@ def test_openapi_generation_does_not_call_privileged_operations() -> None:
 
 def test_http_errors_are_rfc7807_problem_details() -> None:
     """Handled HTTP failures use the same safe problem-details contract."""
-    with patch(
-        "sciaiot.rivet.middlewares.azure_security.validate_token",
-        return_value={"sub": "test-subject"},
-    ):
-        response = TestClient(app).get("/test-http-error")
+    with authenticated_claims():
+        response = TestClient(app, headers={"Authorization": "Bearer fixture"}).get(
+            "/test-http-error"
+        )
 
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("application/problem+json")

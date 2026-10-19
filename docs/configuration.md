@@ -31,6 +31,7 @@ build arguments, browser variables, shell history, and logs.
 | `HOST`, `PORT` | Native API defaults to `127.0.0.1:8000`. Container entrypoint owns its listener settings. |
 | `RIVET_ROOT_PATH` | Native/source runner accepts empty or `/api`; native Nginx deployment uses `/api`. |
 | `RIVET_PROXY_IP` | Container API's sole trusted forwarded-header peer; must match the Nginx bridge address. |
+| `RIVET_STORAGE_PROVIDER` | `local` or `azure_blob`. If unset, a configured `AZURE_STORAGE_CONNECTION_STRING` selects Blob; otherwise local. Blank and unsupported values fail startup. Explicit `local` ignores legacy Blob credentials. |
 
 Agent configuration, mutation-family requirements, route protocol allocation,
 and ownership checks are defined in [agent operation](vpn-control.md#agent-operation).
@@ -46,19 +47,27 @@ that API scope; its client ID is not the API audience ID.
 
 | Backend variable | Meaning |
 | --- | --- |
+| `RIVET_AUTH_PROVIDER` | `entra` (default). Blank and unsupported values prevent startup. |
 | `AZURE_ENTRAID_TENANT_ID` | Tenant containing the API registration. |
 | `AZURE_ENTRAID_APP_CLIENT_ID` | API registration's Application (client) ID. |
 | `AZURE_ENTRAID_USER_ROLE` | Delegated user app-role value; templates use `device_user`. |
 | `AZURE_ENTRAID_ADMIN_ROLE` | Delegated administrator app-role value; templates use `sysadmin`. |
 | `AZURE_ENTRAID_SERVICE_ADMIN_ROLE` | App-only administrator value; templates use `ServiceAdmin`. |
-| `AZURE_ENTRAID_AUTO_REGISTER_USERS` | Default `true`. Accepts only `true`/`false`, case-insensitive, with no surrounding whitespace. |
+| `RIVET_AUTH_AUTO_REGISTER_USERS` | Automatic local-user registration. Accepts only `true`/`false`, case-insensitive, with no surrounding whitespace. Falls back to the legacy setting, then `true`. |
+| `AZURE_ENTRAID_AUTO_REGISTER_USERS` | Legacy registration alias. If both aliases are supplied, their values must agree. |
 
 All five required values must be nonempty; the three role values must differ.
 Missing, partial, duplicate, or invalid policy configuration fails closed.
 There is no fallback to the old `AZURE_ENTRAID_APP_ROLE` variable.
+Direct ASGI, native, and container startup share the same validation. Provider
+selection and registration policy are fixed for the API lifecycle; restart the
+API after changing them. Missing authentication dependencies prevent startup.
 
 The backend validates RS256 token signature, issuer, audience, expiry, and
-stable identity. Delegated user/admin tokens require `access_as_user` in
+stable identity. Tokens must include audience and expiration claims; a valid
+signature alone is insufficient. Signing keys come only from the configured
+tenant endpoint, with a five-second fetch timeout and a 256 KiB response limit.
+Delegated user/admin tokens require `access_as_user` in
 `scp` and a nonempty `oid` different from `sub`. App-only service-admin tokens
 require `oid == sub` and no `scp`. Missing, unknown, or multiple roles are
 rejected. Delegated admin and app-only service admin receive the management
@@ -68,7 +77,9 @@ permissions shown in [the route matrix](vpn-control.md#api-route-mapping).
 registration enabled, a missing delegated user/admin is created using verified
 claims; existing display names are preserved. App-only identities are never
 auto-registered. When registration is disabled, unknown local identities
-receive `403`. An invalid boolean fails `/me` even for an existing user.
+receive `403`. Invalid or conflicting registration values prevent startup.
+Identity remains keyed by issuer and subject; changing a provider does not
+merge accounts by name/email or transfer grants.
 
 UserClient ownership and device AccessGrants are separate local policies.
 Neither grants management permissions or installs VPN firewall rules. Portal
@@ -88,6 +99,7 @@ fixes the API base to `/api`, and requires authentication.
 
 | Runtime variable | Value |
 | --- | --- |
+| `RIVET_UI_AUTH_PROVIDER` | `entra` (default). Blank and unsupported values fail validation. |
 | `RIVET_UI_ENTRA_TENANT_ID` | Tenant UUID matching the API. |
 | `RIVET_UI_ENTRA_CLIENT_ID` | SPA registration UUID. |
 | `RIVET_UI_ENTRA_API_SCOPE` | Concrete API scope such as `api://API_UUID/access_as_user`. |
@@ -97,6 +109,9 @@ The web entrypoint validates these public values and serves
 no-store`. Native deployments render it with the exported `web-config.sh`.
 Missing or malformed configuration blocks startup/sign-in; it cannot enable
 an auth bypass. Changing the deployment does not require rebuilding the UI.
+New renderers include `"provider":"entra"` alongside `tenantId`, `clientId`,
+and `apiScope`. The browser also accepts the legacy three-field Entra payload
+during rollout. A malformed runtime payload never falls back to build settings.
 
 Register the exact public HTTPS origin plus `/` as an Entra **SPA** redirect
 URI. MSAL returns to that origin before the router restores the requested
@@ -106,15 +121,26 @@ development uses its own registered localhost origin and `VITE_*` settings.
 The optional `build:production` mode still embeds reviewed public settings
 from `.env.production.local`; it requires rebuilding when those settings
 change. Runtime configuration is the native/container reference.
+Optional build-time `VITE_AUTH_PROVIDER` accepts only `entra` when supplied.
 
 ## Optional database and Blob secrets
 
 Use `sciaiot-rivet[api,azure]` for native Blob support. Set
-`AZURE_STORAGE_CONNECTION_STRING` and retain the existing private container
-name `ovpncp`; the name is a persistent archive identifier. Credential download
-authorization still applies. Agent-backed downloads verify the agent's active
-archive generation rather than trusting an old Blob copy. Failed orphan Blob
-cleanup requires operator follow-up.
+`RIVET_STORAGE_PROVIDER=azure_blob` and `AZURE_STORAGE_CONNECTION_STRING`, or
+leave the provider unset to infer Blob from the legacy connection string. The
+private container remains `ovpncp`; its name and `<client>.zip` archive keys
+are persistent identifiers. `RIVET_STORAGE_PROVIDER=local` selects the
+configured certificate directory even when a legacy Blob connection string is
+present. Unsupported providers fail startup; changing providers requires an
+API restart and does not migrate existing archives.
+
+Both administrator and owned-client download routes use the selected store for
+host archives. Agent and shadow downloads always verify fresh agent bytes and
+active generation. Archives are bounded to 16 MiB and served as private ZIP
+attachments with `Cache-Control: no-store`. Blob upload failures fail the
+package request. Archive cleanup follows durable client deletion; if cleanup
+fails, deletion still returns `204` and the operator must remove the orphaned
+archive manually.
 
 The API container supports `SQLALCHEMY_DATABASE_URI_FILE` and
 `AZURE_STORAGE_CONNECTION_STRING_FILE` through a reviewed Compose override.
@@ -123,6 +149,10 @@ Use direct regular files beneath `/run/secrets`, owned by UID 65531, mode
 inline/file values fail startup. Native services use protected root-owned
 environment files or an explicitly configured credential-delivery mechanism;
 the container's `_FILE` loader is not a general native environment feature.
+An explicit `local` selection leaves any Blob credential file unused. For the
+reference Compose deployment, pass `RIVET_STORAGE_PROVIDER` through the same
+reviewed API service override used for optional Blob secrets; values in
+`deploy/container.env` are not forwarded automatically.
 
 The reference container lock uses SQLite. MySQL/PostgreSQL require a reviewed
 driver lock and image variant, plus database-specific backup/restore. Never
