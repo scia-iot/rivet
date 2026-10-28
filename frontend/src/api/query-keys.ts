@@ -19,6 +19,8 @@ export const queryKeys = {
     all: ['portal'] as const,
     clients: ['portal', 'clients'] as const,
     devices: ['portal', 'devices'] as const,
+    networks: ['portal', 'networks'] as const,
+    network: (id: number) => ['portal', 'networks', id] as const,
     device: (id: number) => ['portal', 'devices', id] as const,
   },
   server: {

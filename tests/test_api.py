@@ -767,10 +767,11 @@ def test_create_restricted_network_command_failure_is_safe(
         },
     )
 
-    assert response.status_code == 500
+    assert response.status_code == 503
     _assert_problem_detail(
         response,
-        "The restricted network could not be created. Check the host firewall and retry.",
+        "The VPN operation outcome is unknown. Check agent health and "
+        "reconcile the retained operation before changing the request.",
     )
     assert "10.8.0.2" not in response.text
     assert "10.8.0.2" not in caplog.text

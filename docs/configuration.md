@@ -82,9 +82,32 @@ Identity remains keyed by issuer and subject; changing a provider does not
 merge accounts by name/email or transfer grants.
 
 UserClient ownership and device AccessGrants are separate local policies.
-Neither grants management permissions or installs VPN firewall rules. Portal
-requests never accept a caller-selected user ID. Revoked client credentials
-are refused before packaging or file access.
+Neither grants global management permissions or installs firewall rules by
+itself. Portal requests never accept a caller-selected user ID. Revoked
+client credentials are refused before packaging or file access.
+
+Ordinary users create direct device access through `POST /me/networks`, with
+only `source_name` (an owned VPN client) and `destination_device_id` (an
+explicitly granted Device). Extra fields are rejected. The API resolves the
+device's current VPN client and requires different clients, active credentials,
+and assigned virtual addresses before invoking the shared VPN workflow.
+Self-service does not accept raw destinations or private LAN scope; those
+remain administrator operations under `/networks` with `server:write`.
+
+`GET /me/networks` (optionally filtered by owned `source_name`),
+`GET /me/networks/{network_id}`, and `DELETE /me/networks/{network_id}` use
+current source ownership. They include history and permit cleanup after a
+destination grant is removed or its device relinked. Reassigning the source
+client transfers visibility and cleanup authority. Requests for unavailable
+or unauthorized resources return the same `403`, including guessed IDs.
+Repeated creation of the same active policy returns its existing record;
+closing retains history and a later creation opens a new record.
+
+Grant revocation prevents subsequent self-service creation but does not
+remove existing firewall rules. Revoke first, then close and verify active
+networks. Already in-flight operations may need reconciliation and another
+inventory check; see [removing access](user-guide.md#remove-one-users-access-to-a-device).
+No new role, provider, database migration, or automatic teardown is required.
 
 `/docs` and `/openapi.json` are documentation exceptions. Agent deployments
 have no unauthenticated connection callback. Host/shadow compatibility modes

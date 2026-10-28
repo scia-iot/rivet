@@ -34,6 +34,11 @@ const navigation = [
     icon: ShieldCheck,
   },
   {
+    to: '/portal/networks',
+    label: 'My networks',
+    icon: Workflow,
+  },
+  {
     to: '/devices',
     label: 'Devices',
     icon: ShieldCheck,

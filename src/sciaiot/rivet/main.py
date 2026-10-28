@@ -25,7 +25,13 @@ from sciaiot.rivet.dependencies import (
 )
 from sciaiot.rivet.middlewares.authentication import authentication_middleware
 from sciaiot.rivet.problems import PROBLEM_RESPONSES, problem_response
-from sciaiot.rivet.routes import client, identity, network, server
+from sciaiot.rivet.routes import (
+    client,
+    current_user_networks,
+    identity,
+    network,
+    server,
+)
 from sciaiot.rivet.services.provider_settings import AuthenticationSettings
 from sciaiot.rivet.services.vpn_recovery import BackgroundSettings, BackgroundWorker
 
@@ -97,6 +103,9 @@ app.include_router(network.router, prefix="/networks", tags=["server"])
 app.include_router(identity.device_router, prefix="/devices", tags=["device"])
 app.include_router(identity.user_router, prefix="/users", tags=["user"])
 app.include_router(identity.principal_router, tags=["identity"])
+app.include_router(
+    current_user_networks.router, prefix="/me/networks", tags=["identity"]
+)
 
 
 @app.exception_handler(StarletteHTTPException)

@@ -74,7 +74,13 @@ changes require a restart; they do not migrate identities or grants.
 Browser gates, account controls, and the API client use a shared authentication
 context. Its Entra adapter encapsulates MSAL, active-account selection, silent
 token acquisition, redirect coordination, and sign-out. `/me` remains the
-authority for application roles and permissions. See
+authority for application roles and permissions. Resource-scoped
+`/me/networks` creation requires an owned source and explicitly granted
+destination Device, resolved to its current VPN client. Listing, detail, and
+closure use current source ownership, including after a destination grant
+is removed. Both admin and current-user routes share the same lifecycle
+service and durable VPN mutation boundary. Grants alone do not install or
+remove firewall policy; private LAN access remains an admin operation. See
 [configuration](configuration.md) for settings and rollout compatibility.
 
 ### Deployment and privilege boundaries

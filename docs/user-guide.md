@@ -6,8 +6,9 @@ exist and can sign in: a **system administrator** (`sysadmin`) and a
 elsewhere.
 
 The example connects the device user's laptop to one edge device. The
-administrator prepares the clients, certificates, device record, and network
-access. The device user downloads their laptop credentials and connects.
+administrator prepares the clients, certificates, device record, and device
+grant. The device user creates their restricted network, downloads their
+laptop credentials, and connects.
 
 Device users can go straight to
 [download credentials and connect][device-user-setup].
@@ -19,7 +20,7 @@ Administrators should complete the setup steps first.
 - [4. Administrator: register the two VPN clients](#4-administrator-register-the-two-vpn-clients)
 - [5. Administrator: assign fixed VPN addresses](#5-administrator-assign-fixed-vpn-addresses)
 - [6. Administrator: assign ownership and register the device](#6-administrator-assign-ownership-and-register-the-device)
-- [7. Administrator: create the restricted network](#7-administrator-create-the-restricted-network)
+- [7. Device user: create the restricted network](#7-device-user-create-the-restricted-network)
 - [8. Administrator: install credentials on the edge device](#8-administrator-install-credentials-on-the-edge-device)
 - [9. Device user: download credentials and connect](#9-device-user-download-credentials-and-connect)
 - [10. Manage certificate expiry and replacement](#10-manage-certificate-expiry-and-replacement)
@@ -34,11 +35,11 @@ Microsoft Entra ID.
 | Account | Responsibilities |
 | --- | --- |
 | System administrator | Register equipment; manage certificates and access. |
-| Device user | Download owned credentials; connect to authorized devices. |
+| Device user | Download owned credentials; create and close access to granted devices. |
 
 The administrator has **VPN clients**, **Devices**, **Users**, **Server**,
 and **Networks** in the navigation. The device user uses **Portal**,
-**My VPN clients**, and **My devices**.
+**My VPN clients**, **My devices**, and **My networks**.
 
 Use separate browser profiles when checking both accounts. An existing user
 record alone does not grant administrator permissions; those come from the
@@ -52,7 +53,7 @@ account's configured sign-in role.
 | Virtual address | The fixed VPN address assigned to a client. |
 | Device | A stable equipment record linked to its current VPN client. |
 | Client ownership | Lets a user download that client's credentials. |
-| Device access grant | Makes the device available in that user's portal. |
+| Device access grant | Permits creating networks from owned clients to the device. |
 | Restricted network | Applies firewall access between selected VPN clients. |
 
 We will use these names throughout:
@@ -197,24 +198,39 @@ the equipment is online.
 4. Choose **Grant access**.
 5. Confirm the device appears as **Authorized**.
 
-The **Not enforced** label means this grant does not itself configure
-OpenVPN or the firewall. It remains that way even after you create a
-restricted network; it is not a live connectivity indicator.
+The administrative **Not enforced** label means the grant alone does not
+configure OpenVPN or the firewall. In the portal, **Network status: Not
+checked** means the device listing does not check live connectivity. The
+grant permits the device user to create direct access through **My networks**.
 
-## 7. Administrator: create the restricted network
+## 7. Device user: create the restricted network
 
-1. Open **Networks > Create network**.
-2. Select `operator-laptop` as **Source VPN client**.
-3. Select `edge-01-vpn` as **Destination VPN client**.
-4. Leave **Private destinations** empty for a device connected directly to
-   the VPN.
-5. Choose **Create restricted network**, review the confirmation, and confirm.
-6. Review the resulting record and note its network ID.
+1. Sign in as the device user and open **My networks > Create network**.
+2. Select your owned `operator-laptop` as **Source VPN client**.
+3. Select the granted `edge-01` as **Destination device**. Rivet resolves its
+   current VPN client on the server; you cannot choose another user's client.
+4. Choose **Create restricted network**, review the confirmation, and choose
+   **Confirm create**.
+5. Review the resulting record and note its network ID.
+
+Both clients must have active credentials and assigned VPN addresses. Devices
+without a linked VPN client cannot be selected. Ask an administrator to fix
+provisioning errors. Self-service access is limited to the device's VPN
+address; private LAN destinations require administrator configuration below.
 
 The record should have a start time and no end time. It remains open until
-an administrator closes it; there is no automatic expiry setting. After a
-host restart or firewall reload, have the deployment operator verify and
-restore the intended rules. The record is not a live check of host rules.
+you or an administrator closes it; there is no automatic expiry setting.
+Open its detail page and choose **Close network > Confirm close** when access
+is no longer needed. **My networks** includes records whose source client
+you currently own, including networks configured by an administrator. You can
+still close them after the destination grant is revoked or the device's VPN
+client changes. Reassigning source ownership transfers this visibility and
+cleanup ability to the new owner.
+
+After a host restart or firewall reload, have the deployment operator verify
+and restore the intended rules. The record is not a live check of host rules.
+If an operation cannot be confirmed, retry the same request or ask an
+administrator to reconcile pending VPN operations before changing it.
 
 This permits traffic in both directions between the selected VPN addresses,
 across all ports and protocols. The form does not offer per-port rules. Ask
@@ -225,13 +241,15 @@ itself requires separate host policy.
 
 Repeat for each additional laptop client and destination that should be
 reachable. Access granted to a user does not automatically cover all of that
-user's VPN clients. Check existing records before creating another network
-for the same pair.
+user's VPN clients. Repeating the same request returns the matching active
+record instead of creating another access window. Closing it allows creating
+a new record later.
 
 ### Optional: reach equipment behind a gateway
 
-Use this workflow only when a gateway already connects a private LAN to the
-VPN. For example, `site-gateway-vpn` might serve `192.168.50.0/24`.
+An administrator performs this workflow when a gateway already connects a
+private LAN to the VPN. For example, `site-gateway-vpn` might serve
+`192.168.50.0/24`.
 
 The gateway's **Client network** must already show the intended private
 subnet. Its fixed address, OpenVPN gateway routing, LAN forwarding, and return
@@ -372,17 +390,24 @@ of waiting for replacement testing.
 
 ### Remove one user's access to a device
 
-1. In **Networks**, close all active networks connecting that user's laptop
-   clients to the device's VPN client or the relevant gateway destinations.
-   Open each record and choose **Close network**, then confirm.
-2. In **Users > the device user > Device access**, choose **Revoke** for the
-   device and confirm **Revoke access**.
-3. Verify the device disappears from **My devices** for that user and that
-   the intended network access has stopped.
+1. In **Users > the device user > Device access**, choose **Revoke** for the
+   device and confirm **Revoke access**. This blocks subsequent self-service
+   creation for that device.
+2. In **Networks**, close all active networks connecting that user's laptop
+   clients to the device's VPN client or relevant gateway destinations.
+   Include any previous device VPN identities if it was relinked. Open each
+   record and choose **Close network**, then confirm.
+3. Verify the device disappears from **My devices**, check the active network
+   inventory again, and verify the intended firewall access has stopped.
+   Creation requests already in flight when the grant was revoked may still
+   finish or retain pending intent. Have the operator reconcile those
+   operations, then recheck and close any resulting networks.
 
-Revoking the grant alone leaves firewall access in place. Closing a network
-sets its end time and retains its history. To allow access again, create a
-new restricted network and restore the device grant as needed.
+Revoking the grant alone leaves firewall access in place; it does not
+implicitly remove rules. The source owner can also close existing access
+through **My networks** after revocation. Closing a network sets its end time
+and retains its history. To allow self-service access again, restore the
+device grant and let the user create a new restricted network.
 
 ### Revoke and delete a VPN client
 
@@ -425,7 +450,7 @@ revocation when those credentials must stop working.
 | Certificate download fails | Check ownership, revocation, and packaging. |
 | Credentials are unavailable | Ask the admin to replace the revoked client. |
 | **Authorized**, but device unreachable | Check both VPNs, rules, and routes. |
-| **Not enforced** remains visible | This is not a network status check. |
+| **Not checked** remains visible | The portal device list does not check network status. |
 | VPN connects but application fails | Check the service and local firewall. |
 | Private LAN is unreachable | Reconnect; check gateway and LAN return routes. |
 | **Renew** succeeds but expiry is unchanged | Ask the operator about renewal. |
