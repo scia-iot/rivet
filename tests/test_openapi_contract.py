@@ -182,6 +182,8 @@ def test_openapi_documents_every_management_permission() -> None:
         ("get", "/devices"): "devices:read",
         ("post", "/devices"): "devices:write",
         ("get", "/devices/{device_id}"): "devices:read",
+        ("get", "/devices/{device_id}/access-grants"): "access:read",
+        ("post", "/devices/{device_id}/access-grants"): "access:grant",
         ("patch", "/devices/{device_id}"): "devices:write",
         ("delete", "/devices/{device_id}"): "devices:write",
         ("get", "/users"): "users:read",

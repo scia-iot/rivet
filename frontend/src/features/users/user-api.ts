@@ -21,9 +21,10 @@ function requiredResponse<T>(data: T | undefined, entity: string): T {
   return data
 }
 
-export function useUsers() {
+export function useUsers(enabled = true) {
   const client = useApiClient()
   return useQuery({
+    enabled,
     queryKey: queryKeys.users.all,
     queryFn: async () => {
       const { data } = await client.GET('/users')
@@ -166,6 +167,10 @@ async function markDeletedUserDataStale(
   userId: number,
 ) {
   await Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.devices.all,
+    }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.portal.devices }),
     queryClient.invalidateQueries({
       exact: true,
       queryKey: queryKeys.users.all,

@@ -198,6 +198,22 @@ the equipment is online.
 4. Choose **Grant access**.
 5. Confirm the device appears as **Authorized**.
 
+To share one device with several existing users, open **Devices**, select
+the device, and find **User access**. Search by name or ID, select up to 100
+users, and choose **Grant access**. The result reports new and already
+authorized users. Existing grants remain in place. The batch is atomic:
+if any selected user no longer exists, no new grants are saved; refresh
+the page, review the selection, and retry. Administrators can still revoke
+individual grants from each user's **Device access** tab.
+
+The API equivalent is `POST /devices/{device_id}/access-grants` with
+`{"user_ids": [1, 2, 3]}`. IDs must be positive integers, and the list must
+contain 1–100 entries. Duplicate IDs count once; repeating a successful
+request preserves the existing grants. `GET` on the same path lists grants
+without external identity details. Writing requires `access:grant`;
+reading requires `access:read`. The web panel also requires `users:read`
+to show names and select recipients.
+
 The administrative **Not enforced** label means the grant alone does not
 configure OpenVPN or the firewall. In the portal, **Network status: Not
 checked** means the device listing does not check live connectivity. The

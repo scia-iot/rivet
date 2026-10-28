@@ -10,6 +10,7 @@ export const queryKeys = {
   devices: {
     all: ['devices'] as const,
     detail: (id: number) => ['devices', id] as const,
+    accessGrants: (id: number) => ['devices', id, 'access-grants'] as const,
   },
   networks: {
     all: ['networks'] as const,

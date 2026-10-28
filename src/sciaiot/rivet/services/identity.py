@@ -1,10 +1,11 @@
 """Business operations for users, devices, and access grants."""
 
-from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlmodel import Session, col, select
 
 from sciaiot.rivet.data.identity import (
     AccessGrant,
+    BatchAccessResult,
     Device,
     DeviceBase,
     DeviceUpdate,
@@ -321,6 +322,74 @@ class AccessService:
         self.session.commit()
         self.session.refresh(grant)
         return grant, True
+
+    def list_grants(self, device_id: int) -> list[AccessGrant]:
+        """List one device's grants without exposing external identities.
+
+        Raises:
+            EntityNotFoundError: If the device does not exist.
+        """
+        self.devices.get(device_id)
+        return list(
+            self.session.exec(
+                select(AccessGrant)
+                .where(AccessGrant.device_id == device_id)
+                .order_by(col(AccessGrant.user_id))
+            ).all()
+        )
+
+    def grant_batch(self, device_id: int, user_ids: list[int]) -> BatchAccessResult:
+        """Grant one device to existing users in one additive transaction.
+
+        Args:
+            device_id: Device primary key.
+            user_ids: Validated bounded list of positive user primary keys.
+
+        Returns:
+            Grants in distinct input order and created/existing counts.
+
+        Raises:
+            EntityNotFoundError: If the device or any user is absent.
+            EntityConflictError: If a concurrent write prevents the batch.
+            SQLAlchemyError: If persistence fails after rolling back.
+        """
+        ids = list(dict.fromkeys(user_ids))
+        self.devices.get(device_id)
+        for user_id in ids:
+            self.users.get(user_id)
+        existing = {
+            grant.user_id: grant
+            for grant in self.session.exec(
+                select(AccessGrant).where(
+                    AccessGrant.device_id == device_id,
+                    col(AccessGrant.user_id).in_(ids),
+                )
+            ).all()
+        }
+        grants = [
+            existing.get(user_id) or AccessGrant(user_id=user_id, device_id=device_id)
+            for user_id in ids
+        ]
+        created = len(ids) - len(existing)
+        if created:
+            try:
+                self.session.add_all(
+                    [grant for grant in grants if grant.user_id not in existing]
+                )
+                self.session.commit()
+            except IntegrityError:
+                self.session.rollback()
+                raise EntityConflictError(
+                    "Device access changed concurrently. Retry the batch."
+                ) from None
+            except SQLAlchemyError:
+                self.session.rollback()
+                raise
+            for grant in grants:
+                self.session.refresh(grant)
+        return BatchAccessResult(
+            grants=grants, created=created, already_granted=len(existing)
+        )
 
     def revoke(self, user_id: int, device_id: int) -> None:
         """Revoke a user's access to a device.

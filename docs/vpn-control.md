@@ -730,6 +730,8 @@ use their existing transaction boundaries.
 | `POST` | `/devices` | devices:write | API DeviceService | Create device with validated optional client link | None | DB transaction rollback | `device.create` |
 | `GET` | `/devices` | devices:read | API DeviceService | None | None | None | `device.list` |
 | `GET` | `/devices/{device_id}` | devices:read | API DeviceService | None | None | None | `device.read` |
+| `GET` | `/devices/{device_id}/access-grants` | access:read | API AccessService | None; list grant IDs without external identities | None | None | `grant.list-device` |
+| `POST` | `/devices/{device_id}/access-grants` | access:grant | API AccessService | Atomically add grants for 1–100 existing user IDs; duplicates and existing grants are idempotent | None | Whole batch rollback; retry on concurrent conflict | `grant.batch` |
 | `PATCH` | `/devices/{device_id}` | devices:write | API DeviceService | Update metadata/client link subject to uniqueness | None | DB transaction rollback | `device.update` |
 | `DELETE` | `/devices/{device_id}` | devices:write | API DeviceService | Remove device and grants; retain VPN client | None | DB transaction rollback | `device.delete` |
 | `POST` | `/users` | users:write | API UserService | Create stable issuer/subject mapping | None | DB transaction rollback | `user.create` |

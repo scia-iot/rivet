@@ -23,6 +23,8 @@ from sciaiot.rivet.authorization import (
 )
 from sciaiot.rivet.data.identity import (
     AccessGrant,
+    BatchAccessRequest,
+    BatchAccessResult,
     CurrentPrincipal,
     CurrentUserClient,
     Device,
@@ -321,6 +323,33 @@ def retrieve_device(
     try:
         return DeviceService(session).get(device_id)
     except EntityNotFoundError as error:
+        raise _handle_domain_error(error) from error
+
+
+@device_router.get("/{device_id}/access-grants", response_model=list[AccessGrant])
+def retrieve_device_access_grants(
+    device_id: int,
+    session: DBSession,
+    _principal: RequireAccessRead,
+) -> list[AccessGrant]:
+    """List a device's individual grants without user identity details."""
+    try:
+        return AccessService(session).list_grants(device_id)
+    except EntityNotFoundError as error:
+        raise _handle_domain_error(error) from error
+
+
+@device_router.post("/{device_id}/access-grants", response_model=BatchAccessResult)
+def grant_device_access_batch(
+    device_id: int,
+    request: BatchAccessRequest,
+    session: DBSession,
+    _principal: RequireAccessGrant,
+) -> BatchAccessResult:
+    """Atomically add access for up to 100 existing users to one device."""
+    try:
+        return AccessService(session).grant_batch(device_id, request.user_ids)
+    except (EntityNotFoundError, EntityConflictError) as error:
         raise _handle_domain_error(error) from error
 
 
