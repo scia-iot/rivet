@@ -215,9 +215,10 @@ def test_command_redacts_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_anchor_rejects_host_before_network_command(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
+    capfd: pytest.CaptureFixture[str],
 ) -> None:
-    """Even a running, correctly labelled container cannot confer host access."""
+    """Reject host access without replacing the OS calls used by capture."""
     import json
     from types import SimpleNamespace
 
@@ -235,20 +236,26 @@ def test_anchor_rejects_host_before_network_command(
     ]
     command = Mock(side_effect=[b"id", json.dumps(info).encode()])
     monkeypatch.setattr(run, "command", command)
-    monkeypatch.setattr(rehearsal.os, "open", Mock(return_value=77))
-    monkeypatch.setattr(
-        rehearsal.os, "fstat", Mock(return_value=SimpleNamespace(st_ino=42))
-    )
-    monkeypatch.setattr(
-        rehearsal.os, "stat", Mock(return_value=SimpleNamespace(st_ino=42))
-    )
     close = Mock()
-    monkeypatch.setattr(rehearsal.os, "close", close)
+    # Rebind only this module's dependency; pytest shares the real os module.
+    monkeypatch.setattr(
+        rehearsal,
+        "os",
+        SimpleNamespace(
+            O_RDONLY=os.O_RDONLY,
+            open=Mock(return_value=77),
+            fstat=Mock(return_value=SimpleNamespace(st_ino=42)),
+            stat=Mock(return_value=SimpleNamespace(st_ino=42)),
+            close=close,
+        ),
+    )
     with pytest.raises(RuntimeError):
         run.anchor("server")
     assert run.namespaces == {}
     close.assert_called_once_with(77)
     assert all(call.args[0][0] == "docker" for call in command.call_args_list)
+    os.write(1, b"namespace rejected\n")
+    assert capfd.readouterr().out == "namespace rejected\n"
 
 
 def test_packet_counters_redact_rule_addresses_and_unowned_comments() -> None:
