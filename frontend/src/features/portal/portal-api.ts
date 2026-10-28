@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { triggerArchiveDownload } from '@/api/download'
 import type { components } from '@/api/generated/schema'
@@ -88,4 +88,73 @@ export function usePortalCredentialDownload() {
     },
     [client],
   )
+}
+
+export type PortalNetwork = components['schemas']['RestrictedNetwork']
+export type PortalNetworkRequest =
+  components['schemas']['CurrentUserNetworkRequest']
+
+export function usePortalNetworks() {
+  const client = useApiClient()
+  return useQuery({
+    queryKey: queryKeys.portal.networks,
+    queryFn: async () => {
+      const { data } = await client.GET('/me/networks')
+      return requiredResponse(data, 'owned network list')
+    },
+  })
+}
+
+export function usePortalNetwork(networkId: number, enabled = true) {
+  const client = useApiClient()
+  return useQuery({
+    enabled,
+    queryKey: queryKeys.portal.network(networkId),
+    queryFn: async () => {
+      const { data } = await client.GET('/me/networks/{network_id}', {
+        params: { path: { network_id: networkId } },
+      })
+      return requiredResponse(data, 'owned network')
+    },
+  })
+}
+
+export function useCreatePortalNetwork() {
+  const client = useApiClient()
+  const queries = useQueryClient()
+  return useMutation({
+    mutationFn: async (request: PortalNetworkRequest) => {
+      const { data } = await client.POST('/me/networks', { body: request })
+      return requiredResponse(data, 'created network')
+    },
+    onSuccess: () =>
+      queries.invalidateQueries({
+        exact: true,
+        queryKey: queryKeys.portal.networks,
+      }),
+  })
+}
+
+export function useClosePortalNetwork() {
+  const client = useApiClient()
+  const queries = useQueryClient()
+  return useMutation({
+    mutationFn: async (networkId: number) => {
+      await client.DELETE('/me/networks/{network_id}', {
+        params: { path: { network_id: networkId } },
+      })
+    },
+    onSuccess: async (_data, networkId) => {
+      await Promise.all([
+        queries.invalidateQueries({
+          exact: true,
+          queryKey: queryKeys.portal.networks,
+        }),
+        queries.invalidateQueries({
+          exact: true,
+          queryKey: queryKeys.portal.network(networkId),
+        }),
+      ])
+    },
+  })
 }

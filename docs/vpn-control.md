@@ -211,7 +211,25 @@ owned. Import discovers their metadata without rewriting them. A migration or
 explicit operator-reviewed adoption step is required before changing such an
 assignment. Route changes require exact inventory identity, destination,
 gateway, device and allocated protocol; no generic route replacement occurs.
+The public server-route API uses the server's usable VPN address as its next
+hop, matching the host backend. OpenVPN's CCD `iroute` selects the client
+behind that destination. The agent accepts this next hop as well as usable
+client addresses in the VPN pool; network/broadcast addresses, gateways
+outside the pool and destinations overlapping the pool remain invalid.
 Push blocks are bound to an existing access intent and its allowed networks.
+
+For an existing or migrated installation, importing clients does not establish
+ownership of their CCD assignments or kernel routes. If assigning or
+unassigning an address returns `409` with type `/errors/vpn/conflict`, have
+an operator inspect the canonical CCD assignment markers, the matching
+OpenVPN projection, and pending operation evidence. Unmarked `ifconfig-push`
+or `iroute` directives, malformed ownership markers, or divergent projected
+files require explicit review before adoption. For a route conflict, compare
+the live route with the agent ownership inventory, including destination,
+gateway, interface and protocol. Preserve the API workflows and agent journal
+while resolving discrepancies; deleting them discards recovery evidence.
+The conflict code alone cannot identify which check failed. Refresh state
+and resolve the discrepancy before retrying the same API request.
 
 ### Durable intent and recovery
 
@@ -506,11 +524,14 @@ no business record or revoked credential is resurrected.
 | expired_operation | 409 | Reconcile; same ID can never execute again. |
 | integrity | 502 | Reject response/archive and reconcile if a write was involved. |
 
-`errors.problem_status` is framework-independent. Future public route adapters
-retain current documented response shapes and domain-specific 400/404/409/412,
-201/204, and RFC 7807 behavior; this internal transport status table does not
-rewrite current public statuses. Use fixed actionable public messages, never
-agent output or addresses. No public async/202 migration is authorized.
+`errors.problem_status` is framework-independent. Unwrapped `ControlError`
+failures, including client address assignment/unassignment and server route
+listing/addition/removal, use these statuses in RFC 7807 responses with a
+stable `/errors/vpn/<code>` type and fixed actionable detail. Expected agent
+failures no longer escape as unhandled ASGI exceptions. Existing boundary
+validation, domain-specific HTTP errors and other workflow-specific error
+responses retain their statuses. Agent diagnostics are never included in the
+detail. No public async/202 migration is authorized.
 
 Protocol bounds: each JSON body/manifest <=1 MiB, ZIP <=16 MiB, nonempty
 chunks <=64 KiB, four simultaneous streams, pages <=100 items and operation/
@@ -709,6 +730,8 @@ use their existing transaction boundaries.
 | `POST` | `/devices` | devices:write | API DeviceService | Create device with validated optional client link | None | DB transaction rollback | `device.create` |
 | `GET` | `/devices` | devices:read | API DeviceService | None | None | None | `device.list` |
 | `GET` | `/devices/{device_id}` | devices:read | API DeviceService | None | None | None | `device.read` |
+| `GET` | `/devices/{device_id}/access-grants` | access:read | API AccessService | None; list grant IDs without external identities | None | None | `grant.list-device` |
+| `POST` | `/devices/{device_id}/access-grants` | access:grant | API AccessService | Atomically add grants for 1–100 existing user IDs; duplicates and existing grants are idempotent | None | Whole batch rollback; retry on concurrent conflict | `grant.batch` |
 | `PATCH` | `/devices/{device_id}` | devices:write | API DeviceService | Update metadata/client link subject to uniqueness | None | DB transaction rollback | `device.update` |
 | `DELETE` | `/devices/{device_id}` | devices:write | API DeviceService | Remove device and grants; retain VPN client | None | DB transaction rollback | `device.delete` |
 | `POST` | `/users` | users:write | API UserService | Create stable issuer/subject mapping | None | DB transaction rollback | `user.create` |

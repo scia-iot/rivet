@@ -1,5 +1,9 @@
 """Persistence models for users, devices, and individual access."""
 
+from typing import Annotated
+
+from pydantic import BaseModel, ConfigDict
+from pydantic import Field as ValidationField
 from sqlalchemy import Column, String, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
@@ -81,6 +85,24 @@ class AccessGrant(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", ondelete="CASCADE")
     device_id: int = Field(foreign_key="device.id", ondelete="CASCADE")
+
+
+class BatchAccessRequest(BaseModel):
+    """Bounded additive sharing request for existing local users."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    user_ids: list[Annotated[int, ValidationField(strict=True, gt=0)]] = (
+        ValidationField(min_length=1, max_length=100)
+    )
+
+
+class BatchAccessResult(BaseModel):
+    """Grants and distinct-user counts from one atomic batch."""
+
+    grants: list[AccessGrant]
+    created: int
+    already_granted: int
 
 
 class UserClient(SQLModel, table=True):

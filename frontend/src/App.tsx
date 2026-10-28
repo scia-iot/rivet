@@ -16,6 +16,7 @@ const loadUserPages = () => import('@/features/users/user-pages')
 const loadClientPages = () => import('@/features/clients/client-pages')
 const loadServerPages = () => import('@/features/server/server-pages')
 const loadNetworkPages = () => import('@/features/networks/network-pages')
+const loadPortalNetworkPages = () => import('@/features/portal/portal-network-pages')
 const loadPortalPages = () => import('@/features/portal/portal-pages')
 const DeviceListPage = lazy(async () => ({
   default: (await loadDevicePages()).DeviceListPage,
@@ -72,6 +73,13 @@ const PortalDeviceDetailPage = lazy(async () => ({
   default: (await loadPortalPages()).PortalDeviceDetailPage,
 }))
 
+const PortalNetworksPage = lazy(async () => ({
+  default: (await loadPortalNetworkPages()).PortalNetworksPage,
+}))
+const PortalNetworkDetailPage = lazy(async () => ({
+  default: (await loadPortalNetworkPages()).PortalNetworkDetailPage,
+}))
+
 function RouteLoading() {
   return (
     <main aria-busy="true" className="grid min-h-[60vh] place-items-center p-6">
@@ -100,6 +108,11 @@ export default function App() {
             <Route element={<PortalLandingPage />} path="portal" />
             <Route element={<PortalClientsPage />} path="portal/clients" />
             <Route element={<PortalDevicesPage />} path="portal/devices" />
+            <Route element={<PortalNetworksPage />} path="portal/networks" />
+            <Route
+              element={<PortalNetworkDetailPage />}
+              path="portal/networks/:networkId"
+            />
             <Route
               element={<PortalDeviceDetailPage />}
               path="portal/devices/:deviceId"

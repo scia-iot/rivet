@@ -58,6 +58,10 @@ def test_openapi_documents_current_user_resource_contracts() -> None:
     schema = app.openapi()
     policies = {
         ("get", "/me/clients"): "owned-client",
+        ("get", "/me/networks"): "source-owned-network",
+        ("post", "/me/networks"): "source-owned-network",
+        ("get", "/me/networks/{network_id}"): "source-owned-network",
+        ("delete", "/me/networks/{network_id}"): "source-owned-network",
         ("get", "/me/devices"): "granted-device",
         ("get", "/me/devices/{device_id}"): "granted-device",
         (
@@ -178,6 +182,8 @@ def test_openapi_documents_every_management_permission() -> None:
         ("get", "/devices"): "devices:read",
         ("post", "/devices"): "devices:write",
         ("get", "/devices/{device_id}"): "devices:read",
+        ("get", "/devices/{device_id}/access-grants"): "access:read",
+        ("post", "/devices/{device_id}/access-grants"): "access:grant",
         ("patch", "/devices/{device_id}"): "devices:write",
         ("delete", "/devices/{device_id}"): "devices:write",
         ("get", "/users"): "users:read",
@@ -265,3 +271,27 @@ def test_openapi_documents_every_management_permission() -> None:
         operation = schema["paths"]["/clients/{client_name}/connections"][method]
         assert "x-required-permission" not in operation
         assert operation["x-local-hook-or-permission"] == "clients:write"
+
+
+def test_openapi_current_network_creation_has_strict_device_scope() -> None:
+    """Self-service accepts only an owned source and a granted device ID."""
+    app.openapi_schema = None
+    schema = app.openapi()
+    model = schema["components"]["schemas"]["CurrentUserNetworkRequest"]
+    assert model["additionalProperties"] is False
+    assert set(model["properties"]) == {"source_name", "destination_device_id"}
+    assert set(model["required"]) == set(model["properties"])
+    assert model["properties"]["source_name"]["pattern"] == (r"^[A-Za-z0-9_-]{1,255}$")
+    assert model["properties"]["destination_device_id"]["type"] == "integer"
+    assert model["properties"]["destination_device_id"]["exclusiveMinimum"] == 0
+    for path, methods in {
+        "/me/networks": ("get", "post"),
+        "/me/networks/{network_id}": ("get", "delete"),
+    }.items():
+        for method in methods:
+            operation = schema["paths"][path][method]
+            for code in ("403", "409", "412", "422", "502", "503", "504"):
+                problem = operation["responses"][code]["content"]
+                assert problem["application/problem+json"]["schema"]["$ref"].endswith(
+                    "/ProblemDetails"
+                )

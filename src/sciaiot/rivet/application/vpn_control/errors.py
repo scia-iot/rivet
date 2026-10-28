@@ -69,3 +69,60 @@ def problem_status(code: ErrorCode) -> int:
         ErrorCode.EXPIRED_OPERATION: 409,
         ErrorCode.INTEGRITY: 502,
     }[code]
+
+
+def problem_detail(code: ErrorCode) -> str:
+    """Explain recovery using fixed text without privileged diagnostics."""
+    return {
+        ErrorCode.INVALID_INPUT: (
+            "The VPN agent rejected the operation parameters. Check the "
+            "requested network and address against the VPN configuration."
+        ),
+        ErrorCode.UNAUTHORIZED: (
+            "The VPN agent denied this operation. Ask an administrator to "
+            "check the agent peer authorization policy."
+        ),
+        ErrorCode.NOT_FOUND: (
+            "The VPN resource was not found. Refresh the client and route "
+            "inventory before retrying."
+        ),
+        ErrorCode.CONFLICT: (
+            "The VPN operation conflicts with existing or pending state. "
+            "Refresh the client and route inventory and check pending "
+            "operations. Imported CCD assignments and existing routes need "
+            "explicit ownership review before Rivet can change them."
+        ),
+        ErrorCode.UNAVAILABLE: (
+            "The VPN agent is unavailable or not ready. Check agent health "
+            "and enabled mutation families, then retry the same request."
+        ),
+        ErrorCode.TIMEOUT: (
+            "The VPN operation timed out; changes may already have occurred. "
+            "Check agent health and reconcile the pending operation before "
+            "changing the request."
+        ),
+        ErrorCode.EXHAUSTED: (
+            "The VPN agent reached a capacity limit. Check agent capacity "
+            "and pending operations before retrying the same request."
+        ),
+        ErrorCode.VERSION_MISMATCH: (
+            "The API and VPN agent protocols are incompatible. Install "
+            "compatible versions before retrying."
+        ),
+        ErrorCode.PARTIAL_FAILURE: (
+            "The VPN operation may have applied only some changes. Reconcile "
+            "the retained operation before submitting a different request."
+        ),
+        ErrorCode.UNKNOWN_OUTCOME: (
+            "The VPN operation outcome is unknown. Check agent health and "
+            "reconcile the retained operation before changing the request."
+        ),
+        ErrorCode.EXPIRED_OPERATION: (
+            "The retained VPN operation has expired. Ask an administrator "
+            "to reconcile its outcome before starting a new operation."
+        ),
+        ErrorCode.INTEGRITY: (
+            "VPN state or response verification failed. Ask an administrator "
+            "to check agent state and reconcile pending operations."
+        ),
+    }[code]

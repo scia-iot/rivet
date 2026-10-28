@@ -25,12 +25,19 @@ interface User {
   subject: string
 }
 
+interface AccessGrant {
+  id: number
+  user_id: number
+  device_id: number
+}
+
 interface ApiState {
   assignedClientIds: Set<number>
   deleteDeviceRequests: number
   devices: Device[]
-  grantedDeviceIds: Set<number>
+  grants: AccessGrant[]
   nextDeviceId: number
+  nextGrantId: number
 }
 
 const clients: VpnClient[] = [
@@ -43,6 +50,12 @@ const users: User[] = [
     id: 21,
     issuer: 'https://issuer.invalid',
     subject: 'alice',
+  },
+  {
+    display_name: 'Bob Operator',
+    id: 22,
+    issuer: 'https://issuer.invalid',
+    subject: 'bob',
   },
 ]
 
@@ -57,9 +70,28 @@ function newApiState(): ApiState {
         name: 'Factory gateway',
       },
     ],
-    grantedDeviceIds: new Set(),
+    grants: [],
     nextDeviceId: 12,
+    nextGrantId: 1,
   }
+}
+
+function ensureAccessGrant(
+  state: ApiState,
+  userId: number,
+  deviceId: number,
+): { grant: AccessGrant; created: boolean } {
+  const existing = state.grants.find((grant) =>
+    grant.user_id === userId && grant.device_id === deviceId,
+  )
+  if (existing !== undefined) {
+    return { grant: existing, created: false }
+  }
+  const grant = {
+    id: state.nextGrantId++, user_id: userId, device_id: deviceId,
+  }
+  state.grants.push(grant)
+  return { grant, created: true }
 }
 
 async function fulfillJson(
@@ -138,7 +170,34 @@ async function installApi(page: Page, state: ApiState): Promise<void> {
       if (method === 'DELETE') {
         state.deleteDeviceRequests += 1
         state.devices = state.devices.filter((item) => item.id !== deviceId)
+        state.grants = state.grants.filter((grant) =>
+          grant.device_id !== deviceId,
+        )
         await route.fulfill({ status: 204 })
+        return
+      }
+    }
+
+    const deviceAccessMatch = path.match(/^\/devices\/(\d+)\/access-grants$/)
+    if (deviceAccessMatch !== null) {
+      const deviceId = Number(deviceAccessMatch[1])
+      if (method === 'GET') {
+        await fulfillJson(route, state.grants.filter((grant) =>
+          grant.device_id === deviceId,
+        ))
+        return
+      }
+      if (method === 'POST') {
+        const body = request.postDataJSON() as { user_ids: number[] }
+        const results = [...new Set(body.user_ids)].map((userId) =>
+          ensureAccessGrant(state, userId, deviceId),
+        )
+        const created = results.filter((result) => result.created).length
+        await fulfillJson(route, {
+          grants: results.map((result) => result.grant),
+          created,
+          already_granted: results.length - created,
+        })
         return
       }
     }
@@ -151,14 +210,19 @@ async function installApi(page: Page, state: ApiState): Promise<void> {
       await fulfillJson(route, users)
       return
     }
-    if (path === '/users/21' && method === 'GET') {
-      await fulfillJson(route, users[0])
+    const userMatch = path.match(/^\/users\/(\d+)$/)
+    if (userMatch !== null && method === 'GET') {
+      await fulfillJson(route, users.find((user) =>
+        user.id === Number(userMatch[1]),
+      ))
       return
     }
-    if (path === '/users/21/clients' && method === 'GET') {
+    const userClientsMatch = path.match(/^\/users\/(\d+)\/clients$/)
+    if (userClientsMatch !== null && method === 'GET') {
       await fulfillJson(
         route,
-        clients.filter((client) => state.assignedClientIds.has(client.id)),
+        clients.filter((client) => Number(userClientsMatch[1]) === 21 &&
+          state.assignedClientIds.has(client.id)),
       )
       return
     }
@@ -172,11 +236,15 @@ async function installApi(page: Page, state: ApiState): Promise<void> {
       return
     }
 
-    if (path === '/users/21/devices' && method === 'GET') {
+    const userDevicesMatch = path.match(/^\/users\/(\d+)\/devices$/)
+    if (userDevicesMatch !== null && method === 'GET') {
       await fulfillJson(
         route,
         state.devices.filter((device) =>
-          state.grantedDeviceIds.has(device.id),
+          state.grants.some((grant) =>
+            grant.user_id === Number(userDevicesMatch[1]) &&
+            grant.device_id === device.id,
+          ),
         ),
       )
       return
@@ -185,16 +253,18 @@ async function installApi(page: Page, state: ApiState): Promise<void> {
     const accessMatch = path.match(/^\/users\/21\/devices\/(\d+)$/)
     if (accessMatch !== null && method === 'PUT') {
       const deviceId = Number(accessMatch[1])
-      state.grantedDeviceIds.add(deviceId)
+      const result = ensureAccessGrant(state, 21, deviceId)
       await fulfillJson(
         route,
-        { device_id: deviceId, user_id: 21 },
-        201,
+        result.grant,
+        result.created ? 201 : 200,
       )
       return
     }
     if (accessMatch !== null && method === 'DELETE') {
-      state.grantedDeviceIds.delete(Number(accessMatch[1]))
+      state.grants = state.grants.filter((grant) =>
+        grant.user_id !== 21 || grant.device_id !== Number(accessMatch[1]),
+      )
       await route.fulfill({ status: 204 })
       return
     }
@@ -344,7 +414,7 @@ test('admin assigns a client and grants then revokes device access', async ({
       name: 'Revoke access to Factory gateway?',
     }),
   ).toBeVisible()
-  expect(state.grantedDeviceIds.has(11)).toBe(true)
+  expect(state.grants).toContainEqual({ id: 1, user_id: 21, device_id: 11 })
 
   await page
     .getByRole('dialog', {
@@ -355,7 +425,42 @@ test('admin assigns a client and grants then revokes device access', async ({
   await expect(
     page.getByRole('heading', { name: 'No authorized devices' }),
   ).toBeVisible()
-  expect(state.grantedDeviceIds.has(11)).toBe(false)
+  expect(state.grants).toEqual([])
+})
+
+test('admin shares one device with multiple users in one batch', async ({
+  page,
+}) => {
+  const state = newApiState()
+  await useControlledRole(page, 'sysadmin')
+  await installApi(page, state)
+
+  await page.goto('/devices/11')
+  await page.getByRole('checkbox', { name: 'Alice Admin (ID 21)' }).check()
+  await page.getByRole('checkbox', { name: 'Bob Operator (ID 22)' }).check()
+  await expect(page.getByText('2 of 100 users selected')).toBeVisible()
+
+  const submitted = page.waitForRequest((request) =>
+    request.method() === 'POST' &&
+    new URL(request.url()).pathname === '/api/devices/11/access-grants',
+  )
+  await page.getByRole('button', { name: 'Grant access', exact: true }).click()
+  expect((await submitted).postDataJSON()).toEqual({ user_ids: [21, 22] })
+  await expect(page.getByRole('status')).toHaveText(
+    '2 granted; 0 already authorized.',
+  )
+  await expect(page.getByRole('listitem').filter({ hasText: 'Alice Admin' }))
+    .toHaveText('Alice Admin (ID 21)')
+  await expect(page.getByRole('listitem').filter({ hasText: 'Bob Operator' }))
+    .toHaveText('Bob Operator (ID 22)')
+  await expect(page.getByRole('checkbox')).toHaveCount(0)
+
+  for (const userId of [21, 22]) {
+    await page.goto(`/users/${userId}`)
+    await page.getByRole('tab', { name: 'Device access' }).click()
+    await expect(page.getByRole('table', { name: 'Authorized devices' }))
+      .toContainText('Factory gateway')
+  }
 })
 
 test('device user cannot navigate directly to device administration', async ({

@@ -8,9 +8,15 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from sciaiot.rivet import dependencies
+from sciaiot.rivet.application.vpn_control.errors import (
+    ControlError,
+    problem_detail,
+    problem_status,
+)
 from sciaiot.rivet.dependencies import (
     create_app_directory,
     create_tables,
@@ -19,7 +25,13 @@ from sciaiot.rivet.dependencies import (
 )
 from sciaiot.rivet.middlewares.authentication import authentication_middleware
 from sciaiot.rivet.problems import PROBLEM_RESPONSES, problem_response
-from sciaiot.rivet.routes import client, identity, network, server
+from sciaiot.rivet.routes import (
+    client,
+    current_user_networks,
+    identity,
+    network,
+    server,
+)
 from sciaiot.rivet.services.provider_settings import AuthenticationSettings
 from sciaiot.rivet.services.vpn_recovery import BackgroundSettings, BackgroundWorker
 
@@ -91,6 +103,9 @@ app.include_router(network.router, prefix="/networks", tags=["server"])
 app.include_router(identity.device_router, prefix="/devices", tags=["device"])
 app.include_router(identity.user_router, prefix="/users", tags=["user"])
 app.include_router(identity.principal_router, tags=["identity"])
+app.include_router(
+    current_user_networks.router, prefix="/me/networks", tags=["identity"]
+)
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -106,6 +121,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         request,
         422,
         "The request did not satisfy the API contract.",
+    )
+
+
+@app.exception_handler(ControlError)
+async def control_exception_handler(
+    request: Request, exc: ControlError
+) -> JSONResponse:
+    """Handle expected VPN failures without leaking backend diagnostics."""
+    logger.warning("VPN control request failed (%s).", exc.code.value)
+    return problem_response(
+        request,
+        problem_status(exc.code),
+        problem_detail(exc.code),
+        problem_type=f"/errors/vpn/{exc.code.value}",
     )
 
 

@@ -495,6 +495,8 @@ describe('user administration pages', () => {
       queryKey: ['users', 'client-ownership'],
       refetchType: 'none',
     })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['devices'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['portal', 'devices'] })
     expect(invalidate).not.toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ['clients'] }),
     )

@@ -28,7 +28,13 @@ The API client acquires bearer tokens and normalizes RFC 7807 errors. The
 principal comes from `/me`; the UI does not assign roles by decoding unverified
 claims. Permission-based navigation is presentation, never authorization.
 Portal calls derive ownership from the authenticated principal and do not send
-a user ID. An AccessGrant is distinct from VPN traffic enforcement.
+a user ID. **My networks** uses `/me/networks` for creation, source-owned
+history/details, and closure, with only `/me/clients` and `/me/devices` as
+selection inventories. Its query keys stay under `portal`. A device grant
+permits direct VPN access creation, but does not install firewall policy by
+itself. Revoking a grant blocks subsequent creation without closing existing
+networks. The source owner can still close them. Private LAN destinations and
+global inventory remain in the administrator workflow.
 
 Authentication gates, account controls, and API access consume
 `BrowserAuthentication`. Only the Entra adapter owns MSAL account selection,

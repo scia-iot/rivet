@@ -1,5 +1,4 @@
 import logging
-from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,7 +15,7 @@ from sciaiot.rivet.data.network import RestrictedNetwork
 from sciaiot.rivet.dependencies import get_session
 from sciaiot.rivet.routes.client import get_client_by_name
 from sciaiot.rivet.services.dispatch import threaded
-from sciaiot.rivet.services.vpn import VpnService
+from sciaiot.rivet.services.networks import close_network, create_network
 
 logger = logging.getLogger(__name__)
 DBSession = Annotated[Session, Depends(get_session)]
@@ -46,18 +45,6 @@ class RestrictedNetworkRequest(BaseModel):
         return ",".join(addresses)
 
 
-def _network_operation_failure(action: str) -> HTTPException:
-    """Build a fixed privileged-operation failure without sensitive details."""
-    logger.error(f"Restricted network {action} failed.")
-    return HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=(
-            f"The restricted network could not be {action}. "
-            "Check the host firewall and retry."
-        ),
-    )
-
-
 @router.post("", response_model=RestrictedNetwork)
 @threaded
 def create_restricted_network(
@@ -76,36 +63,9 @@ def create_restricted_network(
     source = get_client_by_name(request.source_name, session)
     destination = get_client_by_name(request.destination_name, session)
 
-    if not source.virtual_address or not destination.virtual_address:
-        logger.error("Virtual address must assigned to both clients!")
-        raise HTTPException(
-            status_code=status.HTTP_412_PRECONDITION_FAILED,
-            detail="Virtual address must be assigned to both source and destination client!",
-        )
-
-    network = RestrictedNetwork(
-        source_name=source.name,
-        source_virtual_address=source.virtual_address.ip,
-        destination_name=destination.name,
-        destination_virtual_address=destination.virtual_address.ip,
-        private_network_addresses=request.private_network_addresses or "",
-        start_time=datetime.now(UTC),
+    return create_network(
+        session, source, destination, request.private_network_addresses or ""
     )
-
-    try:
-        control = VpnService(session)
-        control.network(network, True)
-        session.add(network)
-        session.flush()
-        control.finish(resource_id=str(network.id))
-        session.commit()
-        session.refresh(network)
-    except Exception as error:
-        session.rollback()
-        raise _network_operation_failure("created") from error
-
-    logger.info("Restricted network created successfully.")
-    return network
 
 
 @router.get("", response_model=list[RestrictedNetwork])
@@ -164,22 +124,4 @@ def drop_restricted_network(
 ):
     logger.info(f"Dropping restricted network with ID {network_id}...")
     network = get_restricted_network_record(network_id, session)
-    if network.end_time is not None:
-        logger.info("Restricted network was already closed.")
-        return
-
-    try:
-        control = VpnService(session)
-        control.network(network, False)
-
-        network.end_time = datetime.now(UTC)
-        session.add(network)
-        session.flush()
-        control.finish(resource_id=str(network.id))
-        session.commit()
-        session.refresh(network)
-    except Exception as error:
-        session.rollback()
-        raise _network_operation_failure("closed") from error
-
-    logger.info(f"Dropped restricted network with ID {network_id}.")
+    close_network(session, network)

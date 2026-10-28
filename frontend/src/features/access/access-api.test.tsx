@@ -7,6 +7,7 @@ import { queryKeys } from '@/api/query-keys'
 import { useApiClient } from '@/api/use-api-client'
 import {
   useGrantDeviceAccess,
+  useBatchGrantDeviceAccess,
   useRevokeDeviceAccess,
   useUserDevices,
 } from '@/features/access/access-api'
@@ -17,6 +18,7 @@ const apiClient = {
   DELETE: vi.fn(),
   GET: vi.fn(),
   PUT: vi.fn(),
+  POST: vi.fn(),
 }
 
 function createWrapper(queryClient: QueryClient) {
@@ -57,8 +59,7 @@ describe('individual access API hooks', () => {
     )
   })
 
-  it('invalidates only the affected user-device query ' +
-    'after confirmation', async () => {
+  it('refreshes user, device, and portal access after mutations', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false } },
     })
@@ -90,15 +91,41 @@ describe('individual access API hooks', () => {
       '/users/{user_id}/devices/{device_id}',
       { params: { path: { user_id: 7, device_id: 4 } } },
     )
-    expect(invalidate).toHaveBeenCalledTimes(2)
+    expect(invalidate).toHaveBeenCalledTimes(8)
     expect(invalidate).toHaveBeenNthCalledWith(1, {
       exact: true,
       queryKey: queryKeys.users.devices(7),
     })
-    expect(invalidate).toHaveBeenNthCalledWith(2, {
+    expect(invalidate).toHaveBeenNthCalledWith(5, {
       exact: true,
       queryKey: queryKeys.users.devices(7),
     })
+    expect(invalidate).toHaveBeenCalledWith({
+      exact: true, queryKey: queryKeys.devices.accessGrants(4),
+    })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.portal.devices })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.portal.networks })
+  })
+
+  it('sends one batch and invalidates every distinct recipient', async () => {
+    const queryClient = new QueryClient()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    apiClient.POST.mockResolvedValue({ data: { grants: [], created: 2, already_granted: 0 } })
+    const batch = renderHook(() => useBatchGrantDeviceAccess(), {
+      wrapper: createWrapper(queryClient),
+    })
+    await act(async () => {
+      await batch.result.current.mutateAsync({ deviceId: 4, userIds: [7, 8, 7] })
+    })
+    expect(apiClient.POST).toHaveBeenCalledWith('/devices/{device_id}/access-grants', {
+      params: { path: { device_id: 4 } }, body: { user_ids: [7, 8, 7] },
+    })
+    for (const userId of [7, 8]) {
+      expect(invalidate).toHaveBeenCalledWith({
+        exact: true, queryKey: queryKeys.users.devices(userId),
+      })
+    }
+    expect(invalidate).toHaveBeenCalledTimes(5)
   })
 
   it('preserves authorization state when a mutation fails', async () => {

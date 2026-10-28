@@ -35,6 +35,7 @@ import {
   useUpdateDevice,
 } from '@/features/devices/device-api'
 import { DeviceForm } from '@/features/devices/device-form'
+import { DeviceUserAccess } from '@/features/access/device-user-access'
 
 const LOAD_PROBLEM = {
   type: '/errors/devices-unavailable',
@@ -320,6 +321,9 @@ function DeviceDetails({ device, clients }: LoadedDeviceProps) {
           </dl>
         </CardContent>
       </Card>
+      {device.id !== null && device.id !== undefined ? (
+        <DeviceUserAccess deviceId={device.id} />
+      ) : null}
       {canWrite && device.id !== null && device.id !== undefined ? (
         <Card className="border-red-200">
           <CardHeader>

@@ -180,7 +180,7 @@ describe('device-user portal', () => {
     const table = await screen.findByRole('table', { name: 'My devices' })
     expect(within(table).getByText('edge-sensor')).toBeVisible()
     expect(within(table).getByText('Authorized')).toBeVisible()
-    expect(within(table).getByText('Not enforced')).toBeVisible()
+    expect(within(table).getByText('Not checked')).toBeVisible()
     expect(
       screen.getByText(/does not confirm network connectivity/i),
     ).toBeVisible()
@@ -192,7 +192,7 @@ describe('device-user portal', () => {
       await screen.findByRole('heading', { name: 'edge-sensor' }),
     ).toBeVisible()
     expect(screen.getByText('Authorized')).toBeVisible()
-    expect(screen.getByText('Not enforced')).toBeVisible()
+    expect(screen.getByText('Not checked')).toBeVisible()
     expect(screen.getByText(/connect using one of your active/i)).toBeVisible()
 
     allowed.unmount()

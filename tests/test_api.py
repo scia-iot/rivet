@@ -10,6 +10,7 @@ from httpx2 import Response
 from sqlmodel import Session, select
 
 from sciaiot.rivet import dependencies
+from sciaiot.rivet.application.vpn_control.errors import ControlError, ErrorCode
 from sciaiot.rivet.data.network import RestrictedNetwork
 from sciaiot.rivet.data.server import Cert, Client, Connection, VirtualAddress
 from sciaiot.rivet.dependencies import get_session
@@ -327,14 +328,47 @@ def test_add_route_rejects_non_rfc1918_or_noncanonical_network(
 def test_add_route_command_failure_is_safe(mock_add, client: TestClient, caplog):
     response = client.post("/server/routes", json={"network": "192.168.77.0/24"})
 
-    assert response.status_code == 500
+    assert response.status_code == 503
     _assert_problem_detail(
         response,
-        "The server route could not be added. Check the host route service and retry.",
+        "The VPN operation outcome is unknown. Check agent health and "
+        "reconcile the retained operation before changing the request.",
     )
     assert "192.168.77.0/24" not in response.text
     assert "192.168.77.0/24" not in caplog.text
     mock_add.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("code", "expected_status"),
+    [(ErrorCode.CONFLICT, 409), (ErrorCode.UNAVAILABLE, 503)],
+)
+@pytest.mark.parametrize("operation", ["list", "add", "delete", "delete_read"])
+@pytest.mark.usefixtures("initialized_server")
+def test_route_control_failures_are_handled(
+    client: TestClient,
+    code: ErrorCode,
+    expected_status: int,
+    operation: str,
+) -> None:
+    """Expected agent failures keep their status across route operations."""
+    with patch("sciaiot.rivet.routes.server.VpnService") as service:
+        service.return_value.route_lines.return_value = ["192.168.77.0/24 via 10.8.0.1"]
+        method = "route_lines" if operation in {"list", "delete_read"} else "route"
+        getattr(service.return_value, method).side_effect = ControlError(code)
+        if operation == "list":
+            response = client.get("/server/routes")
+        elif operation == "add":
+            response = client.post(
+                "/server/routes", json={"network": "192.168.77.0/24"}
+            )
+        else:
+            response = client.delete(
+                "/server/routes", params={"network": "192.168.77.0/24"}
+            )
+    assert response.status_code == expected_status
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["type"] == f"/errors/vpn/{code.value}"
 
 
 @patch("sciaiot.rivet.utils.iproute.delete")
@@ -733,10 +767,11 @@ def test_create_restricted_network_command_failure_is_safe(
         },
     )
 
-    assert response.status_code == 500
+    assert response.status_code == 503
     _assert_problem_detail(
         response,
-        "The restricted network could not be created. Check the host firewall and retry.",
+        "The VPN operation outcome is unknown. Check agent health and "
+        "reconcile the retained operation before changing the request.",
     )
     assert "10.8.0.2" not in response.text
     assert "10.8.0.2" not in caplog.text
@@ -848,6 +883,55 @@ def test_unassign_virtual_address(mock_unassign_client_ip, client: TestClient):
     assert content["virtual_address"] is None
 
     mock_unassign_client_ip.assert_called_with("test_client_2")
+
+
+@pytest.mark.parametrize(
+    ("code", "expected_status"),
+    [
+        (ErrorCode.INVALID_INPUT, 422),
+        (ErrorCode.UNAUTHORIZED, 403),
+        (ErrorCode.NOT_FOUND, 404),
+        (ErrorCode.CONFLICT, 409),
+        (ErrorCode.UNAVAILABLE, 503),
+        (ErrorCode.TIMEOUT, 504),
+        (ErrorCode.EXHAUSTED, 503),
+        (ErrorCode.VERSION_MISMATCH, 503),
+        (ErrorCode.PARTIAL_FAILURE, 503),
+        (ErrorCode.UNKNOWN_OUTCOME, 503),
+        (ErrorCode.EXPIRED_OPERATION, 409),
+        (ErrorCode.INTEGRITY, 502),
+    ],
+)
+@pytest.mark.usefixtures("assigned_clients")
+@pytest.mark.parametrize("operation", ["assign", "unassign"])
+def test_assignment_control_failure_preserves_database(
+    client: TestClient,
+    db_session: Session,
+    caplog: pytest.LogCaptureFixture,
+    code: ErrorCode,
+    expected_status: int,
+    operation: str,
+) -> None:
+    """Agent rejection is handled without clearing the persisted assignment."""
+    with patch("sciaiot.rivet.routes.client.VpnService") as service:
+        service.return_value.assignment.side_effect = ControlError(code)
+        if operation == "unassign":
+            response = client.delete("/clients/test_client_2/unassign-ip")
+        else:
+            response = client.put(
+                "/clients/test_client_2/assign-ip", json={"ip": "10.8.0.4"}
+            )
+        service.return_value.finish.assert_not_called()
+    assert response.status_code == expected_status
+    problem = response.json()
+    _assert_problem_detail(response, problem["detail"])
+    assert problem["type"] == f"/errors/vpn/{code.value}"
+    assert len(problem["detail"]) > len(code.value)
+    record = db_session.exec(select(Client).where(Client.name == "test_client_2")).one()
+    assert record.virtual_address is not None
+    assert record.virtual_address.ip == "10.8.0.3"
+    assert "10.8.0.3" not in response.text + caplog.text
+    assert "Unhandled request failure" not in caplog.text
 
 
 @pytest.mark.usefixtures("connected_clients")

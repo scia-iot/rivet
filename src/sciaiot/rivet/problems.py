@@ -18,7 +18,7 @@ class ProblemDetails(BaseModel):
     instance: str | None = None
 
 
-PROBLEM_STATUS_CODES = (400, 401, 403, 404, 409, 412, 422, 500)
+PROBLEM_STATUS_CODES = (400, 401, 403, 404, 409, 412, 422, 500, 502, 503, 504)
 PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
     status_code: {
         "model": ProblemDetails,

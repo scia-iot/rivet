@@ -94,6 +94,19 @@ export function PortalLandingPage() {
             </Button>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>My networks</CardTitle>
+            <CardDescription>
+              Create and close access from your VPN clients to granted devices.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link to="/portal/networks">View my networks</Link>
+            </Button>
+          </CardContent>
+        </Card>
       </div>
       <p className="text-sm text-muted-foreground">
         Access shown here is limited to your signed-in account. It does not
@@ -284,9 +297,10 @@ function EnforcementNotice() {
       <CardHeader>
         <CardTitle>Access status</CardTitle>
         <CardDescription>
-          Authorized means an application AccessGrant exists. Not enforced
-          means this grant does not apply OpenVPN or firewall policy and does
-          not confirm network connectivity.
+          A device grant lets you create restricted networks from VPN clients
+          you own. A grant alone does not install firewall rules and does not
+          confirm network connectivity. Use My networks to create or close
+          access. Revoking a grant does not close existing networks.
         </CardDescription>
       </CardHeader>
     </Card>
@@ -329,7 +343,7 @@ export function PortalDevicesPage() {
               <TableRow>
                 <TableHead>Device</TableHead>
                 <TableHead>Authorization</TableHead>
-                <TableHead>Enforcement</TableHead>
+                <TableHead>Network status</TableHead>
                 <TableHead>Provisioning</TableHead>
               </TableRow>
             </TableHeader>
@@ -352,7 +366,7 @@ export function PortalDevicesPage() {
                     <StatusBadge label="Authorized" tone="positive" />
                   </TableCell>
                   <TableCell>
-                    <StatusBadge label="Not enforced" tone="warning" />
+                    <StatusBadge label="Not checked" tone="warning" />
                   </TableCell>
                   <TableCell>
                     {device.client_id === null
@@ -410,8 +424,8 @@ function PortalDeviceDetails({ device }: { device: PortalDevice }) {
             <StatusBadge label="Authorized" tone="positive" />
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Enforcement</p>
-            <StatusBadge label="Not enforced" tone="warning" />
+            <p className="text-sm text-muted-foreground">Network status</p>
+            <StatusBadge label="Not checked" tone="warning" />
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Device VPN identity</p>
@@ -419,14 +433,18 @@ function PortalDeviceDetails({ device }: { device: PortalDevice }) {
           </div>
         </CardContent>
       </Card>
+      <Button asChild>
+        <Link to="/portal/networks">Manage my networks</Link>
+      </Button>
       <Card>
         <CardHeader>
           <CardTitle>Connection instructions</CardTitle>
           <CardDescription>
-            Connect using one of your active laptop VPN clients. An
-            administrator must separately configure OpenVPN and firewall policy
-            before this device is reachable; this page does not guarantee
-            connectivity.
+            Connect using one of your active laptop VPN clients. Open My
+            networks to create restricted access from that client to this
+            granted device. Both VPN clients need active credentials and fixed
+            addresses provisioned by an administrator. This page does not
+            guarantee connectivity.
           </CardDescription>
         </CardHeader>
       </Card>

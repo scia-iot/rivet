@@ -147,6 +147,8 @@ def test_registered_non_admin_resolves_device_user_principal(
     ("method", "path", "body"),
     [
         ("GET", "/devices", None),
+        ("GET", "/devices/1/access-grants", None),
+        ("POST", "/devices/1/access-grants", {"user_ids": [1]}),
         ("POST", "/devices", {"name": "blocked-device"}),
         ("GET", "/users", None),
         (
@@ -241,6 +243,32 @@ def test_administrators_can_reach_client_profile_regeneration(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Server not found!"
+
+
+@pytest.mark.parametrize("role", ["admin", "ServiceAdmin"])
+def test_administrators_can_batch_share_device(
+    authorization_context: tuple[TestClient, dict[str, object], Session],
+    role: str,
+) -> None:
+    """Delegated and service admins can share one device with multiple users."""
+    test_client, claims, session = authorization_context
+    claims["roles"] = [role]
+    if role == "ServiceAdmin":
+        claims.pop("scp", None)
+        claims["sub"] = "service-object-id"
+        claims["oid"] = "service-object-id"
+    users = list(session.exec(select(User)).all())
+    device = session.exec(select(Device)).first()
+    assert device is not None
+    ids = [user.id for user in users]
+    response = test_client.post(
+        f"/devices/{device.id}/access-grants", json={"user_ids": ids}
+    )
+    assert response.status_code == 200
+    assert len(response.json()["grants"]) == len(ids)
+    listed = test_client.get(f"/devices/{device.id}/access-grants")
+    assert listed.status_code == 200
+    assert {grant["user_id"] for grant in listed.json()} == set(ids)
 
 
 def test_exact_loopback_connection_hook_remains_available(

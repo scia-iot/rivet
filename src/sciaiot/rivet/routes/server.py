@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 
 from sciaiot.rivet import dependencies
 from sciaiot.rivet.application.validation import is_rfc1918_ipv4_network
+from sciaiot.rivet.application.vpn_control.errors import ControlError
 from sciaiot.rivet.authorization import (
     PermissionRoute,
     RequireServerRead,
@@ -214,6 +215,8 @@ def get_routes(
     server = get_server_record(session)
     try:
         routes = VpnService(session, server).route_lines(server.dev)
+    except ControlError:
+        raise
     except Exception as error:
         logger.error("Server routes could not be loaded.")
         raise HTTPException(
@@ -245,6 +248,8 @@ def add_route(
     server = get_server_record(session)
     try:
         VpnService(session, server).route(request.network, server.ip, True)
+    except ControlError:
+        raise
     except Exception as error:
         logger.error("Server route addition failed.")
         raise HTTPException(
@@ -276,6 +281,8 @@ def delete_route(
     control = VpnService(session, server)
     try:
         routes = control.route_lines(server.dev)
+    except ControlError:
+        raise
     except Exception as error:
         logger.error("Server routes could not be loaded for deletion.")
         raise HTTPException(
@@ -299,6 +306,8 @@ def delete_route(
 
     try:
         control.route(network, server.ip, False)
+    except ControlError:
+        raise
     except Exception as error:
         logger.error("Server route removal failed.")
         raise HTTPException(
