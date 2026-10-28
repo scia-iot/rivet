@@ -8,9 +8,15 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from sciaiot.rivet import dependencies
+from sciaiot.rivet.application.vpn_control.errors import (
+    ControlError,
+    problem_detail,
+    problem_status,
+)
 from sciaiot.rivet.dependencies import (
     create_app_directory,
     create_tables,
@@ -106,6 +112,20 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         request,
         422,
         "The request did not satisfy the API contract.",
+    )
+
+
+@app.exception_handler(ControlError)
+async def control_exception_handler(
+    request: Request, exc: ControlError
+) -> JSONResponse:
+    """Handle expected VPN failures without leaking backend diagnostics."""
+    logger.warning("VPN control request failed (%s).", exc.code.value)
+    return problem_response(
+        request,
+        problem_status(exc.code),
+        problem_detail(exc.code),
+        problem_type=f"/errors/vpn/{exc.code.value}",
     )
 
 

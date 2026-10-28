@@ -32,12 +32,9 @@ class RouteMutations:
         gateway = ipaddress.IPv4Address(route.gateway)
         if (
             gateway not in pool
-            or gateway
-            in {
-                pool.network_address,
-                pool.broadcast_address,
-                ipaddress.IPv4Address(config.server_address),
-            }
+            # Server routes use the local TUN address as their next hop;
+            # OpenVPN selects the destination client using its CCD iroute.
+            or gateway in {pool.network_address, pool.broadcast_address}
             or ipaddress.IPv4Network(route.network).overlaps(pool)
         ):
             raise ControlError(ErrorCode.INVALID_INPUT)

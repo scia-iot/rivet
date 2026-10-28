@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from sciaiot.rivet.application.vpn_control import schemas as s
-from sciaiot.rivet.application.vpn_control.errors import ControlError
+from sciaiot.rivet.application.vpn_control.errors import ControlError, ErrorCode
 from sciaiot.rivet.vpn_agent import access_mutations, bounded, network
 from sciaiot.rivet.vpn_agent.writer import MutationVpnControl
 from tests.support.agent import request, settings
@@ -140,14 +140,15 @@ def test_named_iproute_protocol_reconciles_from_numeric_observation(
     control.close()
 
 
+@pytest.mark.parametrize("gateway", ["10.8.0.1", "10.8.0.2"])
 def test_foreign_route_never_replaced(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, gateway: str
 ) -> None:
     control = configured_control(tmp_path)
     route = s.ManagedRoute(
         route_id="00000000-0000-4000-8000-000000000001",
         network="192.168.40.0/24",
-        gateway="10.8.0.2",
+        gateway=gateway,
     )
     monkeypatch.setattr(
         bounded,
@@ -171,6 +172,98 @@ def test_foreign_route_never_replaced(
     assert result.state == "failed"
     assert result.completed == ()
     control.close()
+
+
+@pytest.mark.parametrize(
+    ("gateway", "destination"),
+    [
+        ("10.8.0.0", "192.168.40.0/24"),
+        ("10.8.0.255", "192.168.40.0/24"),
+        ("10.9.0.1", "192.168.40.0/24"),
+        ("10.8.0.1", "10.8.0.0/24"),
+    ],
+)
+def test_invalid_route_never_runs_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    gateway: str,
+    destination: str,
+) -> None:
+    """Allowing the server next hop retains pool and overlap validation."""
+    control = configured_control(tmp_path)
+    route = s.ManagedRoute(
+        route_id="00000000-0000-4000-8000-000000000001",
+        network=destination,
+        gateway=gateway,
+    )
+    monkeypatch.setattr(
+        bounded, "command", lambda *_: pytest.fail("invalid route changed")
+    )
+    try:
+        result = control.execute(request(s.SetRoute(route=route, present=True))).result
+        assert isinstance(result, s.MutationResult)
+        assert result.state == "failed"
+        assert result.failure == ErrorCode.INVALID_INPUT
+        assert result.completed == ()
+    finally:
+        control.close()
+
+
+def test_server_route_add_and_remove(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Honor the public server-route next hop through the real agent writer."""
+    control = configured_control(tmp_path)
+    route = s.ManagedRoute(
+        route_id="00000000-0000-4000-8000-000000000001",
+        network="192.168.40.0/24",
+        gateway="10.8.0.1",
+    )
+    observed: list[dict[str, object]] = []
+    commands: list[list[str]] = []
+    monkeypatch.setattr(bounded, "observe", lambda *_: json.dumps(observed).encode())
+
+    def execute(arguments: list[str], deadline: float) -> bytes:
+        commands.append(arguments)
+        assert arguments == [
+            "/usr/sbin/ip",
+            "-4",
+            "route",
+            "add" if not observed else "del",
+            route.network,
+            "via",
+            route.gateway,
+            "dev",
+            "tun0",
+            "proto",
+            "201",
+        ]
+        if "add" in arguments:
+            observed.append(
+                {
+                    "dst": route.network,
+                    "gateway": route.gateway,
+                    "dev": "tun0",
+                    "protocol": 201,
+                }
+            )
+        else:
+            observed.clear()
+        return b""
+
+    monkeypatch.setattr(bounded, "command", execute)
+    try:
+        for generation, present in enumerate((True, False)):
+            intent = request(s.SetRoute(route=route, present=present)).model_copy(
+                update={"expected_generation": generation}
+            )
+            result = control.execute(intent).result
+            assert isinstance(result, s.MutationResult)
+            assert result.state == "succeeded"
+            assert bool(observed) == present
+        assert len(commands) == 2
+    finally:
+        control.close()
 
 
 @pytest.fixture
